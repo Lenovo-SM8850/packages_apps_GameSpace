@@ -411,6 +411,12 @@ class TileRepository @Inject constructor(
     private fun secureEnabled(key: String): Boolean =
         Settings.Secure.getIntForUser(context.contentResolver, key, 0, UserHandle.USER_CURRENT) == 1
 
+    private fun toggleSecure(key: String) {
+        Settings.Secure.putIntForUser(
+            context.contentResolver, key, if (secureEnabled(key)) 0 else 1, UserHandle.USER_CURRENT
+        )
+        refreshPlatformStates()
+    }
 
 
     private fun platformTile(feature: String, iconRes: Int, fallbackLabel: String): PlatformTile {
@@ -460,6 +466,11 @@ class TileRepository @Inject constructor(
                         lineageHardware.get(LineageHardwareManager.FEATURE_READING_ENHANCEMENT)
                 } }
                 else -> observedSetting?.let { { secureEnabled(it) } }
+            },
+            toggleAction = {
+                when (feature) {
+                    else -> if (feature == AxPlatformClient.FEATURE_DREAM) toggleSecure(Settings.Secure.SCREENSAVER_ENABLED) else platform.toggle(feature)
+                }
             },
         )
         tile.labelState.value = fallbackLabel
