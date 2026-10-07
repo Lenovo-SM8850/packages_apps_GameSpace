@@ -473,11 +473,12 @@ class TileRepository @Inject constructor(
             },
             toggleAction = {
                 when (feature) {
-                    AxPlatformClient.FEATURE_VPN -> {
+                    AxPlatformClient.FEATURE_VPN, AxPlatformClient.FEATURE_CAST -> {
                         if (platform.getState(feature).getBoolean("enabled", false)) {
                             platform.toggle(feature)
                         } else {
-                            openSettings(Settings.ACTION_VPN_SETTINGS)
+                            openSettings(if (feature == AxPlatformClient.FEATURE_VPN)
+                                Settings.ACTION_VPN_SETTINGS else Settings.ACTION_CAST_SETTINGS)
                         }
                     }
                     AxPlatformClient.FEATURE_AUTO_SYNC -> {
