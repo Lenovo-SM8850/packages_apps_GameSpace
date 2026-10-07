@@ -21,6 +21,7 @@ import android.content.Context
 import android.os.PowerManager
 import android.os.UserHandle
 import android.provider.Settings
+import androidx.compose.runtime.mutableStateOf
 import io.chaldeaprjkt.gamespace.utils.GameModeUtils
 import javax.inject.Inject
 
@@ -91,6 +92,8 @@ class SystemSettings @Inject constructor(
             )
         }
 
+    internal val stayAwakeState = mutableStateOf(false)
+
     var stayAwake: Boolean
         get() = wakelock.isHeld
         @SuppressLint("WakelockTimeout")
@@ -100,6 +103,7 @@ class SystemSettings @Inject constructor(
             } else {
                 if (wakelock.isHeld) wakelock.release()
             }
+            stayAwakeState.value = wakelock.isHeld
         }
 
     var threeScreenshot

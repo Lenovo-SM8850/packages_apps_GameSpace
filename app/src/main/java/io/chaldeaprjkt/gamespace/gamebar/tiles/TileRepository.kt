@@ -717,7 +717,7 @@ class TileRepository @Inject constructor(
                 id = "stay_awake",
                 label = context.getString(R.string.tile_stay_awake),
                 icon = R.drawable.materialsymbols_ic_bedtime_rounded_filled,
-                state = mutableStateOf(appSettings.stayAwake),
+                state = systemSettings.stayAwakeState,
                 setter = {
                     appSettings.stayAwake = it
                     systemSettings.stayAwake = it
