@@ -123,7 +123,7 @@ class PlatformTile(
             else -> state.getBoolean("active", false)
         }
         val newLabel = AxPlatformClient.getLabel(state)
-        if (!newLabel.isNullOrBlank()) labelState.value = newLabel
+        if (usePlatformLabel && !newLabel.isNullOrBlank()) labelState.value = newLabel
     }
 }
 
@@ -447,6 +447,9 @@ class TileRepository @Inject constructor(
             icon = iconRes,
             feature = feature,
             platform = platform,
+            usePlatformLabel = feature != AxPlatformClient.FEATURE_MOBILE_DATA &&
+                feature != AxPlatformClient.FEATURE_CAFFEINE &&
+                feature != AxPlatformClient.FEATURE_DREAM,
             readActive = when (feature) {
                 AxPlatformClient.FEATURE_AUTO_SYNC -> { {
                     ContentResolver.getMasterSyncAutomaticallyAsUser(ActivityManager.getCurrentUser())
