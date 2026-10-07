@@ -108,7 +108,7 @@ class GameSidebar(
 
     private val panelDismissing = mutableStateOf(false)
 
-    private val showFpsState = mutableStateOf(false)
+    private val showFpsState = tileRepository.isFpsInfoVisible
     private val fpsTextState = mutableStateOf("")
     private val isLockedState = mutableStateOf(false)
     private val isIdleState = mutableStateOf(true)
@@ -139,6 +139,9 @@ class GameSidebar(
                 repeatOnLifecycle(Lifecycle.State.STARTED) {
                     setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
                     setContent {
+                        LaunchedEffect(showFpsState.value) {
+                            updateFpsTracking()
+                        }
                         CompositionLocalProvider(
                             LocalOnBackPressedDispatcherOwner provides noOpBackDispatcherOwner,
                         ) {
@@ -161,9 +164,7 @@ class GameSidebar(
                                     scheduleIdle()
                                 },
                                 onToggleFps = {
-                                    showFpsState.value = !showFpsState.value
-                                    appSettings.showFps = showFpsState.value
-                                    updateFpsTracking()
+                                    tileRepository.setFpsInfoEnabled(!showFpsState.value)
                                     scheduleIdle()
                                 },
                                 pillExpanded = pillExpandedState.value,
@@ -482,6 +483,7 @@ class GameSidebar(
     }
 
     private fun updateFpsTracking() {
+        stopFpsTracking()
         if (showFpsState.value) {
             taskManager?.focusedRootTaskInfo?.taskId?.let {
                 wm.registerTaskFpsCallback(it, Runnable::run, taskFpsCallback)
@@ -511,7 +513,7 @@ class GameSidebar(
         gameBarLayoutParam.y = appSettings.y
         dockGameBar()
         runCatching { wm.updateViewLayout(gameBarView, gameBarLayoutParam) }
-        showFpsState.value = appSettings.showFps
+        tileRepository.setFpsInfoEnabled(appSettings.showFps)
         updateFpsTracking()
         setGestureLock(appSettings.lockGesture)
         scheduleIdle()

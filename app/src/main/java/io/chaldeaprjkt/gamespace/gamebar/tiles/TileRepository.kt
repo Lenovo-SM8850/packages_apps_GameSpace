@@ -52,6 +52,7 @@ import androidx.preference.PreferenceManager
 import com.android.axion.platform.AxPlatformClient
 import io.chaldeaprjkt.gamespace.R
 import io.chaldeaprjkt.gamespace.data.AppSettings
+import io.chaldeaprjkt.gamespace.data.GameSession
 import io.chaldeaprjkt.gamespace.data.SystemSettings
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -132,6 +133,7 @@ class TileRepository @Inject constructor(
     private val context: Context,
     private val appSettings: AppSettings,
     private val systemSettings: SystemSettings,
+    private val gameSession: GameSession,
 ) {
     private lateinit var platform: AxPlatformClient
     private var listening = false
@@ -161,7 +163,16 @@ class TileRepository @Inject constructor(
     private val preferredTileOrder = mutableListOf<String>()
     private var supportedFeatures = emptySet<String>()
     private val _availableTiles = mutableStateListOf<TileAction>()
+    private val notificationState = mutableStateOf(appSettings.danmakuNotification)
     private val touchBoostState = mutableStateOf(false)
+    private val preferences by lazy { PreferenceManager.getDefaultSharedPreferences(context) }
+    private val preferenceListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+        when (key) {
+            AppSettings.KEY_DANMAKU_NOTIFICATION_MODE ->
+                notificationState.value = appSettings.danmakuNotification
+            "show_fps" -> isFpsInfoVisible.value = appSettings.showFps
+        }
+    }
     private val stateHandler = Handler(Looper.getMainLooper())
     private val lineageHardware by lazy { LineageHardwareManager.getInstance(context) }
     // Hardware/properties have no removable listener, and the sync listener is
@@ -203,6 +214,12 @@ class TileRepository @Inject constructor(
 
     val isBrightnessVisible: MutableState<Boolean> = mutableStateOf(appSettings.brightnessEnabled)
     val isFpsGraphVisible: MutableState<Boolean> = mutableStateOf(appSettings.fpsGraphEnabled)
+    val isFpsInfoVisible: MutableState<Boolean> = mutableStateOf(appSettings.showFps)
+
+    fun setFpsInfoEnabled(enabled: Boolean) {
+        isFpsInfoVisible.value = enabled
+        appSettings.showFps = enabled
+    }
 
     fun init(platform: AxPlatformClient) {
         this.platform = platform
@@ -212,6 +229,9 @@ class TileRepository @Inject constructor(
 
         preferredTileOrder.clear()
         preferredTileOrder.addAll(loadTileOrder())
+        isFpsInfoVisible.value = appSettings.showFps
+        notificationState.value = appSettings.danmakuNotification
+        preferences.registerOnSharedPreferenceChangeListener(preferenceListener)
         platform.addListener(platformListener)
         listOf(
             Settings.Secure.SCREENSAVER_ENABLED, Settings.Secure.SMART_PIXEL_FILTER_ENABLED,
@@ -237,6 +257,8 @@ class TileRepository @Inject constructor(
         platformTiles.forEach { tile ->
             updatePlatformTile(tile, platform.getState(tile.id))
         }
+        notificationState.value = appSettings.danmakuNotification
+        isFpsInfoVisible.value = appSettings.showFps
         touchBoostState.value = SystemProperties.getInt("persist.sys.touchboost_enable", 0) == 1
         rebuildAvailableTiles()
         scheduleHardwareRefresh()
@@ -352,6 +374,7 @@ class TileRepository @Inject constructor(
         listening = false
         platform.removeListener(platformListener)
         context.contentResolver.unregisterContentObserver(settingsObserver)
+        preferences.unregisterOnSharedPreferenceChangeListener(preferenceListener)
         stateHandler.removeCallbacks(hardwareStateRefresh)
     }
 
@@ -684,11 +707,8 @@ class TileRepository @Inject constructor(
                 id = "notification",
                 label = context.getString(R.string.tile_danmaku),
                 icon = R.drawable.materialsymbols_ic_notifications_rounded_filled,
-                state = mutableStateOf(appSettings.danmakuNotification),
-                setter = {
-                    appSettings.danmakuNotification = it
-                    systemSettings.headsup = !it
-                }
+                state = notificationState,
+                setter = { gameSession.setDanmakuNotification(it) }
             )
         )
 
@@ -697,7 +717,7 @@ class TileRepository @Inject constructor(
                 id = "stay_awake",
                 label = context.getString(R.string.tile_stay_awake),
                 icon = R.drawable.materialsymbols_ic_bedtime_rounded_filled,
-                state = mutableStateOf(appSettings.stayAwake),
+                state = systemSettings.stayAwakeState,
                 setter = {
                     appSettings.stayAwake = it
                     systemSettings.stayAwake = it
@@ -710,8 +730,8 @@ class TileRepository @Inject constructor(
                 id = "fps_info",
                 label = context.getString(R.string.tile_fps_info),
                 icon = R.drawable.materialsymbols_ic_bar_chart_rounded_filled,
-                state = mutableStateOf(appSettings.showFps),
-                setter = { appSettings.showFps = it }
+                state = isFpsInfoVisible,
+                setter = { setFpsInfoEnabled(it) }
             )
         )
 
