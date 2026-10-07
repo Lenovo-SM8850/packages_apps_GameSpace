@@ -50,6 +50,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.preference.PreferenceManager
 import com.android.axion.platform.AxPlatformClient
+import com.android.internal.util.ScreenshotHelper
 import io.chaldeaprjkt.gamespace.R
 import io.chaldeaprjkt.gamespace.data.AppSettings
 import io.chaldeaprjkt.gamespace.data.GameSession
@@ -140,6 +141,8 @@ class TileRepository @Inject constructor(
 
     private lateinit var defaultTiles: List<TileAction>
     private val platformTiles = mutableListOf<PlatformTile>()
+    var onBeforePlatformAction: ((String) -> Unit)? = null
+    var onScreenshotComplete: (() -> Unit)? = null
 
     private val platformListener = object : AxPlatformClient.Listener() {
         override fun onStateChanged(key: String, state: Bundle) {
@@ -174,6 +177,7 @@ class TileRepository @Inject constructor(
         }
     }
     private val stateHandler = Handler(Looper.getMainLooper())
+    private val screenshotHelper by lazy { ScreenshotHelper(context) }
     private val lineageHardware by lazy { LineageHardwareManager.getInstance(context) }
     // Hardware/properties have no removable listener, and the sync listener is
     // scoped to the caller's user. Refresh their live values for the current user
@@ -376,6 +380,8 @@ class TileRepository @Inject constructor(
         context.contentResolver.unregisterContentObserver(settingsObserver)
         preferences.unregisterOnSharedPreferenceChangeListener(preferenceListener)
         stateHandler.removeCallbacks(hardwareStateRefresh)
+        onBeforePlatformAction = null
+        onScreenshotComplete = null
     }
 
     fun setBrightnessEnabled(enabled: Boolean) {
@@ -498,6 +504,7 @@ class TileRepository @Inject constructor(
                 else -> observedSetting?.let { { secureEnabled(it) } }
             },
             toggleAction = {
+                onBeforePlatformAction?.invoke(feature)
                 when (feature) {
                     AxPlatformClient.FEATURE_VPN, AxPlatformClient.FEATURE_CAST -> {
                         if (platform.getState(feature).getBoolean("enabled", false)) {
@@ -506,6 +513,16 @@ class TileRepository @Inject constructor(
                             openSettings(if (feature == AxPlatformClient.FEATURE_VPN)
                                 Settings.ACTION_VPN_SETTINGS else Settings.ACTION_CAST_SETTINGS)
                         }
+                    }
+                    AxPlatformClient.FEATURE_SCREENSHOT -> {
+                        stateHandler.postDelayed({
+                            if (!listening) return@postDelayed
+                            screenshotHelper.takeScreenshot(
+                                WindowManager.TAKE_SCREENSHOT_FULLSCREEN,
+                                WindowManager.ScreenshotSource.SCREENSHOT_OTHER,
+                                stateHandler
+                            ) { onScreenshotComplete?.invoke() }
+                        }, 500)
                     }
                     AxPlatformClient.FEATURE_AUTO_SYNC -> {
                         val userId = ActivityManager.getCurrentUser()
