@@ -71,6 +71,12 @@ class AppSettings @Inject constructor(private val context: Context) {
         get() = db.getString(KEY_TILE_ORDER, null)?.split(",")?.filter { it.isNotBlank() } ?: emptyList()
         set(value) = db.edit().putString(KEY_TILE_ORDER, value.joinToString(",")).apply()
 
+    // Preserve selections while a capability (for example a work profile) is absent.
+    var preferredTileOrder: List<String>?
+        get() = db.getString(KEY_PREFERRED_TILE_ORDER, null)
+            ?.split(",")?.filter { it.isNotBlank() }
+        set(value) = db.edit().putString(KEY_PREFERRED_TILE_ORDER, value?.joinToString(",")).apply()
+
     var brightnessEnabled: Boolean
         get() = db.getBoolean(KEY_BRIGHTNESS_ENABLED, true)
         set(value) = db.edit().putBoolean(KEY_BRIGHTNESS_ENABLED, value).apply()
@@ -117,6 +123,7 @@ class AppSettings @Inject constructor(private val context: Context) {
         const val KEY_LOCK_GESTURE = "gamespace_lock_gesture"
         const val KEY_MENU_OPACITY = "gamespace_menu_opacity"
         const val KEY_TILE_ORDER = "tile_order"
+        const val KEY_PREFERRED_TILE_ORDER = "preferred_tile_order"
         const val KEY_BRIGHTNESS_ENABLED = "brightness_enabled"
         const val KEY_FPS_GRAPH_ENABLED = "fps_graph_enabled"
         const val KEY_QUICK_START_APPS = "quick_start_apps"
