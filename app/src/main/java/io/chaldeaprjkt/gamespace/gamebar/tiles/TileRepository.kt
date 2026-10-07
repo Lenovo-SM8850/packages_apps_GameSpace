@@ -15,12 +15,31 @@
  */
 package io.chaldeaprjkt.gamespace.gamebar.tiles
 
+import android.Manifest
 import android.app.ActivityManager
+import android.content.ContentResolver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
+import android.content.SharedPreferences
+import android.content.res.Configuration
+import android.content.pm.PackageManager
+import android.database.ContentObserver
+import android.hardware.SensorPrivacyManager
+import android.hardware.display.ColorDisplayManager
+import android.net.TetheringManager
+import android.os.BatteryManager
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.os.PowerManager
 import android.os.SystemProperties
+import android.os.UserHandle
+import android.os.UserManager
 import android.provider.Settings
+import android.service.dreams.DreamService
+import android.telephony.TelephonyManager
+import android.view.WindowManager
 import android.widget.Toast
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.MutableState
@@ -29,12 +48,14 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshots.SnapshotStateList
+import androidx.preference.PreferenceManager
 import com.android.axion.platform.AxPlatformClient
 import io.chaldeaprjkt.gamespace.R
 import io.chaldeaprjkt.gamespace.data.AppSettings
 import io.chaldeaprjkt.gamespace.data.SystemSettings
 import javax.inject.Inject
 import javax.inject.Singleton
+import lineageos.hardware.LineageHardwareManager
 
 interface TileAction {
     val id: String
@@ -76,22 +97,33 @@ class PlatformTile(
     override val icon: Int,
     private val feature: String,
     private val platform: AxPlatformClient,
+    private val usePlatformLabel: Boolean = true,
+    private val readActive: (() -> Boolean)? = null,
+    private val toggleAction: (() -> Unit)? = null,
 ) : TileAction {
     val activeState = mutableStateOf(false)
     val labelState = mutableStateOf("")
+    val availableState = mutableStateOf(false)
 
     override val label: String get() = labelState.value
     override val isEnabled: Boolean get() = activeState.value
     @Composable override fun observeEnabled(): State<Boolean> = rememberUpdatedState(activeState.value)
 
     override fun toggle() {
-        platform.toggle(feature)
+        if (!availableState.value) return
+        toggleAction?.invoke() ?: platform.toggle(feature)
     }
 
     fun updateFromState(state: Bundle) {
-        activeState.value = state.getBoolean("active", false)
+        activeState.value = readActive?.invoke() ?: when (feature) {
+            // QS highlights access, whereas the hook reports whether access is blocked.
+            AxPlatformClient.FEATURE_CAMERA_PRIVACY, AxPlatformClient.FEATURE_MIC_PRIVACY ->
+                !state.getBoolean("active", false)
+            AxPlatformClient.FEATURE_SCREEN_RECORD -> state.getBoolean("enabled", false)
+            else -> state.getBoolean("active", false)
+        }
         val newLabel = AxPlatformClient.getLabel(state)
-        if (!newLabel.isNullOrBlank()) labelState.value = newLabel
+        if (usePlatformLabel && !newLabel.isNullOrBlank()) labelState.value = newLabel
     }
 }
 
@@ -102,59 +134,225 @@ class TileRepository @Inject constructor(
     private val systemSettings: SystemSettings,
 ) {
     private lateinit var platform: AxPlatformClient
+    private var listening = false
 
     private lateinit var defaultTiles: List<TileAction>
     private val platformTiles = mutableListOf<PlatformTile>()
 
     private val platformListener = object : AxPlatformClient.Listener() {
-        override fun onFeatureChanged(feature: String, active: Boolean) {
-            platformTiles.find { it.id == feature }?.activeState?.value = active
-        }
-
         override fun onStateChanged(key: String, state: Bundle) {
-            platformTiles.find { it.id == key }?.updateFromState(state)
+            if (!listening || !::defaultTiles.isInitialized) return
+            if (supportedFeatures.isEmpty() || key in setOf(
+                    AxPlatformClient.KEY_BATTERY, AxPlatformClient.KEY_DOZE,
+                    AxPlatformClient.KEY_CONFIG, AxPlatformClient.FEATURE_DATA_SAVER,
+                    AxPlatformClient.FEATURE_AIRPLANE_MODE
+                )) {
+                refreshPlatformStates()
+            } else {
+                platformTiles.find { it.id == key }?.let {
+                    updatePlatformTile(it, state)
+                    rebuildAvailableTiles()
+                }
+            }
         }
     }
 
     private val _tileOrder = mutableStateListOf<String>()
+    private val preferredTileOrder = mutableListOf<String>()
+    private var supportedFeatures = emptySet<String>()
+    private val _availableTiles = mutableStateListOf<TileAction>()
+    private val touchBoostState = mutableStateOf(false)
+    private val stateHandler = Handler(Looper.getMainLooper())
+    private val lineageHardware by lazy { LineageHardwareManager.getInstance(context) }
+    // Hardware/properties have no removable listener, and the sync listener is
+    // scoped to the caller's user. Refresh their live values for the current user
+    // while the game service is running, without refreshing the entire cache.
+    private val hardwareStateRefresh = object : Runnable {
+        override fun run() {
+            platformTiles.filter {
+                (it.id == AxPlatformClient.FEATURE_READING_MODE ||
+                    it.id == AxPlatformClient.FEATURE_AUTO_SYNC) && it.availableState.value
+            }.forEach { it.updateFromState(platform.getState(it.id)) }
+            touchBoostState.value = SystemProperties.getInt("persist.sys.touchboost_enable", 0) == 1
+            scheduleHardwareRefresh()
+        }
+    }
+
+    private fun scheduleHardwareRefresh() {
+        stateHandler.removeCallbacks(hardwareStateRefresh)
+        if (!listening) return
+        if (platformTiles.any {
+                (it.id == AxPlatformClient.FEATURE_READING_MODE ||
+                    it.id == AxPlatformClient.FEATURE_AUTO_SYNC) && it.availableState.value
+            } || hasDeviceCapability("touch_boost")) {
+            stateHandler.postDelayed(hardwareStateRefresh, 1000)
+        }
+    }
+
+    private val settingsObserver = object : ContentObserver(Handler(Looper.getMainLooper())) {
+        override fun onChange(selfChange: Boolean) {
+            if (listening) refreshPlatformStates()
+        }
+    }
 
     val allAvailableTiles: List<TileAction>
-        get() = defaultTiles
+        get() = _availableTiles
 
     private val _tiles = mutableStateListOf<TileAction>()
     val tiles: SnapshotStateList<TileAction> get() = _tiles
 
     val isBrightnessVisible: MutableState<Boolean> = mutableStateOf(appSettings.brightnessEnabled)
     val isFpsGraphVisible: MutableState<Boolean> = mutableStateOf(appSettings.fpsGraphEnabled)
+
     fun init(platform: AxPlatformClient) {
         this.platform = platform
+        listening = true
 
         defaultTiles = buildDefaultTiles()
 
+        preferredTileOrder.clear()
+        preferredTileOrder.addAll(loadTileOrder())
         platform.addListener(platformListener)
-
-        refreshPlatformStates()
-
-        _tileOrder.clear()
-        _tileOrder.addAll(loadTileOrder())
-        _tiles.clear()
-        _tiles.addAll(
-            _tileOrder.mapNotNull { id ->
-                defaultTiles.find { it.id == id }
-            }
+        listOf(
+            Settings.Secure.SCREENSAVER_ENABLED, Settings.Secure.SMART_PIXEL_FILTER_ENABLED,
+            Settings.Secure.FLASHLIGHT_AVAILABLE, Settings.Secure.FLASHLIGHT_ENABLED,
+            Settings.Secure.DOZE_ALWAYS_ON, Settings.Secure.NIGHT_DISPLAY_ACTIVATED,
+            Settings.Secure.ACCESSIBILITY_DISPLAY_INVERSION_ENABLED,
+            Settings.Secure.ACCESSIBILITY_DISPLAY_DALTONIZER_ENABLED,
+            Settings.Secure.REDUCE_BRIGHT_COLORS_ACTIVATED, Settings.Secure.ONE_HANDED_MODE_ENABLED
+        ).forEach { key ->
+            context.contentResolver.registerContentObserver(
+                Settings.Secure.getUriFor(key), false, settingsObserver, UserHandle.USER_ALL
+            )
+        }
+        context.contentResolver.registerContentObserver(
+            Settings.Global.getUriFor(Settings.Global.ZEN_MODE), false, settingsObserver
         )
+        refreshPlatformStates()
     }
 
     fun refreshPlatformStates() {
-        if (!::platform.isInitialized) return
+        if (!listening || !::platform.isInitialized) return
+        supportedFeatures = platform.supportedFeatures.toSet()
         platformTiles.forEach { tile ->
-            val state = platform.getState(tile.id)
-            if (!state.isEmpty) tile.updateFromState(state)
+            updatePlatformTile(tile, platform.getState(tile.id))
+        }
+        touchBoostState.value = SystemProperties.getInt("persist.sys.touchboost_enable", 0) == 1
+        rebuildAvailableTiles()
+        scheduleHardwareRefresh()
+    }
+
+    private fun updatePlatformTile(tile: PlatformTile, state: Bundle) {
+        // The hook drops availability=true callbacks. The flashlight controller
+        // publishes the real hardware state even when the torch is still off.
+        val currentState = if (tile.id == AxPlatformClient.FEATURE_FLASHLIGHT) {
+            Bundle(state).apply {
+                val available = Settings.Secure.getIntForUser(
+                    context.contentResolver, Settings.Secure.FLASHLIGHT_AVAILABLE,
+                    if (state.getBoolean("available", true)) 1 else 0, UserHandle.USER_SYSTEM
+                ) == 1
+                putBoolean("available", available)
+                putInt("tileState", if (available) AxPlatformClient.TILE_STATE_INACTIVE
+                    else AxPlatformClient.TILE_STATE_UNAVAILABLE)
+            }
+        } else state
+        tile.availableState.value = tile.id in supportedFeatures &&
+            currentState.getBoolean("available", true) &&
+            (!currentState.containsKey("tileState") ||
+                AxPlatformClient.getTileState(currentState) != AxPlatformClient.TILE_STATE_UNAVAILABLE) &&
+            hasDeviceCapability(tile.id) &&
+            (tile.id != AxPlatformClient.FEATURE_USB_TETHER ||
+                currentState.getBoolean("usbConnected", false))
+        tile.updateFromState(currentState)
+    }
+
+    private fun rebuildAvailableTiles() {
+        val available = defaultTiles.filter { tile ->
+            if (tile is PlatformTile) tile.availableState.value else hasDeviceCapability(tile.id)
+        }
+        if (_availableTiles.toList() != available) {
+            _availableTiles.clear()
+            _availableTiles.addAll(available)
+        }
+        val order = preferredTileOrder.filter { id -> available.any { it.id == id } }
+        _tileOrder.clear()
+        _tileOrder.addAll(order)
+        val selected = order.mapNotNull { id -> available.find { it.id == id } }
+        if (_tiles.toList() != selected) {
+            _tiles.clear()
+            _tiles.addAll(selected)
+        }
+        saveTileOrder()
+    }
+
+    // The service omits capability flags for some features. Match the underlying
+    // Android/QS checks rather than treating a writable setting as hardware support.
+    private fun hasDeviceCapability(id: String): Boolean {
+        val pm = context.packageManager
+        val powerManager = context.getSystemService(PowerManager::class.java)
+        return when (id) {
+            AxPlatformClient.FEATURE_WIFI -> pm.hasSystemFeature(PackageManager.FEATURE_WIFI)
+            AxPlatformClient.FEATURE_BLUETOOTH ->
+                pm.hasSystemFeature(PackageManager.FEATURE_BLUETOOTH)
+            AxPlatformClient.FEATURE_MOBILE_DATA ->
+                pm.hasSystemFeature(PackageManager.FEATURE_TELEPHONY_DATA) &&
+                    Settings.Global.getInt(
+                        context.contentResolver, Settings.Global.AIRPLANE_MODE_ON, 0
+                    ) == 0
+            AxPlatformClient.FEATURE_DATA_SAVER ->
+                context.getSystemService(TelephonyManager::class.java)?.isDataCapable == true
+            AxPlatformClient.FEATURE_NFC -> pm.hasSystemFeature(PackageManager.FEATURE_NFC)
+            AxPlatformClient.FEATURE_FLASHLIGHT ->
+                pm.hasSystemFeature(PackageManager.FEATURE_CAMERA_FLASH)
+            AxPlatformClient.FEATURE_BATTERY_SAVER ->
+                (context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+                    ?.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0) ?: 0) == 0
+            AxPlatformClient.FEATURE_DARK_MODE -> !powerManager.isPowerSaveMode
+            AxPlatformClient.FEATURE_HOTSPOT ->
+                context.getSystemService(UserManager::class.java)
+                    .isUserAdmin(ActivityManager.getCurrentUser()) &&
+                !platform.getState(AxPlatformClient.FEATURE_DATA_SAVER).getBoolean("active", false) &&
+                context.getSystemService(TetheringManager::class.java)?.let {
+                    it.isTetheringSupported && it.tetherableWifiRegexs.isNotEmpty()
+                } == true
+            AxPlatformClient.FEATURE_USB_TETHER ->
+                context.getSystemService(TetheringManager::class.java)?.let {
+                    it.isTetheringSupported && it.tetherableUsbRegexs.isNotEmpty()
+                } == true
+            AxPlatformClient.FEATURE_AOD -> context.resources.getBoolean(
+                com.android.internal.R.bool.config_dozeAlwaysOnDisplayAvailable
+            ) && !powerManager.getPowerSaveState(PowerManager.ServiceType.AOD).batterySaverEnabled
+            AxPlatformClient.FEATURE_NIGHT_LIGHT ->
+                ColorDisplayManager.isNightDisplayAvailable(context)
+            AxPlatformClient.FEATURE_REDUCE_BRIGHTNESS ->
+                ColorDisplayManager.isReduceBrightColorsAvailable(context)
+            AxPlatformClient.FEATURE_ONE_HANDED_MODE ->
+                SystemProperties.getBoolean("ro.support_one_handed_mode", false)
+            AxPlatformClient.FEATURE_CAMERA_PRIVACY ->
+                context.getSystemService(SensorPrivacyManager::class.java)
+                    ?.supportsSensorToggle(SensorPrivacyManager.Sensors.CAMERA) == true
+            AxPlatformClient.FEATURE_MIC_PRIVACY ->
+                context.getSystemService(SensorPrivacyManager::class.java)
+                    ?.supportsSensorToggle(SensorPrivacyManager.Sensors.MICROPHONE) == true
+            AxPlatformClient.FEATURE_DREAM ->
+                context.resources.getBoolean(com.android.internal.R.bool.config_dreamsSupported) &&
+                    pm.queryIntentServices(Intent(DreamService.SERVICE_INTERFACE), 0)
+                        .any { it.serviceInfo.permission == Manifest.permission.BIND_DREAM_SERVICE }
+            "fps_info" -> context.checkSelfPermission(Manifest.permission.ACCESS_FPS_COUNTER) ==
+                PackageManager.PERMISSION_GRANTED
+            "stay_awake" -> context.checkSelfPermission(Manifest.permission.WAKE_LOCK) ==
+                PackageManager.PERMISSION_GRANTED
+            "touch_boost" -> SystemProperties.getBoolean("persist.sys.ax_touch_boost", false)
+            "settings" -> Intent(Settings.ACTION_SETTINGS).resolveActivity(pm) != null
+            else -> true
         }
     }
 
     fun dispose() {
+        listening = false
         platform.removeListener(platformListener)
+        context.contentResolver.unregisterContentObserver(settingsObserver)
+        stateHandler.removeCallbacks(hardwareStateRefresh)
     }
 
     fun setBrightnessEnabled(enabled: Boolean) {
@@ -168,16 +366,16 @@ class TileRepository @Inject constructor(
     }
 
     private fun saveTileOrder() {
-        appSettings.tileOrder = _tileOrder
+        if (appSettings.tileOrder != _tileOrder.toList()) appSettings.tileOrder = _tileOrder.toList()
+        if (appSettings.preferredTileOrder != preferredTileOrder) {
+            appSettings.preferredTileOrder = preferredTileOrder.toList()
+        }
     }
 
     private fun loadTileOrder(): List<String> {
-        val savedOrder = appSettings.tileOrder
-        return if (savedOrder.isNotEmpty()) {
-            savedOrder.filter { id -> defaultTiles.any { it.id == id } }
-        } else {
-            defaultTiles.map { it.id }
-        }
+        val savedOrder = appSettings.preferredTileOrder ?: appSettings.tileOrder.takeIf { it.isNotEmpty() }
+            ?: defaultTiles.map { it.id }
+        return savedOrder.filter { id -> defaultTiles.any { it.id == id } }.distinct()
     }
 
     private fun clearBackgroundProcesses() {
@@ -195,21 +393,107 @@ class TileRepository @Inject constructor(
     }
 
     fun updateTileSelection(selectedIds: List<String>) {
-        _tiles.clear()
-        _tiles.addAll(selectedIds.mapNotNull { id ->
-            defaultTiles.find { it.id == id }
-        })
-        _tileOrder.clear()
-        _tileOrder.addAll(selectedIds)
-        saveTileOrder()
+        val selected = selectedIds.filter { id -> _availableTiles.any { it.id == id } }
+            .distinct().toMutableList()
+        // Keep absent selections in their former slots, even when the visible order is edited.
+        val order = buildList {
+            preferredTileOrder.forEach { id ->
+                if (_availableTiles.none { it.id == id }) add(id)
+                else if (selected.isNotEmpty()) add(selected.removeAt(0))
+            }
+            addAll(selected)
+        }
+        preferredTileOrder.clear()
+        preferredTileOrder.addAll(order)
+        rebuildAvailableTiles()
+    }
+
+    private fun secureEnabled(key: String): Boolean =
+        Settings.Secure.getIntForUser(context.contentResolver, key, 0, UserHandle.USER_CURRENT) == 1
+
+    private fun toggleSecure(key: String) {
+        Settings.Secure.putIntForUser(
+            context.contentResolver, key, if (secureEnabled(key)) 0 else 1, UserHandle.USER_CURRENT
+        )
+        refreshPlatformStates()
+    }
+
+    private fun openSettings(action: String) {
+        val intent = Intent(action).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        if (intent.resolveActivity(context.packageManager) != null) context.startActivity(intent)
     }
 
     private fun platformTile(feature: String, iconRes: Int, fallbackLabel: String): PlatformTile {
+        // These hooks describe different controls/settings on this ROM. Read and write
+        // the actual settings, and observe them so changes from Settings/QS stay in sync.
+        val setting = when (feature) {
+            AxPlatformClient.FEATURE_DREAM -> Settings.Secure.SCREENSAVER_ENABLED
+            AxPlatformClient.FEATURE_SMART_PIXELS -> Settings.Secure.SMART_PIXEL_FILTER_ENABLED
+            else -> null
+        }
+        val observedSetting = when (feature) {
+            AxPlatformClient.FEATURE_AOD -> Settings.Secure.DOZE_ALWAYS_ON
+            AxPlatformClient.FEATURE_NIGHT_LIGHT -> Settings.Secure.NIGHT_DISPLAY_ACTIVATED
+            AxPlatformClient.FEATURE_COLOR_INVERSION ->
+                Settings.Secure.ACCESSIBILITY_DISPLAY_INVERSION_ENABLED
+            AxPlatformClient.FEATURE_COLOR_CORRECTION ->
+                Settings.Secure.ACCESSIBILITY_DISPLAY_DALTONIZER_ENABLED
+            AxPlatformClient.FEATURE_REDUCE_BRIGHTNESS -> Settings.Secure.REDUCE_BRIGHT_COLORS_ACTIVATED
+            AxPlatformClient.FEATURE_ONE_HANDED_MODE -> Settings.Secure.ONE_HANDED_MODE_ENABLED
+            else -> setting
+        }
         val tile = PlatformTile(
             id = feature,
             icon = iconRes,
             feature = feature,
             platform = platform,
+            usePlatformLabel = feature != AxPlatformClient.FEATURE_MOBILE_DATA &&
+                feature != AxPlatformClient.FEATURE_CAFFEINE &&
+                feature != AxPlatformClient.FEATURE_DREAM,
+            readActive = when (feature) {
+                AxPlatformClient.FEATURE_AUTO_SYNC -> { {
+                    ContentResolver.getMasterSyncAutomaticallyAsUser(ActivityManager.getCurrentUser())
+                } }
+                AxPlatformClient.FEATURE_ZEN -> { {
+                    Settings.Global.getInt(context.contentResolver, Settings.Global.ZEN_MODE, 0) != 0
+                } }
+                AxPlatformClient.FEATURE_FLASHLIGHT -> { {
+                    Settings.Secure.getIntForUser(
+                        context.contentResolver, Settings.Secure.FLASHLIGHT_ENABLED,
+                        if (platform.getState(feature).getBoolean("active", false)) 1 else 0,
+                        UserHandle.USER_SYSTEM
+                    ) == 1
+                } }
+                AxPlatformClient.FEATURE_DARK_MODE -> { {
+                    context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK ==
+                        Configuration.UI_MODE_NIGHT_YES
+                } }
+                AxPlatformClient.FEATURE_READING_MODE -> { {
+                    feature in supportedFeatures &&
+                        lineageHardware.get(LineageHardwareManager.FEATURE_READING_ENHANCEMENT)
+                } }
+                else -> observedSetting?.let { { secureEnabled(it) } }
+            },
+            toggleAction = {
+                when (feature) {
+                    AxPlatformClient.FEATURE_VPN, AxPlatformClient.FEATURE_CAST -> {
+                        if (platform.getState(feature).getBoolean("enabled", false)) {
+                            platform.toggle(feature)
+                        } else {
+                            openSettings(if (feature == AxPlatformClient.FEATURE_VPN)
+                                Settings.ACTION_VPN_SETTINGS else Settings.ACTION_CAST_SETTINGS)
+                        }
+                    }
+                    AxPlatformClient.FEATURE_AUTO_SYNC -> {
+                        val userId = ActivityManager.getCurrentUser()
+                        ContentResolver.setMasterSyncAutomaticallyAsUser(
+                            !ContentResolver.getMasterSyncAutomaticallyAsUser(userId), userId
+                        )
+                        refreshPlatformStates()
+                    }
+                    else -> if (setting != null) toggleSecure(setting) else platform.toggle(feature)
+                }
+            },
         )
         tile.labelState.value = fallbackLabel
         platformTiles.add(tile)
@@ -457,9 +741,6 @@ class TileRepository @Inject constructor(
         )
 
         if (SystemProperties.getBoolean("persist.sys.ax_touch_boost", false)) {
-            val touchBoostState = mutableStateOf(
-                SystemProperties.getInt("persist.sys.touchboost_enable", 0) == 1
-            )
             add(
                 ToggleableTile(
                     id = "touch_boost",
