@@ -134,6 +134,20 @@ class GameSidebar(
     }
 
     fun onCreate() {
+        tileRepository.onBeforePlatformAction = { feature ->
+            when (feature) {
+                AxPlatformClient.FEATURE_SCREENSHOT -> {
+                    forceRemovePanel()
+                    gameBarView.visibility = View.INVISIBLE
+                }
+                AxPlatformClient.FEATURE_SCREEN_RECORD -> {
+                    if (!platform.getState(feature).getBoolean("enabled", false)) forceRemovePanel()
+                }
+            }
+        }
+        tileRepository.onScreenshotComplete = {
+            if (!shouldClose) gameBarView.visibility = View.VISIBLE
+        }
         gameBarView = ComposeView(context).apply {
             repeatWhenAttached {
                 repeatOnLifecycle(Lifecycle.State.STARTED) {
