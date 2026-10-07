@@ -18,7 +18,10 @@
     <privapp-permissions package="io.chaldeaprjkt.gamespace">
         <permission name="android.permission.GET_TASKS" />
         <permission name="android.permission.INTERACT_ACROSS_USERS" />
+        <permission name="android.permission.INTERACT_ACROSS_USERS_FULL" />
+        <permission name="lineageos.permission.HARDWARE_ABSTRACTION_ACCESS" />
         <permission name="android.permission.MANAGE_GAME_MODE" />
+        <permission name="android.permission.MANAGE_USERS" />
         <permission name="android.permission.QUERY_ALL_PACKAGES" />
         <permission name="android.permission.READ_DEVICE_CONFIG" />
         <permission name="android.permission.SYSTEM_ALERT_WINDOW" />

@@ -87,5 +87,6 @@ object MainModule {
         @ApplicationContext context: Context,
         appSettings: AppSettings,
         systemSettings: SystemSettings,
-    ): TileRepository = TileRepository(context, appSettings, systemSettings)
+        gameSession: GameSession,
+    ): TileRepository = TileRepository(context, appSettings, systemSettings, gameSession)
 }
