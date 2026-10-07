@@ -418,6 +418,10 @@ class TileRepository @Inject constructor(
         refreshPlatformStates()
     }
 
+    private fun openSettings(action: String) {
+        val intent = Intent(action).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        if (intent.resolveActivity(context.packageManager) != null) context.startActivity(intent)
+    }
 
     private fun platformTile(feature: String, iconRes: Int, fallbackLabel: String): PlatformTile {
         // These hooks describe different controls/settings on this ROM. Read and write
@@ -469,6 +473,13 @@ class TileRepository @Inject constructor(
             },
             toggleAction = {
                 when (feature) {
+                    AxPlatformClient.FEATURE_VPN -> {
+                        if (platform.getState(feature).getBoolean("enabled", false)) {
+                            platform.toggle(feature)
+                        } else {
+                            openSettings(Settings.ACTION_VPN_SETTINGS)
+                        }
+                    }
                     AxPlatformClient.FEATURE_AUTO_SYNC -> {
                         val userId = ActivityManager.getCurrentUser()
                         ContentResolver.setMasterSyncAutomaticallyAsUser(
