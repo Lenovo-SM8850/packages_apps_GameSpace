@@ -492,10 +492,13 @@ fun TileEditPanel(
     tileRepository: TileRepository,
     onClose: () -> Unit
 ) {
-    val allTiles = remember { tileRepository.allAvailableTiles }
-    val dragDropState = remember { TileDragDropState(tileRepository.tiles, columns = 2) }
+    val allTiles = tileRepository.allAvailableTiles
+    val availableIds = allTiles.map { it.id }
+    val dragDropState = remember(availableIds) {
+        TileDragDropState(tileRepository.tiles, columns = 2)
+    }
 
-    val availableList = remember {
+    val availableList = remember(availableIds) {
         val activeIds = tileRepository.tiles.map { it.id }.toSet()
         allTiles.filter { it.id !in activeIds }
             .map { DragTileData(it.id, it.label, it.icon) }
