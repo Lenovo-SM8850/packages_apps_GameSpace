@@ -115,7 +115,13 @@ class PlatformTile(
     }
 
     fun updateFromState(state: Bundle) {
-        activeState.value = state.getBoolean("active", false)
+        activeState.value = readActive?.invoke() ?: when (feature) {
+            // QS highlights access, whereas the hook reports whether access is blocked.
+            AxPlatformClient.FEATURE_CAMERA_PRIVACY, AxPlatformClient.FEATURE_MIC_PRIVACY ->
+                !state.getBoolean("active", false)
+            AxPlatformClient.FEATURE_SCREEN_RECORD -> state.getBoolean("enabled", false)
+            else -> state.getBoolean("active", false)
+        }
         val newLabel = AxPlatformClient.getLabel(state)
         if (!newLabel.isNullOrBlank()) labelState.value = newLabel
     }
@@ -155,7 +161,43 @@ class TileRepository @Inject constructor(
     private val preferredTileOrder = mutableListOf<String>()
     private var supportedFeatures = emptySet<String>()
     private val _availableTiles = mutableStateListOf<TileAction>()
+    private val touchBoostState = mutableStateOf(false)
+    private val stateHandler = Handler(Looper.getMainLooper())
     private val lineageHardware by lazy { LineageHardwareManager.getInstance(context) }
+    // Hardware/properties have no removable listener, and the sync listener is
+    // scoped to the caller's user. Refresh their live values for the current user
+    // while the game service is running, without refreshing the entire cache.
+    private val hardwareStateRefresh = object : Runnable {
+        override fun run() {
+            platformTiles.filter {
+                (it.id == AxPlatformClient.FEATURE_READING_MODE ||
+                    it.id == AxPlatformClient.FEATURE_AUTO_SYNC) && it.availableState.value
+            }.forEach { it.updateFromState(platform.getState(it.id)) }
+            touchBoostState.value = SystemProperties.getInt("persist.sys.touchboost_enable", 0) == 1
+            scheduleHardwareRefresh()
+        }
+    }
+
+    private fun scheduleHardwareRefresh() {
+        stateHandler.removeCallbacks(hardwareStateRefresh)
+        if (!listening) return
+        if (platformTiles.any {
+                (it.id == AxPlatformClient.FEATURE_READING_MODE ||
+                    it.id == AxPlatformClient.FEATURE_AUTO_SYNC) && it.availableState.value
+            } || hasDeviceCapability("touch_boost")) {
+            stateHandler.postDelayed(hardwareStateRefresh, 1000)
+        }
+    }
+
+    private val settingsObserver = object : ContentObserver(Handler(Looper.getMainLooper())) {
+        override fun onChange(selfChange: Boolean) {
+            if (listening) refreshPlatformStates()
+        }
+    }
+
+    val allAvailableTiles: List<TileAction>
+        get() = _availableTiles
+
     private val _tiles = mutableStateListOf<TileAction>()
     val tiles: SnapshotStateList<TileAction> get() = _tiles
 
@@ -171,6 +213,21 @@ class TileRepository @Inject constructor(
         preferredTileOrder.clear()
         preferredTileOrder.addAll(loadTileOrder())
         platform.addListener(platformListener)
+        listOf(
+            Settings.Secure.SCREENSAVER_ENABLED, Settings.Secure.SMART_PIXEL_FILTER_ENABLED,
+            Settings.Secure.FLASHLIGHT_AVAILABLE, Settings.Secure.FLASHLIGHT_ENABLED,
+            Settings.Secure.DOZE_ALWAYS_ON, Settings.Secure.NIGHT_DISPLAY_ACTIVATED,
+            Settings.Secure.ACCESSIBILITY_DISPLAY_INVERSION_ENABLED,
+            Settings.Secure.ACCESSIBILITY_DISPLAY_DALTONIZER_ENABLED,
+            Settings.Secure.REDUCE_BRIGHT_COLORS_ACTIVATED, Settings.Secure.ONE_HANDED_MODE_ENABLED
+        ).forEach { key ->
+            context.contentResolver.registerContentObserver(
+                Settings.Secure.getUriFor(key), false, settingsObserver, UserHandle.USER_ALL
+            )
+        }
+        context.contentResolver.registerContentObserver(
+            Settings.Global.getUriFor(Settings.Global.ZEN_MODE), false, settingsObserver
+        )
         refreshPlatformStates()
     }
 
@@ -180,11 +237,25 @@ class TileRepository @Inject constructor(
         platformTiles.forEach { tile ->
             updatePlatformTile(tile, platform.getState(tile.id))
         }
+        touchBoostState.value = SystemProperties.getInt("persist.sys.touchboost_enable", 0) == 1
         rebuildAvailableTiles()
+        scheduleHardwareRefresh()
     }
 
     private fun updatePlatformTile(tile: PlatformTile, state: Bundle) {
-        val currentState = state
+        // The hook drops availability=true callbacks. The flashlight controller
+        // publishes the real hardware state even when the torch is still off.
+        val currentState = if (tile.id == AxPlatformClient.FEATURE_FLASHLIGHT) {
+            Bundle(state).apply {
+                val available = Settings.Secure.getIntForUser(
+                    context.contentResolver, Settings.Secure.FLASHLIGHT_AVAILABLE,
+                    if (state.getBoolean("available", true)) 1 else 0, UserHandle.USER_SYSTEM
+                ) == 1
+                putBoolean("available", available)
+                putInt("tileState", if (available) AxPlatformClient.TILE_STATE_INACTIVE
+                    else AxPlatformClient.TILE_STATE_UNAVAILABLE)
+            }
+        } else state
         tile.availableState.value = tile.id in supportedFeatures &&
             currentState.getBoolean("available", true) &&
             (!currentState.containsKey("tileState") ||
@@ -280,6 +351,8 @@ class TileRepository @Inject constructor(
     fun dispose() {
         listening = false
         platform.removeListener(platformListener)
+        context.contentResolver.unregisterContentObserver(settingsObserver)
+        stateHandler.removeCallbacks(hardwareStateRefresh)
     }
 
     fun setBrightnessEnabled(enabled: Boolean) {
@@ -335,15 +408,59 @@ class TileRepository @Inject constructor(
         rebuildAvailableTiles()
     }
 
+    private fun secureEnabled(key: String): Boolean =
+        Settings.Secure.getIntForUser(context.contentResolver, key, 0, UserHandle.USER_CURRENT) == 1
 
 
 
     private fun platformTile(feature: String, iconRes: Int, fallbackLabel: String): PlatformTile {
+        // These hooks describe different controls/settings on this ROM. Read and write
+        // the actual settings, and observe them so changes from Settings/QS stay in sync.
+        val setting = when (feature) {
+            AxPlatformClient.FEATURE_DREAM -> Settings.Secure.SCREENSAVER_ENABLED
+            AxPlatformClient.FEATURE_SMART_PIXELS -> Settings.Secure.SMART_PIXEL_FILTER_ENABLED
+            else -> null
+        }
+        val observedSetting = when (feature) {
+            AxPlatformClient.FEATURE_AOD -> Settings.Secure.DOZE_ALWAYS_ON
+            AxPlatformClient.FEATURE_NIGHT_LIGHT -> Settings.Secure.NIGHT_DISPLAY_ACTIVATED
+            AxPlatformClient.FEATURE_COLOR_INVERSION ->
+                Settings.Secure.ACCESSIBILITY_DISPLAY_INVERSION_ENABLED
+            AxPlatformClient.FEATURE_COLOR_CORRECTION ->
+                Settings.Secure.ACCESSIBILITY_DISPLAY_DALTONIZER_ENABLED
+            AxPlatformClient.FEATURE_REDUCE_BRIGHTNESS -> Settings.Secure.REDUCE_BRIGHT_COLORS_ACTIVATED
+            AxPlatformClient.FEATURE_ONE_HANDED_MODE -> Settings.Secure.ONE_HANDED_MODE_ENABLED
+            else -> setting
+        }
         val tile = PlatformTile(
             id = feature,
             icon = iconRes,
             feature = feature,
             platform = platform,
+            readActive = when (feature) {
+                AxPlatformClient.FEATURE_AUTO_SYNC -> { {
+                    ContentResolver.getMasterSyncAutomaticallyAsUser(ActivityManager.getCurrentUser())
+                } }
+                AxPlatformClient.FEATURE_ZEN -> { {
+                    Settings.Global.getInt(context.contentResolver, Settings.Global.ZEN_MODE, 0) != 0
+                } }
+                AxPlatformClient.FEATURE_FLASHLIGHT -> { {
+                    Settings.Secure.getIntForUser(
+                        context.contentResolver, Settings.Secure.FLASHLIGHT_ENABLED,
+                        if (platform.getState(feature).getBoolean("active", false)) 1 else 0,
+                        UserHandle.USER_SYSTEM
+                    ) == 1
+                } }
+                AxPlatformClient.FEATURE_DARK_MODE -> { {
+                    context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK ==
+                        Configuration.UI_MODE_NIGHT_YES
+                } }
+                AxPlatformClient.FEATURE_READING_MODE -> { {
+                    feature in supportedFeatures &&
+                        lineageHardware.get(LineageHardwareManager.FEATURE_READING_ENHANCEMENT)
+                } }
+                else -> observedSetting?.let { { secureEnabled(it) } }
+            },
         )
         tile.labelState.value = fallbackLabel
         platformTiles.add(tile)
@@ -591,9 +708,6 @@ class TileRepository @Inject constructor(
         )
 
         if (SystemProperties.getBoolean("persist.sys.ax_touch_boost", false)) {
-            val touchBoostState = mutableStateOf(
-                SystemProperties.getInt("persist.sys.touchboost_enable", 0) == 1
-            )
             add(
                 ToggleableTile(
                     id = "touch_boost",
