@@ -85,6 +85,16 @@ class GameSession @Inject constructor(
         }
     }
 
+    fun setDanmakuNotification(enabled: Boolean) {
+        appSettings.danmakuNotification = enabled
+        val orig = state ?: return
+        if (enabled) {
+            systemSettings.headsup = false
+        } else {
+            orig.headsup?.let { systemSettings.headsup = it }
+        }
+    }
+
     fun unregister() {
         val orig = state?.copy() ?: return
         if (appSettings.noAutoBrightness) {

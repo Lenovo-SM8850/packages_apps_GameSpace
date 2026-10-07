@@ -14,6 +14,7 @@ import androidx.lifecycle.ViewModel
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import io.chaldeaprjkt.gamespace.data.AppSettings
+import io.chaldeaprjkt.gamespace.data.GameSession
 import io.chaldeaprjkt.gamespace.data.SystemSettings
 import io.chaldeaprjkt.gamespace.data.UserGame
 import io.chaldeaprjkt.gamespace.utils.GameModeUtils
@@ -31,6 +32,7 @@ class SettingsViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
     private val appSettings: AppSettings,
     private val systemSettings: SystemSettings,
+    private val gameSession: GameSession,
     private val gameModeUtils: GameModeUtils
 ) : ViewModel() {
 
@@ -87,7 +89,7 @@ class SettingsViewModel @Inject constructor(
 
     fun updateDanmakuNotification(enabled: Boolean) {
         danmakuNotification = enabled
-        appSettings.danmakuNotification = enabled
+        gameSession.setDanmakuNotification(enabled)
     }
 
     fun updateCallsMode(mode: Int) {
