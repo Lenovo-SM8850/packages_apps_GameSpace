@@ -469,6 +469,13 @@ class TileRepository @Inject constructor(
             },
             toggleAction = {
                 when (feature) {
+                    AxPlatformClient.FEATURE_AUTO_SYNC -> {
+                        val userId = ActivityManager.getCurrentUser()
+                        ContentResolver.setMasterSyncAutomaticallyAsUser(
+                            !ContentResolver.getMasterSyncAutomaticallyAsUser(userId), userId
+                        )
+                        refreshPlatformStates()
+                    }
                     else -> if (setting != null) toggleSecure(setting) else platform.toggle(feature)
                 }
             },
