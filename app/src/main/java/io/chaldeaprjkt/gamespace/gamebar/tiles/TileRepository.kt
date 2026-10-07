@@ -469,7 +469,7 @@ class TileRepository @Inject constructor(
             },
             toggleAction = {
                 when (feature) {
-                    else -> if (feature == AxPlatformClient.FEATURE_DREAM) toggleSecure(Settings.Secure.SCREENSAVER_ENABLED) else platform.toggle(feature)
+                    else -> if (setting != null) toggleSecure(setting) else platform.toggle(feature)
                 }
             },
         )
