@@ -17,6 +17,7 @@
 <permissions>
     <privapp-permissions package="io.chaldeaprjkt.gamespace">
         <permission name="android.permission.GET_TASKS" />
+        <permission name="android.permission.KILL_ALL_BACKGROUND_PROCESSES" />
         <permission name="android.permission.INTERACT_ACROSS_USERS" />
         <permission name="android.permission.INTERACT_ACROSS_USERS_FULL" />
         <permission name="lineageos.permission.HARDWARE_ABSTRACTION_ACCESS" />

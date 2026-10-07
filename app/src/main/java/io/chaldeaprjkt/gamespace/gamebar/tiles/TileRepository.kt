@@ -369,6 +369,11 @@ class TileRepository @Inject constructor(
             "stay_awake" -> context.checkSelfPermission(Manifest.permission.WAKE_LOCK) ==
                 PackageManager.PERMISSION_GRANTED
             "touch_boost" -> SystemProperties.getBoolean("persist.sys.ax_touch_boost", false)
+            "boost_memory" ->
+                context.checkSelfPermission(Manifest.permission.KILL_BACKGROUND_PROCESSES) ==
+                    PackageManager.PERMISSION_GRANTED &&
+                context.checkSelfPermission(Manifest.permission.KILL_ALL_BACKGROUND_PROCESSES) ==
+                    PackageManager.PERMISSION_GRANTED
             "settings" -> Intent(Settings.ACTION_SETTINGS).resolveActivity(pm) != null
             else -> true
         }
@@ -411,12 +416,21 @@ class TileRepository @Inject constructor(
         val activityManager: ActivityManager = context.getSystemService(ActivityManager::class.java)
         val runningApps = activityManager.runningAppProcesses ?: return
         var memoryBoosted = false
-        runningApps.forEach { processInfo ->
-            if (processInfo.importance > ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND) {
-                activityManager.killBackgroundProcesses(processInfo.processName)
+        // A process name may contain ":service", and shared processes may host
+        // multiple packages. The ActivityManager API expects a package name.
+        val protectedPackages = runningApps
+            .filter { it.importance <= ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND }
+            .flatMap { it.pkgList?.toList().orEmpty() }
+            .toSet() + context.packageName
+        runningApps
+            .filter { it.importance > ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND }
+            .flatMap { it.pkgList?.toList().orEmpty() }
+            .distinct()
+            .filterNot { it in protectedPackages }
+            .forEach { packageName ->
+                activityManager.killBackgroundProcesses(packageName)
                 memoryBoosted = true
             }
-        }
         if (memoryBoosted)
             Toast.makeText(context, context.getString(R.string.game_memory_boosted), Toast.LENGTH_SHORT).show()
     }
