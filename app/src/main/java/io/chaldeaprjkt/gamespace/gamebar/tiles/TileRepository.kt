@@ -162,6 +162,12 @@ class TileRepository @Inject constructor(
     private var supportedFeatures = emptySet<String>()
     private val _availableTiles = mutableStateListOf<TileAction>()
     private val touchBoostState = mutableStateOf(false)
+    private val preferences by lazy { PreferenceManager.getDefaultSharedPreferences(context) }
+    private val preferenceListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+        when (key) {
+            "show_fps" -> isFpsInfoVisible.value = appSettings.showFps
+        }
+    }
     private val stateHandler = Handler(Looper.getMainLooper())
     private val lineageHardware by lazy { LineageHardwareManager.getInstance(context) }
     // Hardware/properties have no removable listener, and the sync listener is
@@ -203,6 +209,12 @@ class TileRepository @Inject constructor(
 
     val isBrightnessVisible: MutableState<Boolean> = mutableStateOf(appSettings.brightnessEnabled)
     val isFpsGraphVisible: MutableState<Boolean> = mutableStateOf(appSettings.fpsGraphEnabled)
+    val isFpsInfoVisible: MutableState<Boolean> = mutableStateOf(appSettings.showFps)
+
+    fun setFpsInfoEnabled(enabled: Boolean) {
+        isFpsInfoVisible.value = enabled
+        appSettings.showFps = enabled
+    }
 
     fun init(platform: AxPlatformClient) {
         this.platform = platform
@@ -212,6 +224,8 @@ class TileRepository @Inject constructor(
 
         preferredTileOrder.clear()
         preferredTileOrder.addAll(loadTileOrder())
+        isFpsInfoVisible.value = appSettings.showFps
+        preferences.registerOnSharedPreferenceChangeListener(preferenceListener)
         platform.addListener(platformListener)
         listOf(
             Settings.Secure.SCREENSAVER_ENABLED, Settings.Secure.SMART_PIXEL_FILTER_ENABLED,
@@ -237,6 +251,7 @@ class TileRepository @Inject constructor(
         platformTiles.forEach { tile ->
             updatePlatformTile(tile, platform.getState(tile.id))
         }
+        isFpsInfoVisible.value = appSettings.showFps
         touchBoostState.value = SystemProperties.getInt("persist.sys.touchboost_enable", 0) == 1
         rebuildAvailableTiles()
         scheduleHardwareRefresh()
@@ -352,6 +367,7 @@ class TileRepository @Inject constructor(
         listening = false
         platform.removeListener(platformListener)
         context.contentResolver.unregisterContentObserver(settingsObserver)
+        preferences.unregisterOnSharedPreferenceChangeListener(preferenceListener)
         stateHandler.removeCallbacks(hardwareStateRefresh)
     }
 
@@ -710,8 +726,8 @@ class TileRepository @Inject constructor(
                 id = "fps_info",
                 label = context.getString(R.string.tile_fps_info),
                 icon = R.drawable.materialsymbols_ic_bar_chart_rounded_filled,
-                state = mutableStateOf(appSettings.showFps),
-                setter = { appSettings.showFps = it }
+                state = isFpsInfoVisible,
+                setter = { setFpsInfoEnabled(it) }
             )
         )
 
