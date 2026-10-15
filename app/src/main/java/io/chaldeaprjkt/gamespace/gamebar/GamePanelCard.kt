@@ -19,6 +19,7 @@ package io.chaldeaprjkt.gamespace.gamebar
 
 import android.app.*
 import android.content.*
+import android.content.pm.ActivityInfo
 import android.content.res.Configuration
 import android.graphics.Point
 import android.graphics.Rect
@@ -30,6 +31,7 @@ import android.provider.Settings
 import android.util.Log
 import android.view.WindowManager
 import android.widget.Toast
+import com.android.internal.policy.DesktopModeCompatPolicy
 import com.android.settingslib.display.BrightnessUtils.*
 import androidx.collection.LruCache
 import androidx.core.graphics.drawable.*
@@ -1269,21 +1271,69 @@ fun launchAppInFreeformMode(context: Context, packageName: String) {
         val launchIntent = packageManager.getLaunchIntentForPackage(packageName)
 
         if (launchIntent != null) {
-            val activityName = launchIntent.component?.className
-
-            val freeformIntent = Intent("com.libremobileos.freeform.START_FREEFORM").apply {
-                setPackage("com.libremobileos.freeform")
-                putExtra("packageName", packageName)
-                putExtra("activityName", activityName)
-                putExtra("userId", UserHandle.myUserId())
+            val component = launchIntent.component
+            val userId = UserHandle.myUserId()
+            if (component == null || !context.canLaunchInFloatingWindow(component, userId)) {
+                Toast.makeText(context, R.string.floating_window_unavailable, Toast.LENGTH_SHORT).show()
+                return
             }
-
-            context.sendBroadcast(freeformIntent)
+            val options = ActivityOptions.makeBasic().apply {
+                setLaunchFloatingWindow(true)
+            }
+            context.startActivityAsUser(
+                launchIntent,
+                options.toBundle(),
+                UserHandle.of(userId)
+            )
         }
     } catch (e: Exception) {
         Log.e(TAG, "Failed to launch in freeform", e)
     }
 }
+
+private fun Context.canLaunchInFloatingWindow(component: ComponentName, userId: Int): Boolean =
+    runCatching {
+        val userContext = createContextAsUser(UserHandle.of(userId), 0)
+        val info = userContext.packageManager.getActivityInfo(component, 0)
+        if (!userContext.isActivityResizeable(info)) return@runCatching false
+
+        val resources = userContext.packageManager.getResourcesForApplication(info.applicationInfo)
+        val theme = resources.newTheme().apply {
+            val themeId = info.themeResource.takeIf { it != 0 }
+                ?: if (info.applicationInfo.targetSdkVersion < android.os.Build.VERSION_CODES.HONEYCOMB) {
+                    android.R.style.Theme
+                } else {
+                    android.R.style.Theme_Holo
+                }
+            applyStyle(themeId, true)
+        }
+        val attributes = theme.obtainStyledAttributes(com.android.internal.R.styleable.Window)
+        val noDisplay: Boolean
+        val transparent: Boolean
+        try {
+            noDisplay = attributes.getBoolean(
+                com.android.internal.R.styleable.Window_windowNoDisplay, false
+            )
+            transparent = ActivityInfo.isTranslucentOrFloating(attributes) &&
+                !attributes.getBoolean(
+                    com.android.internal.R.styleable.Window_windowShowWallpaper, false
+                )
+        } finally {
+            attributes.recycle()
+        }
+        val policyComponent = info.targetActivity?.let { ComponentName(info.packageName, it) }
+            ?: component
+        val policy = DesktopModeCompatPolicy(userContext)
+        !noDisplay && !policy.isTopActivityExemptFromDesktopWindowing(
+            policyComponent, noDisplay, transparent, 1, userId, info,
+            WindowConfiguration.ACTIVITY_TYPE_STANDARD
+        ) && !policy.isPackageLaunchInFullscreen(policyComponent)
+    }.getOrDefault(false)
+
+private fun Context.isActivityResizeable(info: ActivityInfo): Boolean =
+    Settings.Global.getInt(
+        contentResolver, Settings.Global.DEVELOPMENT_FORCE_RESIZABLE_ACTIVITIES, 0
+    ) != 0 || ActivityInfo.isResizeableMode(info.resizeMode) || info.supportsPictureInPicture()
 
 @Composable
 fun rememberBatteryInfo(): BatteryInfo {
