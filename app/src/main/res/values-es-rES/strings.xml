@@ -80,7 +80,7 @@
     <string name="fps_stats">min %1$d | avg %2$d | max %3$d</string>
     <!-- Tile Labels -->
     <string name="tile_danmaku">Danmaku</string>
-    <string name="tile_stay_awake">Permanecer encendido</string>
+    <string name="tile_stay_awake">Mantener pantalla encendida al jugar</string>
     <string name="tile_wifi">Wi-Fi</string>
     <string name="tile_dnd">No molestar</string>
     <string name="tile_fps_info">Información de FPS</string>
@@ -113,7 +113,7 @@
     <string name="tile_dream">Protector de pantalla</string>
     <string name="tile_reading_mode">Modo de lectura</string>
     <string name="tile_power_share">Carga compartida</string>
-    <string name="tile_caffeine">Mantener pantalla activa</string>
+    <string name="tile_caffeine">Mantener pantalla encendida 5 minutos</string>
     <string name="tile_vpn">VPN</string>
     <string name="tile_cast">Transmitir</string>
     <string name="tile_profiles">Perfiles</string>
