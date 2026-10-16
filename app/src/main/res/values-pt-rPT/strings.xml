@@ -80,7 +80,7 @@
     <string name="fps_stats">min %1$d | méd %2$d | max %3$d</string>
     <!-- Tile Labels -->
     <string name="tile_danmaku">Danmaku</string>
-    <string name="tile_stay_awake">Manter ativo</string>
+    <string name="tile_stay_awake">Manter ecrã ligado durante o jogo</string>
     <string name="tile_wifi">Wi-Fi</string>
     <string name="tile_dnd">Não incomodar</string>
     <string name="tile_fps_info">Info. de FPS</string>
@@ -89,7 +89,7 @@
     <string name="tile_settings">Definições</string>
     <string name="tile_airplane_mode">Modo de Avião</string>
     <string name="tile_bluetooth">Bluetooth</string>
-    <string name="tile_mobile_data">Dados Móveis</string>
+    <string name="tile_mobile_data">Dados móveis</string>
     <string name="tile_touch_boost">Touch Boost</string>
     <string name="tile_flashlight">Lanterna</string>
     <string name="tile_dark_mode">Modo Escuro</string>
@@ -113,7 +113,7 @@
     <string name="tile_dream">Protetor de ecrã</string>
     <string name="tile_reading_mode">Modo de Leitura</string>
     <string name="tile_power_share">Power Share</string>
-    <string name="tile_caffeine">Cafeína</string>
+    <string name="tile_caffeine">Manter ecrã ligado por 5 minutos</string>
     <string name="tile_vpn">VPN</string>
     <string name="tile_cast">Transmitir</string>
     <string name="tile_profiles">Perfis</string>
