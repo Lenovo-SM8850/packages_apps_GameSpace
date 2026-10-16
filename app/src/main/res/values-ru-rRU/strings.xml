@@ -6,7 +6,7 @@
 -->
 <resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <!-- Game Space -->
-    <string name="settings_title">Поиграем?</string>
+    <string name="settings_title">Игровое пространство</string>
     <string name="app_selector_label">Выберите игру</string>
     <string name="in_game_preferences_title">Настройки игры</string>
     <string name="game_list_title">Библиотека</string>
@@ -15,15 +15,15 @@
     <string name="launch_game">Запустить игру</string>
     <!-- Quick start apps -->
     <string name="quick_start_apps_title">Быстрый запуск приложений</string>
-    <string name="quick_start_apps_summary">Выберите приложения для быстрого запуска</string>
+    <string name="quick_start_apps_summary">Выбрать приложения для быстрого запуска</string>
     <!-- Auto brightness -->
     <string name="auto_brightness_disabled_title">Отключить автояркость</string>
     <string name="auto_brightness_disabled_summary">Не менять яркость во время игры</string>
     <!-- Three finger swipe -->
-    <string name="three_screenshot_disabled_summary">Временно отключать жест снимка экрана тремя пальцами во время игры</string>
+    <string name="three_screenshot_disabled_summary">Временно отключать жест скриншота тремя пальцами во время игры</string>
     <string name="three_screenshot_disabled_title">Отключить жест тремя пальцами</string>
     <!-- Stay awake -->
-    <string name="stay_awake_title">Не засыпать</string>
+    <string name="stay_awake_title">Не гасить экран</string>
     <string name="stay_awake_summary">Не выключать экран во время игры</string>
     <!-- Lock gesture -->
     <string name="lock_gesture_title">Блокировать жесты</string>
@@ -47,10 +47,10 @@
     <string name="in_game_calls_received_number">Поступил звонок от %1$s</string>
     <string name="in_game_calls_rejected_number">Отклонён вызов от %1$s</string>
     <!-- Danmaku Notification Mode -->
-    <string name="danmaku_notification_mode_title">Режим бегущих уведомлений Danmaku</string>
-    <string name="danmaku_notification_mode_summary">Показывать уведомление в виде прозрачных комментариев, пока игра активна</string>
+    <string name="danmaku_notification_mode_title">Режим бегущих уведомлений</string>
+    <string name="danmaku_notification_mode_summary">Показывать уведомления в виде данмаку — бегущих по экрану комментариев, пока игра активна</string>
     <!-- Gamespace opacity -->
-    <string name="gamespace_menu_opacity_title">Уровень прозрачности панели</string>
+    <string name="gamespace_menu_opacity_title">Уровень непрозрачности панели</string>
     <!-- Bypass charging -->
     <string name="bypass_charge_enabled_title">Обходная зарядка</string>
     <string name="bypass_charge_enabled_summary">Включить обходную зарядку во время игры</string>
@@ -79,41 +79,41 @@
     <string name="all_tiles_added">Все плитки добавлены</string>
     <string name="fps_stats">мин. %1$d | сред. %2$d | макс. %3$d</string>
     <!-- Tile Labels -->
-    <string name="tile_danmaku">Режим Danmaku</string>
-    <string name="tile_stay_awake">Экран всегда включен</string>
+    <string name="tile_danmaku">Бегущие уведомления</string>
+    <string name="tile_stay_awake">Не гасить экран в игре</string>
     <string name="tile_wifi">Wi-Fi</string>
     <string name="tile_dnd">Не беспокоить</string>
     <string name="tile_fps_info">Информация о FPS</string>
     <string name="tile_auto_rotate">Автоматический поворот</string>
-    <string name="tile_boost_memory">Очистка памяти</string>
+    <string name="tile_boost_memory">Ускорить память</string>
     <string name="tile_settings">Настройки</string>
-    <string name="tile_airplane_mode">Режим Полёта</string>
+    <string name="tile_airplane_mode">Режим полёта</string>
     <string name="tile_bluetooth">Bluetooth</string>
     <string name="tile_mobile_data">Мобильные данные</string>
     <string name="tile_touch_boost">Быстрый отклик</string>
     <string name="tile_flashlight">Фонарик</string>
     <string name="tile_dark_mode">Тёмная тема</string>
-    <string name="tile_location">Расположение</string>
-    <string name="tile_battery_saver">Экономия заряда</string>
+    <string name="tile_location">Местоположение</string>
+    <string name="tile_battery_saver">Режим энергосбережения</string>
     <string name="tile_hotspot">Точка доступа</string>
     <string name="tile_nfc">NFC</string>
     <string name="tile_night_light">Ночной свет</string>
-    <string name="tile_aod">Постоянно активный дисплей</string>
-    <string name="tile_data_saver">Экономия данных</string>
+    <string name="tile_aod">Информация на заблокированном экране</string>
+    <string name="tile_data_saver">Экономия трафика</string>
     <string name="tile_color_inversion">Инверсия цвета</string>
     <string name="tile_color_correction">Цветокоррекция</string>
     <string name="tile_reduce_brightness">Уменьшить яркость</string>
     <string name="tile_one_handed">Управление одной рукой</string>
-    <string name="tile_heads_up">Краткие уведомления</string>
+    <string name="tile_heads_up">Всплывающие уведомления</string>
     <string name="tile_auto_sync">Автоматическая синхронизация</string>
     <string name="tile_camera_privacy">Камера</string>
     <string name="tile_mic_privacy">Микрофон</string>
     <string name="tile_work_profile">Рабочий профиль</string>
-    <string name="tile_usb_tether">Подключение по USB</string>
+    <string name="tile_usb_tether">Режим модема по USB</string>
     <string name="tile_dream">Заставка</string>
     <string name="tile_reading_mode">Режим чтения</string>
     <string name="tile_power_share">Реверсивная зарядка</string>
-    <string name="tile_caffeine">Не гасить экран</string>
+    <string name="tile_caffeine">Не гасить экран 5 минут</string>
     <string name="tile_vpn">VPN</string>
     <string name="tile_cast">Трансляция</string>
     <string name="tile_profiles">Профили</string>
@@ -129,7 +129,7 @@
     <string name="mapper_press_button">Нажмите кнопку на контроллере или клавиатуре\u2026</string>
     <string name="mapper_add_point">Добавить точку нажатия</string>
     <string name="mapper_delete_point">Удалить точку нажатия</string>
-    <string name="mapper_map_controls">Управление картой</string>
+    <string name="mapper_map_controls">Назначить элементы управления</string>
     <!-- Content Descriptions (Accessibility) -->
     <string name="cd_reject">Отклонить</string>
     <string name="cd_accept">Принять</string>
@@ -151,4 +151,5 @@
     <!-- Pulse bass haptics -->
     <string name="pulse_bass_haptics_disabled_title">Отключить пульсирующую басовую вибрацию</string>
     <string name="pulse_bass_haptics_disabled_summary">Автоматически отключать пульсирующую басовую вибрацию, если включена</string>
+    <string name="floating_window_unavailable">Это приложение нельзя открыть в плавающем окне</string>
 </resources>
