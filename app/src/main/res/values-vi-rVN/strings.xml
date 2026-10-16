@@ -80,7 +80,7 @@
     <string name="fps_stats">tối thiểu %1$d | trung bình %2$d | tối đa %3$d</string>
     <!-- Tile Labels -->
     <string name="tile_danmaku">Kiểu hiện đại</string>
-    <string name="tile_stay_awake">Không khóa màn hình</string>
+    <string name="tile_stay_awake">Giữ màn hình bật khi chơi game</string>
     <string name="tile_wifi">Wifi</string>
     <string name="tile_dnd">Không làm phiền</string>
     <string name="tile_fps_info">Thông tin FPS</string>
@@ -113,7 +113,7 @@
     <string name="tile_dream">Trình bảo vệ màn hình</string>
     <string name="tile_reading_mode">Chế độ đọc sách</string>
     <string name="tile_power_share">Chia sẻ năng lượng</string>
-    <string name="tile_caffeine">Chất gây nghiện</string>
+    <string name="tile_caffeine">Giữ màn hình bật trong 5 phút</string>
     <string name="tile_vpn">Mạng riêng ảo</string>
     <string name="tile_cast">Truyền</string>
     <string name="tile_profiles">Cấu hình</string>
