@@ -80,7 +80,7 @@
     <string name="fps_stats">min. %1$d | śr. %2$d | maks. %3$d</string>
     <!-- Tile Labels -->
     <string name="tile_danmaku">Danmaku</string>
-    <string name="tile_stay_awake">Pozostaw ekran włączony</string>
+    <string name="tile_stay_awake">Ekran włączony podczas gry</string>
     <string name="tile_wifi">Wi-Fi</string>
     <string name="tile_dnd">Tryb \"nie przeszkadzać\"</string>
     <string name="tile_fps_info">Informacje o FPS</string>
@@ -113,7 +113,7 @@
     <string name="tile_dream">Wygaszacz ekranu</string>
     <string name="tile_reading_mode">Tryb czytania</string>
     <string name="tile_power_share">Udostępnianie energii</string>
-    <string name="tile_caffeine">Kofeina</string>
+    <string name="tile_caffeine">Ekran włączony na 5 minut</string>
     <string name="tile_vpn">VPN</string>
     <string name="tile_cast">Prześlij ekran</string>
     <string name="tile_profiles">Profile</string>
