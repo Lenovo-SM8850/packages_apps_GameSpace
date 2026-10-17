@@ -24,14 +24,17 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
+import android.os.Binder
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.util.Log
 import android.view.WindowManager
+import android.widget.Toast
 import com.android.axion.platform.AxPlatformClient
 import dagger.hilt.android.AndroidEntryPoint
 import com.google.gson.Gson
+import io.chaldeaprjkt.gamespace.R
 import io.chaldeaprjkt.gamespace.data.AppSettings
 import io.chaldeaprjkt.gamespace.data.GameSession
 import io.chaldeaprjkt.gamespace.data.SystemSettings
@@ -58,6 +61,8 @@ class SessionService : Hilt_SessionService() {
     @Inject lateinit var gson: Gson
 
     private var currentPackage: String? = null
+    private val sessionBinder = Binder()
+    private var bypassChargeActive = false
     private lateinit var gameManager: GameManager
     private lateinit var sidebar: GameSidebar
     private lateinit var mapperController: MapperController
@@ -112,6 +117,11 @@ class SessionService : Hilt_SessionService() {
             val packageName = intent.getStringExtra(EXTRA_PACKAGE_NAME)
             if (packageName != null) {
                 startGameSession(packageName)
+                val bypassActive = intent.getBooleanExtra("bypass_charge_active", false)
+                if (bypassActive && !bypassChargeActive) {
+                    Toast.makeText(this, R.string.bypass_charging_on, Toast.LENGTH_SHORT).show()
+                }
+                bypassChargeActive = bypassActive
             } else {
                 Log.e(TAG, "No package name provided, stopping")
                 stopSelf()
@@ -159,6 +169,7 @@ class SessionService : Hilt_SessionService() {
         restoreAutoDnd()
 
         currentPackage = null
+        bypassChargeActive = false
     }
 
     private fun applyAutoDnd() {
@@ -201,7 +212,7 @@ class SessionService : Hilt_SessionService() {
         super.onDestroy()
     }
 
-    override fun onBind(intent: Intent?): IBinder? = null
+    override fun onBind(intent: Intent?): IBinder = sessionBinder
 
     companion object {
         const val TAG = "SessionService"

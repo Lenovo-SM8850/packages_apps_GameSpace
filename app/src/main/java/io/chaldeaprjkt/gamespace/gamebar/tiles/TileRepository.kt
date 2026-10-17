@@ -30,6 +30,7 @@ import android.hardware.display.ColorDisplayManager
 import android.net.TetheringManager
 import android.os.BatteryManager
 import android.os.Bundle
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
@@ -168,6 +169,7 @@ class TileRepository @Inject constructor(
     private val _availableTiles = mutableStateListOf<TileAction>()
     private val notificationState = mutableStateOf(appSettings.danmakuNotification)
     private val touchBoostState = mutableStateOf(false)
+    private val bypassChargeState = mutableStateOf(systemSettings.bypassChargeEnabled)
     private val preferences by lazy { PreferenceManager.getDefaultSharedPreferences(context) }
     private val preferenceListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
         when (key) {
@@ -252,6 +254,10 @@ class TileRepository @Inject constructor(
         context.contentResolver.registerContentObserver(
             Settings.Global.getUriFor(Settings.Global.ZEN_MODE), false, settingsObserver
         )
+        context.contentResolver.registerContentObserver(
+            Settings.System.getUriFor("bypass_charge_enabled"), false,
+            settingsObserver, UserHandle.USER_ALL
+        )
         refreshPlatformStates()
     }
 
@@ -262,6 +268,7 @@ class TileRepository @Inject constructor(
             updatePlatformTile(tile, platform.getState(tile.id))
         }
         notificationState.value = appSettings.danmakuNotification
+        bypassChargeState.value = systemSettings.bypassChargeEnabled
         isFpsInfoVisible.value = appSettings.showFps
         touchBoostState.value = SystemProperties.getInt("persist.sys.touchboost_enable", 0) == 1
         rebuildAvailableTiles()
@@ -368,6 +375,9 @@ class TileRepository @Inject constructor(
                 PackageManager.PERMISSION_GRANTED
             "stay_awake" -> context.checkSelfPermission(Manifest.permission.WAKE_LOCK) ==
                 PackageManager.PERMISSION_GRANTED
+            "bypass_charge_enabled" -> Build.MANUFACTURER.equals("Google", ignoreCase = true) ||
+                SystemProperties.getBoolean("persist.sys.ax_chg_bypass", false) ||
+                SystemProperties.getBoolean("persist.sys.battery_bypass_supported", false)
             "touch_boost" -> SystemProperties.getBoolean("persist.sys.ax_touch_boost", false)
             "boost_memory" ->
                 context.checkSelfPermission(Manifest.permission.KILL_BACKGROUND_PROCESSES) ==
@@ -409,7 +419,12 @@ class TileRepository @Inject constructor(
     private fun loadTileOrder(): List<String> {
         val savedOrder = appSettings.preferredTileOrder ?: appSettings.tileOrder.takeIf { it.isNotEmpty() }
             ?: defaultTiles.map { it.id }
-        return savedOrder.filter { id -> defaultTiles.any { it.id == id } }.distinct()
+        // Add the new control to existing panels once, preserving later deselection.
+        val order = if (!preferences.getBoolean("bypass_tile_added", false)) {
+            preferences.edit().putBoolean("bypass_tile_added", true).apply()
+            savedOrder + "bypass_charge_enabled"
+        } else savedOrder
+        return order.filter { id -> defaultTiles.any { it.id == id } }.distinct()
     }
 
     private fun clearBackgroundProcesses() {
@@ -740,6 +755,16 @@ class TileRepository @Inject constructor(
                 icon = R.drawable.materialsymbols_ic_notifications_rounded_filled,
                 state = notificationState,
                 setter = { gameSession.setDanmakuNotification(it) }
+            )
+        )
+
+        add(
+            ToggleableTile(
+                id = "bypass_charge_enabled",
+                label = context.getString(R.string.bypass_charge_enabled_title),
+                icon = R.drawable.materialsymbols_ic_battery_charging_full_rounded_filled,
+                state = bypassChargeState,
+                setter = { systemSettings.bypassChargeEnabled = it }
             )
         )
 
