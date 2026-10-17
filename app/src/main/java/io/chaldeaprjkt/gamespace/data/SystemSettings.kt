@@ -33,6 +33,7 @@ class SystemSettings @Inject constructor(
 ) {
 
     private val resolver = context.contentResolver
+    private val userId = context.userId
 
     private val wakelock = (context.getSystemService(Context.POWER_SERVICE) as PowerManager)
             .newWakeLock(PowerManager.FULL_WAKE_LOCK, "GameSpace")
@@ -83,12 +84,12 @@ class SystemSettings @Inject constructor(
         get() =
             Settings.System.getIntForUser(
                 resolver, "bypass_charge_enabled", 0,
-                UserHandle.USER_CURRENT
+                userId
             ) == 1
         set(value) {
             Settings.System.putIntForUser(
                 resolver, "bypass_charge_enabled",
-                if (value) 1 else 0, UserHandle.USER_CURRENT
+                if (value) 1 else 0, userId
             )
         }
 

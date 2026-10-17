@@ -66,6 +66,7 @@
 
     <!-- Bypass charging -->
     <string name="bypass_charge_enabled_title">Bypass charging</string>
+    <string name="bypass_charging_on">Bypass charging on</string>
     <string name="bypass_charge_enabled_summary">Enable bypass charging while playing games</string>
 
     <!-- Call overlay -->
