@@ -64,6 +64,7 @@ class GameSession @Inject constructor(
             ringerMode = audioManager.ringerModeInternal,
             pulseBassHaptics = systemSettings.pulseBassHaptics,
         )
+        systemSettings.bypassChargeEnabled = appSettings.isBypassChargeEnabled(sessionName)
         if (appSettings.noAutoBrightness) {
             systemSettings.autoBrightness = false
             systemSettings.statusbarBrightness = false
@@ -83,6 +84,16 @@ class GameSession @Inject constructor(
         if (appSettings.noPulseBassHaptics) {
             systemSettings.pulseBassHaptics = 0
         }
+    }
+
+    fun rememberBypassChargeEnabled() {
+        val packageName = state?.packageName ?: return
+        appSettings.setBypassChargeEnabled(packageName, systemSettings.bypassChargeEnabled)
+    }
+
+    fun setBypassChargeEnabled(enabled: Boolean) {
+        state?.packageName?.let { appSettings.setBypassChargeEnabled(it, enabled) }
+        systemSettings.bypassChargeEnabled = enabled
     }
 
     fun setDanmakuNotification(enabled: Boolean) {
@@ -115,6 +126,7 @@ class GameSession @Inject constructor(
         }
         systemSettings.stayAwake = false
         state = null
+        systemSettings.bypassChargeEnabled = false
     }
 
     fun finalize() {

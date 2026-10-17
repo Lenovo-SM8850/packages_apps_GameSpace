@@ -129,7 +129,7 @@ class SettingsViewModel @Inject constructor(
 
     fun updateBypassChargeEnabled(enabled: Boolean) {
         bypassChargeEnabled = enabled
-        systemSettings.bypassChargeEnabled = enabled
+        gameSession.setBypassChargeEnabled(enabled)
     }
 
     fun updateIconIdleAlpha(alpha: Float) {

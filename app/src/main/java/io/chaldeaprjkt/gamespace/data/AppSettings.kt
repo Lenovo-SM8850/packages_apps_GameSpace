@@ -31,6 +31,15 @@ class AppSettings @Inject constructor(private val context: Context) {
     private val db by lazy { PreferenceManager.getDefaultSharedPreferences(context) }
     private val wm by lazy { context.getSystemService(Service.WINDOW_SERVICE) as WindowManager }
 
+    fun isBypassChargeEnabled(packageName: String): Boolean =
+        packageName in db.getStringSet(KEY_BYPASS_CHARGE_GAMES, emptySet()).orEmpty()
+
+    fun setBypassChargeEnabled(packageName: String, enabled: Boolean) {
+        val games = db.getStringSet(KEY_BYPASS_CHARGE_GAMES, emptySet()).orEmpty().toMutableSet()
+        if (enabled) games.add(packageName) else games.remove(packageName)
+        db.edit().putStringSet(KEY_BYPASS_CHARGE_GAMES, games).apply()
+    }
+
     var x
         get() = db.getInt("offset_x", wm.maximumWindowMetrics.bounds.width() / 2)
         set(point) = db.edit().putInt("offset_x", point).apply()
@@ -119,6 +128,7 @@ class AppSettings @Inject constructor(private val context: Context) {
         set(it) = db.edit().putBoolean(KEY_PULSE_BASS_DISABLE, it).apply()
 
     companion object {
+        const val KEY_BYPASS_CHARGE_GAMES = "bypass_charge_games"
         const val KEY_AUTO_BRIGHTNESS_DISABLE = "gamespace_auto_brightness_disabled"
         const val KEY_3SCREENSHOT_DISABLE = "gamespace_tfgesture_disabled"
         const val KEY_STAY_AWAKE = "gamespace_stay_awake"
