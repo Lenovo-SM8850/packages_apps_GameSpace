@@ -257,6 +257,11 @@ class GameSidebar(
         runCatching { wm.removeViewImmediate(gameBarView) }
     }
 
+    fun collapseForScreenOff() {
+        forceRemovePanel()
+        collapseVerticalPill()
+    }
+
     fun setGestureLock(value: Boolean) {
         isLockedState.value = value
         Settings.Secure.putIntForUser(
