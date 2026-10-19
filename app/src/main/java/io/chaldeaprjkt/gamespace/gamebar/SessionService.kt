@@ -65,6 +65,7 @@ class SessionService : Hilt_SessionService() {
     private var bypassChargeActive = false
     private lateinit var gameManager: GameManager
     private lateinit var sidebar: GameSidebar
+    private lateinit var screenOffSession: ScreenOffSessionController
     private lateinit var mapperController: MapperController
     private lateinit var platform: AxPlatformClient
 
@@ -110,6 +111,12 @@ class SessionService : Hilt_SessionService() {
             mapperController = mapperController,
         )
         sidebar.onCreate()
+        screenOffSession = ScreenOffSessionController(this)
+        tileRepository.onScreenOff = {
+            sidebar.collapseForScreenOff()
+            screenOffSession.request()
+        }
+        callListener.onIncomingCall = { screenOffSession.end() }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -156,6 +163,7 @@ class SessionService : Hilt_SessionService() {
         applyAutoDnd()
 
         sidebar.onGameStart(packageName)
+        screenOffSession.onGameStart(packageName)
 
         callListener.init()
     }
@@ -163,6 +171,7 @@ class SessionService : Hilt_SessionService() {
     private fun stopGameSession() {
         Log.i(TAG, "Stopping game session")
 
+        screenOffSession.onGameStop()
         sidebar.onGameLeave()
         session.unregister()
         callListener.destroy()
@@ -206,6 +215,8 @@ class SessionService : Hilt_SessionService() {
     override fun onDestroy() {
         Log.d(TAG, "SessionService destroyed")
         stopGameSession()
+        tileRepository.onScreenOff = null
+        callListener.onIncomingCall = null
         tileRepository.dispose()
         gameModeUtils.unbind()
         danmakuService.destroy()
