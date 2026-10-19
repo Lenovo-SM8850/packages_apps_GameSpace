@@ -416,9 +416,24 @@ class TileRepository @Inject constructor(
         }
     }
 
+    // Rarely used in a game session: left out of a new panel, still available in the editor
+    private val TILES_OFF_BY_DEFAULT = setOf(
+        AxPlatformClient.FEATURE_AUTO_SYNC,
+        AxPlatformClient.FEATURE_COLOR_INVERSION,
+        AxPlatformClient.FEATURE_COLOR_CORRECTION,
+        AxPlatformClient.FEATURE_CAMERA_PRIVACY,
+        AxPlatformClient.FEATURE_MIC_PRIVACY,
+        AxPlatformClient.FEATURE_READING_MODE,
+        AxPlatformClient.FEATURE_CAFFEINE,
+        "stay_awake",
+        AxPlatformClient.FEATURE_DREAM,
+        AxPlatformClient.FEATURE_CAST,
+        AxPlatformClient.FEATURE_PROFILES,
+    )
+
     private fun loadTileOrder(): List<String> {
         val savedOrder = appSettings.preferredTileOrder ?: appSettings.tileOrder.takeIf { it.isNotEmpty() }
-            ?: defaultTiles.map { it.id }
+            ?: defaultTiles.map { it.id }.filterNot { it in TILES_OFF_BY_DEFAULT }
         // Add the new control to existing panels once, preserving later deselection.
         val order = if (!preferences.getBoolean("bypass_tile_added", false)) {
             preferences.edit().putBoolean("bypass_tile_added", true).apply()
