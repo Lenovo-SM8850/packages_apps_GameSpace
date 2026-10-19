@@ -872,7 +872,7 @@ fun TileButton(tile: TileAction, modifier: Modifier = Modifier) {
         ) {
             Icon(
                 painter = painterResource(tile.icon),
-                contentDescription = tile.label,
+                contentDescription = tile.description,
                 tint = fgColor,
                 modifier = Modifier.size(22.dp),
             )

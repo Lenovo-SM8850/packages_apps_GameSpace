@@ -63,6 +63,7 @@ import lineageos.hardware.LineageHardwareManager
 interface TileAction {
     val id: String
     val label: String
+    val description: String get() = label
     val icon: Int
     val isEnabled: Boolean
     @Composable fun observeEnabled(): State<Boolean>
@@ -89,6 +90,7 @@ class FixedActionTile(
     override val label: String,
     override val icon: Int,
     private val action: () -> Unit,
+    override val description: String = label,
 ) : TileAction {
     override val isEnabled: Boolean = false
     @Composable override fun observeEnabled(): State<Boolean> = rememberUpdatedState(false)
@@ -159,6 +161,7 @@ class TileRepository @Inject constructor(
     private val platformTiles = mutableListOf<PlatformTile>()
     var onBeforePlatformAction: ((String) -> Unit)? = null
     var onScreenshotComplete: (() -> Unit)? = null
+    var onScreenOff: (() -> Unit)? = null
 
     private val platformListener = object : AxPlatformClient.Listener() {
         override fun onStateChanged(key: String, state: Bundle) {
@@ -827,6 +830,16 @@ class TileRepository @Inject constructor(
                 icon = R.drawable.materialsymbols_ic_bar_chart_rounded_filled,
                 state = isFpsInfoVisible,
                 setter = { setFpsInfoEnabled(it) }
+            )
+        )
+
+        add(
+            FixedActionTile(
+                id = "screen_off",
+                label = context.getString(R.string.tile_screen_off),
+                icon = R.drawable.materialsymbols_ic_screen_off_rounded_filled,
+                description = context.getString(R.string.tile_screen_off_description),
+                action = { onScreenOff?.invoke() },
             )
         )
 

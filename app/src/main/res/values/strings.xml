@@ -178,4 +178,7 @@
     <string name="pulse_bass_haptics_disabled_title">Disable pulse bass haptics</string>
     <string name="pulse_bass_haptics_disabled_summary">Automatically disable pulse bass haptics if enabled</string>
     <string name="floating_window_unavailable">This app cannot open in a floating window</string>
+    <string name="tile_screen_off">Screen off</string>
+    <string name="tile_screen_off_description">Keep the game running with the screen off</string>
+    <string name="screen_off_notice">Press the power button to turn the screen back on</string>
 </resources>

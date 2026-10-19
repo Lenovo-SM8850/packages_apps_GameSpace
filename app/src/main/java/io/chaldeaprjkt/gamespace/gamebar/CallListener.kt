@@ -80,6 +80,8 @@ class CallListener @Inject constructor(
     private val callsMode get() = appSettings.callsMode
     private val callOverlayEnabled get() = appSettings.callOverlayEnabled
 
+    var onIncomingCall: (() -> Unit)? = null
+
     private var previousAudioMode = audioManager.mode
 
     private var ringerOverlay: ComposeView? = null
@@ -116,6 +118,7 @@ class CallListener @Inject constructor(
     }
 
     private fun handleIncomingCall(incomingNumber: String) {
+        onIncomingCall?.invoke()
         val displayName = lookupContactName(incomingNumber).ifEmpty { incomingNumber }
 
         when (callsMode) {
