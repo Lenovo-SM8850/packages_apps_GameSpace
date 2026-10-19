@@ -129,6 +129,21 @@ class PlatformTile(
     }
 }
 
+private fun resolveTileOrder(
+    savedOrder: List<String>?,
+    defaultSnapshot: List<String>?,
+    currentDefault: List<String>,
+): Pair<List<String>, List<String>> {
+    if (savedOrder == null) return currentDefault to currentDefault
+    // An explicitly empty selection always means the user removed every tile.
+    if (savedOrder.isEmpty()) return savedOrder to (defaultSnapshot ?: currentDefault)
+    // Move legacy nonempty panels to the current default once.
+    if (defaultSnapshot == null || savedOrder == defaultSnapshot) {
+        return currentDefault to currentDefault
+    }
+    return savedOrder to defaultSnapshot
+}
+
 @Singleton
 class TileRepository @Inject constructor(
     private val context: Context,
@@ -406,10 +421,35 @@ class TileRepository @Inject constructor(
         }
     }
 
+    // Rarely used in a game session: left out of a new panel, still available in the editor
+    private val TILES_OFF_BY_DEFAULT = setOf(
+        AxPlatformClient.FEATURE_AUTO_SYNC,
+        AxPlatformClient.FEATURE_COLOR_INVERSION,
+        AxPlatformClient.FEATURE_COLOR_CORRECTION,
+        AxPlatformClient.FEATURE_CAMERA_PRIVACY,
+        AxPlatformClient.FEATURE_MIC_PRIVACY,
+        AxPlatformClient.FEATURE_READING_MODE,
+        AxPlatformClient.FEATURE_CAFFEINE,
+        "stay_awake",
+        AxPlatformClient.FEATURE_DREAM,
+        AxPlatformClient.FEATURE_CAST,
+        AxPlatformClient.FEATURE_PROFILES,
+    )
+
     private fun loadTileOrder(): List<String> {
+        val catalogIds = defaultTiles.map { it.id }
+        val currentDefault = catalogIds.filterNot { it in TILES_OFF_BY_DEFAULT }
         val savedOrder = appSettings.preferredTileOrder ?: appSettings.tileOrder.takeIf { it.isNotEmpty() }
-            ?: defaultTiles.map { it.id }
-        return savedOrder.filter { id -> defaultTiles.any { it.id == id } }.distinct()
+        val (selection, snapshot) = resolveTileOrder(
+            savedOrder, appSettings.defaultTileSnapshot, currentDefault
+        )
+        val order = selection
+        val filteredOrder = order.filter { it in catalogIds }.distinct()
+        if (appSettings.preferredTileOrder != filteredOrder) {
+            appSettings.preferredTileOrder = filteredOrder
+        }
+        if (appSettings.defaultTileSnapshot != snapshot) appSettings.defaultTileSnapshot = snapshot
+        return filteredOrder
     }
 
     private fun clearBackgroundProcesses() {
