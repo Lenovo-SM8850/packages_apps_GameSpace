@@ -28,17 +28,11 @@
     <!-- Lock gesture -->
     <string name="lock_gesture_title">Gest blokady</string>
     <string name="lock_gesture_summary">Wyłączaj gesty ekranu w grze</string>
-    <!-- Suppress full screen intent -->
-    <string name="suppress_fullscreen_intent_title">Zablokuj wydarzenie na pełnym ekranie</string>
-    <string name="suppress_fullscreen_intent_summary">Zapobiegaj pojawianiu się wydarzeń na pełnym ekranie, takich jak połączenia przychodzące podczas grania</string>
     <!-- Per app settings -->
     <string name="per_app_title">Skonfiguruj grę</string>
     <string name="per_app_mode_title">Preferowany tryb</string>
     <string name="per_app_angle_title">Sterownik grafiki</string>
     <string name="per_app_unregister">Usuń %1$s z biblioteki</string>
-    <!-- Disable ADB debugging -->
-    <string name="adb_disabled_title">Wyłącz debugowanie USB</string>
-    <string name="adb_disabled_summary">Tymczasowe wyłączenie debugowania USB ADB podczas gry</string>
     <!-- Ringer Mode -->
     <string name="in_game_calls_title">Tryb połączeń</string>
     <string name="in_game_calls_no_action">Brak akcji</string>
@@ -49,8 +43,6 @@
     <!-- Danmaku Notification Mode -->
     <string name="danmaku_notification_mode_title">Tryb powiadomień Danmaku</string>
     <string name="danmaku_notification_mode_summary">Wyświetlaj powiadomienie jako Danmaku w postaci wypunktowanych komentarzy, gdy gra jest aktywna</string>
-    <!-- Gamespace opacity -->
-    <string name="gamespace_menu_opacity_title">Poziom przezroczystości nakładki menu</string>
     <!-- Bypass charging -->
     <string name="bypass_charge_enabled_title">Pomijaj ładowanie</string>
     <string name="bypass_charge_enabled_summary">Włącz pomijanie ładowania podczas grania w gry</string>
@@ -80,7 +72,7 @@
     <string name="fps_stats">min. %1$d | śr. %2$d | maks. %3$d</string>
     <!-- Tile Labels -->
     <string name="tile_danmaku">Danmaku</string>
-    <string name="tile_stay_awake">Pozostaw ekran włączony</string>
+    <string name="tile_stay_awake">Ekran włączony podczas gry</string>
     <string name="tile_wifi">Wi-Fi</string>
     <string name="tile_dnd">Tryb \"nie przeszkadzać\"</string>
     <string name="tile_fps_info">Informacje o FPS</string>
@@ -113,7 +105,7 @@
     <string name="tile_dream">Wygaszacz ekranu</string>
     <string name="tile_reading_mode">Tryb czytania</string>
     <string name="tile_power_share">Udostępnianie energii</string>
-    <string name="tile_caffeine">Kofeina</string>
+    <string name="tile_caffeine">Ekran włączony na 5 minut</string>
     <string name="tile_vpn">VPN</string>
     <string name="tile_cast">Prześlij ekran</string>
     <string name="tile_profiles">Profile</string>
@@ -129,7 +121,6 @@
     <string name="mapper_press_button">Naciśnij przycisk na kontrolerze lub klawiaturze\u2026</string>
     <string name="mapper_add_point">Dodaj punkt dotknięcia</string>
     <string name="mapper_delete_point">Usuń punkt dotknięcia</string>
-    <string name="mapper_map_controls">Sterowanie mapą</string>
     <!-- Content Descriptions (Accessibility) -->
     <string name="cd_reject">Odrzuć</string>
     <string name="cd_accept">Zatwierdź</string>
@@ -142,8 +133,6 @@
     <string name="game_optimization_title">Uruchom optymalizację</string>
     <string name="game_memory_management_title">Inteligentne zarządzanie pamięcią</string>
     <string name="game_memory_management_summary">Automatycznie zamykaj aplikacje działające w tle podczas uruchamiania gier</string>
-    <string name="game_cache_management_title">Zarządzanie pamięcią podręczną</string>
-    <string name="game_cache_management_summary">Optymalizuj pamięć podręczną gry dla szybszego ładowania</string>
     <string name="game_memory_boosted">Polepszono pamięć</string>
     <!-- Game auto-detect -->
     <string name="auto_game_detect_title">Automatyczne wykrywanie gier</string>

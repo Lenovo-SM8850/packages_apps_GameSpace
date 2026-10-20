@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    SPDX-FileCopyrightText: 2026 miner7222
+    SPDX-License-Identifier: Apache-2.0
+-->
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
+    <string name="library_open">打开游戏库</string>
+    <string name="library_continue">继续游戏</string>
+    <string name="library_recent">最近玩过</string>
+    <string name="library_sort_name">名称</string>
+    <string name="library_sort">排序</string>
+    <string name="library_play">开始游戏</string>
+    <string name="library_launch">启动</string>
+    <string name="library_open_game_settings">打开游戏设置</string>
+    <string name="library_game_settings">游戏设置</string>
+    <string name="library_hold_hint">长按游戏即可更改其设置</string>
+    <string name="library_last_played">上次游玩：%1$s</string>
+    <string name="library_played">%1$s玩过</string>
+    <string name="library_never_played">尚未游玩</string>
+    <string name="library_empty_title">暂无游戏</string>
+    <string name="library_empty_auto">已安装的游戏会自动显示在这里。</string>
+    <string name="library_empty_manual">添加游戏以开始创建游戏库。</string>
+    <string name="library_auto_on">自动检测游戏已开启</string>
+    <string name="library_auto_off">自动检测游戏已关闭</string>
+    <string name="library_auto_enable">开启</string>
+    <string name="library_mode_performance_summary">优先保证帧率，设备可能发热更多、耗电更快。</string>
+    <string name="library_also_show_home">同时显示在主屏幕</string>
+    <string name="library_app_info">应用信息</string>
+    <string name="library_remove">从游戏库中移除</string>
+    <string name="library_removed">已从游戏库中移除 %1$s</string>
+    <string name="library_undo">撤消</string>
+    <string name="library_hide_title">在主屏幕和应用列表中隐藏游戏</string>
+    <string name="library_hide_confirmation_title">要隐藏游戏吗？</string>
+    <string name="library_hide_confirmation_body">游戏库中的游戏将从主屏幕和应用列表中隐藏。</string>
+    <string name="library_hide_action">隐藏</string>
+    <string name="library_options_defaults">与默认设置相同</string>
+    <string name="library_option_changed">已为此游戏更改</string>
+    <string name="library_reset_defaults">恢复默认设置</string>
+    <string name="library_back">返回</string>
+    <string name="library_hide_sidebar_title">隐藏侧边栏</string>
+    <string name="library_high_touch_title">高触控采样率</string>
+    <string name="library_gesture_lock_summary">系统手势需要再滑动一次</string>
+    <string name="library_high_touch_summary">更频繁地读取触控输入，响应更快</string>
+    <string name="library_bypass_summary">使用充电器供电运行，不为电池充电</string>
+    <string name="game_mode_none">无</string>
+    <string name="game_mode_none_summary">性能交由系统管理。</string>
+    <string name="library_tuning_off">“无”模式下已关闭</string>
+    <string name="library_default_mode">默认首选模式</string>
+    <plurals name="library_game_count">
+        <item quantity="other">%d 个游戏</item>
+    </plurals>
+    <plurals name="library_options_count">
+        <item quantity="other">已更改 %d 项</item>
+    </plurals>
+</resources>

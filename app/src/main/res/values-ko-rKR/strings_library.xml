@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    SPDX-FileCopyrightText: 2026 miner7222
+    SPDX-License-Identifier: Apache-2.0
+-->
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
+    <string name="library_open">라이브러리 열기</string>
+    <string name="library_continue">계속 플레이</string>
+    <string name="library_recent">최근 플레이한 게임</string>
+    <string name="library_sort_name">이름</string>
+    <string name="library_sort">정렬</string>
+    <string name="library_play">플레이</string>
+    <string name="library_launch">실행</string>
+    <string name="library_open_game_settings">게임 설정 열기</string>
+    <string name="library_game_settings">게임 설정</string>
+    <string name="library_hold_hint">게임을 길게 터치하면 설정을 변경할 수 있습니다.</string>
+    <string name="library_last_played">마지막 플레이: %1$s</string>
+    <string name="library_played">%1$s 플레이</string>
+    <string name="library_never_played">아직 플레이하지 않음</string>
+    <string name="library_empty_title">게임 없음</string>
+    <string name="library_empty_auto">설치된 게임이 여기에 자동으로 표시됩니다.</string>
+    <string name="library_empty_manual">게임을 추가하여 라이브러리를 시작하세요.</string>
+    <string name="library_auto_on">자동 게임 감지 켜짐</string>
+    <string name="library_auto_off">자동 게임 감지 꺼짐</string>
+    <string name="library_auto_enable">켜기</string>
+    <string name="library_mode_performance_summary">프레임 속도를 우선합니다. 발열이 늘고 배터리를 더 많이 사용할 수 있습니다.</string>
+    <string name="library_also_show_home">홈 화면에도 표시</string>
+    <string name="library_app_info">앱 정보</string>
+    <string name="library_remove">라이브러리에서 삭제</string>
+    <string name="library_removed">라이브러리에서 %1$s 삭제됨</string>
+    <string name="library_undo">실행 취소</string>
+    <string name="library_hide_title">홈 화면 및 앱 목록에서 게임 숨기기</string>
+    <string name="library_hide_confirmation_title">게임을 숨기시겠습니까?</string>
+    <string name="library_hide_confirmation_body">라이브러리의 게임이 홈 화면과 앱 목록에서 숨겨집니다.</string>
+    <string name="library_hide_action">숨기기</string>
+    <string name="library_options_defaults">기본값과 동일</string>
+    <string name="library_option_changed">이 게임에서 변경됨</string>
+    <string name="library_reset_defaults">기본값으로 재설정</string>
+    <string name="library_back">뒤로</string>
+    <string name="library_hide_sidebar_title">사이드바 숨기기</string>
+    <string name="library_high_touch_title">높은 터치 샘플링 속도</string>
+    <string name="library_gesture_lock_summary">시스템 동작은 한 번 더 스와이프해야 합니다.</string>
+    <string name="library_high_touch_summary">터치 입력을 더 자주 읽어 반응이 빨라집니다.</string>
+    <string name="library_bypass_summary">배터리를 충전하지 않고 충전기 전원으로 작동합니다.</string>
+    <string name="game_mode_none">없음</string>
+    <string name="game_mode_none_summary">성능을 시스템에 맡깁니다.</string>
+    <string name="library_tuning_off">없음 모드에서는 꺼짐</string>
+    <string name="library_default_mode">기본 선호 모드</string>
+    <plurals name="library_game_count">
+        <item quantity="other">게임 %d개</item>
+    </plurals>
+    <plurals name="library_options_count">
+        <item quantity="other">%d개 변경됨</item>
+    </plurals>
+</resources>

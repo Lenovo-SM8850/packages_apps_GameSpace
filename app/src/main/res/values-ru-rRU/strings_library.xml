@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    SPDX-FileCopyrightText: 2026 miner7222
+    SPDX-License-Identifier: Apache-2.0
+-->
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
+    <string name="library_open">Открыть библиотеку</string>
+    <string name="library_continue">Продолжить игру</string>
+    <string name="library_recent">Недавние игры</string>
+    <string name="library_sort_name">Название</string>
+    <string name="library_sort">Сортировка</string>
+    <string name="library_play">Играть</string>
+    <string name="library_launch">Запустить</string>
+    <string name="library_open_game_settings">Открыть настройки игры</string>
+    <string name="library_game_settings">Настройки игры</string>
+    <string name="library_hold_hint">Нажмите и удерживайте игру, чтобы изменить её настройки</string>
+    <string name="library_last_played">Последняя игра: %1$s</string>
+    <string name="library_played">Играли %1$s</string>
+    <string name="library_never_played">Ещё не играли</string>
+    <string name="library_empty_title">Игр пока нет</string>
+    <string name="library_empty_auto">Установленные игры появятся здесь автоматически.</string>
+    <string name="library_empty_manual">Добавьте игру, чтобы начать наполнять библиотеку.</string>
+    <string name="library_auto_on">Автоопределение игр включено</string>
+    <string name="library_auto_off">Автоопределение игр отключено</string>
+    <string name="library_auto_enable">Включить</string>
+    <string name="library_mode_performance_summary">Приоритет отдаётся частоте кадров. Устройство может сильнее нагреваться и быстрее разряжаться.</string>
+    <string name="library_also_show_home">Показывать и на главном экране</string>
+    <string name="library_app_info">О приложении</string>
+    <string name="library_remove">Удалить из библиотеки</string>
+    <string name="library_removed">Удалено из библиотеки: %1$s</string>
+    <string name="library_undo">Отменить</string>
+    <string name="library_hide_title">Скрывать игры на главном экране и в списке приложений</string>
+    <string name="library_hide_confirmation_title">Скрыть игры?</string>
+    <string name="library_hide_confirmation_body">Игры из библиотеки будут скрыты на главном экране и в списке приложений.</string>
+    <string name="library_hide_action">Скрыть</string>
+    <string name="library_options_defaults">Как по умолчанию</string>
+    <string name="library_option_changed">Изменено для этой игры</string>
+    <string name="library_reset_defaults">Сбросить по умолчанию</string>
+    <string name="library_back">Назад</string>
+    <string name="library_hide_sidebar_title">Скрыть боковую панель</string>
+    <string name="library_high_touch_title">Высокая частота опроса сенсора</string>
+    <string name="library_gesture_lock_summary">Для системных жестов нужно провести второй раз.</string>
+    <string name="library_high_touch_summary">Сенсор опрашивается чаще для более быстрого отклика.</string>
+    <string name="library_bypass_summary">Работа от зарядного устройства без зарядки аккумулятора.</string>
+    <string name="game_mode_none">Нет</string>
+    <string name="game_mode_none_summary">Производительностью управляет система.</string>
+    <string name="library_tuning_off">Отключено в режиме «Нет»</string>
+    <string name="library_default_mode">Предпочтительный режим по умолчанию</string>
+    <plurals name="library_game_count">
+        <item quantity="one">%d игра</item>
+        <item quantity="few">%d игры</item>
+        <item quantity="many">%d игр</item>
+        <item quantity="other">%d игры</item>
+    </plurals>
+    <plurals name="library_options_count">
+        <item quantity="one">Изменено: %d</item>
+        <item quantity="few">Изменено: %d</item>
+        <item quantity="many">Изменено: %d</item>
+        <item quantity="other">Изменено: %d</item>
+    </plurals>
+</resources>

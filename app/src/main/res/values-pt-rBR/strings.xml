@@ -28,17 +28,11 @@
     <!-- Lock gesture -->
     <string name="lock_gesture_title">Bloquear gestos</string>
     <string name="lock_gesture_summary">Disable screen gestures while in-game</string>
-    <!-- Suppress full screen intent -->
-    <string name="suppress_fullscreen_intent_title">Bloquear eventos em tela cheia</string>
-    <string name="suppress_fullscreen_intent_summary">Impedir que eventos em tela cheia apareçam durante o jogo</string>
     <!-- Per app settings -->
     <string name="per_app_title">Configurar jogo</string>
     <string name="per_app_mode_title">Modo preferencial</string>
     <string name="per_app_angle_title">Usar ANGLE (experimental)</string>
     <string name="per_app_unregister">Remover %1$s da biblioteca</string>
-    <!-- Disable ADB debugging -->
-    <string name="adb_disabled_title">Desativar depuração USB</string>
-    <string name="adb_disabled_summary">Desativar temporariamente a depuração USB durante o jogo</string>
     <!-- Ringer Mode -->
     <string name="in_game_calls_title">Modo de chamada</string>
     <string name="in_game_calls_no_action">Nenhuma ação</string>
@@ -49,8 +43,6 @@
     <!-- Danmaku Notification Mode -->
     <string name="danmaku_notification_mode_title">Modo de notificação Danmaku</string>
     <string name="danmaku_notification_mode_summary">Mostrar notificações como balões de comentários durante o jogo</string>
-    <!-- Gamespace opacity -->
-    <string name="gamespace_menu_opacity_title">Nível de opacidade do menu de opções</string>
     <!-- Bypass charging -->
     <string name="bypass_charge_enabled_title">Bypass charging</string>
     <string name="bypass_charge_enabled_summary">Enable bypass charging while playing games</string>
@@ -80,7 +72,7 @@
     <string name="fps_stats">min %1$d | avg %2$d | max %3$d</string>
     <!-- Tile Labels -->
     <string name="tile_danmaku">Danmaku</string>
-    <string name="tile_stay_awake">Permanecer ativo</string>
+    <string name="tile_stay_awake">Manter tela ativa durante o jogo</string>
     <string name="tile_wifi">Wi-Fi</string>
     <string name="tile_dnd">DND</string>
     <string name="tile_fps_info">FPS Info</string>
@@ -89,7 +81,7 @@
     <string name="tile_settings">Settings</string>
     <string name="tile_airplane_mode">Airplane Mode</string>
     <string name="tile_bluetooth">Bluetooth</string>
-    <string name="tile_mobile_data">Mobile Data</string>
+    <string name="tile_mobile_data">Dados móveis</string>
     <string name="tile_touch_boost">Touch Boost</string>
     <string name="tile_flashlight">Flashlight</string>
     <string name="tile_dark_mode">Dark Mode</string>
@@ -113,7 +105,7 @@
     <string name="tile_dream">Screen Saver</string>
     <string name="tile_reading_mode">Reading Mode</string>
     <string name="tile_power_share">Power Share</string>
-    <string name="tile_caffeine">Caffeine</string>
+    <string name="tile_caffeine">Manter tela ativa por 5 minutos</string>
     <string name="tile_vpn">VPN</string>
     <string name="tile_cast">Cast</string>
     <string name="tile_profiles">Profiles</string>
@@ -129,7 +121,6 @@
     <string name="mapper_press_button">Press a button on your controller or keyboard\u2026</string>
     <string name="mapper_add_point">Add tap point</string>
     <string name="mapper_delete_point">Delete tap point</string>
-    <string name="mapper_map_controls">Map controls</string>
     <!-- Content Descriptions (Accessibility) -->
     <string name="cd_reject">Reject</string>
     <string name="cd_accept">Accept</string>
@@ -142,8 +133,6 @@
     <string name="game_optimization_title">Launch Optimization</string>
     <string name="game_memory_management_title">Smart Memory Management</string>
     <string name="game_memory_management_summary">Automatically clear background apps when launching games</string>
-    <string name="game_cache_management_title">Cache Management</string>
-    <string name="game_cache_management_summary">Optimize game cache for faster loading times</string>
     <string name="game_memory_boosted">Memory boosted</string>
     <!-- Game auto-detect -->
     <string name="auto_game_detect_title">Auto game detection</string>
