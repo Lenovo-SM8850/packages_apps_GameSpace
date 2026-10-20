@@ -132,6 +132,21 @@ class PlatformTile(
     }
 }
 
+private fun resolveTileOrder(
+    savedOrder: List<String>?,
+    defaultSnapshot: List<String>?,
+    currentDefault: List<String>,
+): Pair<List<String>, List<String>> {
+    if (savedOrder == null) return currentDefault to currentDefault
+    // An explicitly empty selection always means the user removed every tile.
+    if (savedOrder.isEmpty()) return savedOrder to (defaultSnapshot ?: currentDefault)
+    // Move legacy nonempty panels to the current default once.
+    if (defaultSnapshot == null || savedOrder == defaultSnapshot) {
+        return currentDefault to currentDefault
+    }
+    return savedOrder to defaultSnapshot
+}
+
 @Singleton
 class TileRepository @Inject constructor(
     private val context: Context,
@@ -435,14 +450,23 @@ class TileRepository @Inject constructor(
     )
 
     private fun loadTileOrder(): List<String> {
+        val catalogIds = defaultTiles.map { it.id }
+        val currentDefault = catalogIds.filterNot { it in TILES_OFF_BY_DEFAULT }
         val savedOrder = appSettings.preferredTileOrder ?: appSettings.tileOrder.takeIf { it.isNotEmpty() }
-            ?: defaultTiles.map { it.id }.filterNot { it in TILES_OFF_BY_DEFAULT }
-        // Add the new control to existing panels once, preserving later deselection.
+        val (selection, snapshot) = resolveTileOrder(
+            savedOrder, appSettings.defaultTileSnapshot, currentDefault
+        )
+        // Add the new control to existing nonempty panels once, preserving later deselection.
         val order = if (!preferences.getBoolean("bypass_tile_added", false)) {
             preferences.edit().putBoolean("bypass_tile_added", true).apply()
-            savedOrder + "bypass_charge_enabled"
-        } else savedOrder
-        return order.filter { id -> defaultTiles.any { it.id == id } }.distinct()
+            if (selection.isNotEmpty()) selection + "bypass_charge_enabled" else selection
+        } else selection
+        val filteredOrder = order.filter { it in catalogIds }.distinct()
+        if (appSettings.preferredTileOrder != filteredOrder) {
+            appSettings.preferredTileOrder = filteredOrder
+        }
+        if (appSettings.defaultTileSnapshot != snapshot) appSettings.defaultTileSnapshot = snapshot
+        return filteredOrder
     }
 
     private fun clearBackgroundProcesses() {
