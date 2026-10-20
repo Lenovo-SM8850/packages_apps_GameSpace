@@ -80,7 +80,7 @@
     <string name="fps_stats">min %1$d | rata-rata %2$d | maks %3$d</string>
     <!-- Tile Labels -->
     <string name="tile_danmaku">Danmaku</string>
-    <string name="tile_stay_awake">Tetap terjaga</string>
+    <string name="tile_stay_awake">Layar tetap menyala saat bermain</string>
     <string name="tile_wifi">Wi-Fi</string>
     <string name="tile_dnd">Jangan Ganggu</string>
     <string name="tile_fps_info">Info FPS</string>
@@ -89,7 +89,7 @@
     <string name="tile_settings">Setelan</string>
     <string name="tile_airplane_mode">Mode Pesawat</string>
     <string name="tile_bluetooth">Bluetooth</string>
-    <string name="tile_mobile_data">Data Seluler</string>
+    <string name="tile_mobile_data">Data seluler</string>
     <string name="tile_touch_boost">Peningkat Sentuh</string>
     <string name="tile_flashlight">Senter</string>
     <string name="tile_dark_mode">Mode Gelap</string>
@@ -113,7 +113,7 @@
     <string name="tile_dream">Penghemat Layar</string>
     <string name="tile_reading_mode">Mode Membaca</string>
     <string name="tile_power_share">Pembagian Daya</string>
-    <string name="tile_caffeine">Mode Kafein</string>
+    <string name="tile_caffeine">Layar tetap menyala 5 menit</string>
     <string name="tile_vpn">VPN</string>
     <string name="tile_cast">Transmisi</string>
     <string name="tile_profiles">Profil</string>

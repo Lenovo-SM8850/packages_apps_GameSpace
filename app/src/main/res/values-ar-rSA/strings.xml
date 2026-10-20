@@ -80,7 +80,7 @@
     <string name="fps_stats">صغرى %1$d | متوسط %2$d | عظمى %3$d</string>
     <!-- Tile Labels -->
     <string name="tile_danmaku">Danmaku</string>
-    <string name="tile_stay_awake">البقاء في الوضع النشط</string>
+    <string name="tile_stay_awake">إبقاء الشاشة قيد التشغيل أثناء اللعب</string>
     <string name="tile_wifi">واي فاي</string>
     <string name="tile_dnd">وضع عدم الإزعاج</string>
     <string name="tile_fps_info">معلومات FPS</string>
@@ -113,7 +113,7 @@
     <string name="tile_dream">شاشة التوقف</string>
     <string name="tile_reading_mode">وضع القراءة</string>
     <string name="tile_power_share">مشاركة الطاقة</string>
-    <string name="tile_caffeine">الكافيين</string>
+    <string name="tile_caffeine">إبقاء الشاشة قيد التشغيل لمدة 5 دقائق</string>
     <string name="tile_vpn">الشبكة الافتراضية الخاصة</string>
     <string name="tile_cast">إرسال</string>
     <string name="tile_profiles">ملفات شخصية</string>

@@ -80,7 +80,7 @@
     <string name="fps_stats">мінімальне %1$d | середнє %2$d | максимальне %3$d</string>
     <!-- Tile Labels -->
     <string name="tile_danmaku">Данмаку</string>
-    <string name="tile_stay_awake">Залишати активним</string>
+    <string name="tile_stay_awake">Не вимикати екран під час гри</string>
     <string name="tile_wifi">Wi-Fi</string>
     <string name="tile_dnd">Не турбувати</string>
     <string name="tile_fps_info">Інформація про FPS</string>
@@ -113,7 +113,7 @@
     <string name="tile_dream">Заставка</string>
     <string name="tile_reading_mode">Режим читання</string>
     <string name="tile_power_share">Розповсюдження Сили</string>
-    <string name="tile_caffeine">Кофеїн</string>
+    <string name="tile_caffeine">Не вимикати екран 5 хвилин</string>
     <string name="tile_vpn">Увімкнути VPN</string>
     <string name="tile_cast">Транслювати</string>
     <string name="tile_profiles">Профіль</string>
