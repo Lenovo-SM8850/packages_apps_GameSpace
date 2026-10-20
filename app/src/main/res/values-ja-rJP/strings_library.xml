@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    SPDX-FileCopyrightText: 2026 miner7222
+    SPDX-License-Identifier: Apache-2.0
+-->
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
+    <string name="library_open">ライブラリを開く</string>
+    <string name="library_continue">続きをプレイ</string>
+    <string name="library_recent">最近プレイしたゲーム</string>
+    <string name="library_sort_name">名前</string>
+    <string name="library_sort">並べ替え</string>
+    <string name="library_play">プレイ</string>
+    <string name="library_launch">起動</string>
+    <string name="library_open_game_settings">ゲーム設定を開く</string>
+    <string name="library_game_settings">ゲーム設定</string>
+    <string name="library_hold_hint">ゲームを長押しすると設定を変更できます</string>
+    <string name="library_last_played">最終プレイ: %1$s</string>
+    <string name="library_played">%1$sにプレイ</string>
+    <string name="library_never_played">未プレイ</string>
+    <string name="library_empty_title">ゲームがありません</string>
+    <string name="library_empty_auto">インストールしたゲームは自動的にここに表示されます。</string>
+    <string name="library_empty_manual">ゲームを追加してライブラリを作成しましょう。</string>
+    <string name="library_auto_on">ゲームの自動検出: ON</string>
+    <string name="library_auto_off">ゲームの自動検出: OFF</string>
+    <string name="library_auto_enable">ON にする</string>
+    <string name="library_mode_performance_summary">フレーム レートを優先します。発熱が増え、バッテリーの消費が多くなる場合があります。</string>
+    <string name="library_also_show_home">ホーム画面にも表示</string>
+    <string name="library_app_info">アプリ情報</string>
+    <string name="library_remove">ライブラリから削除</string>
+    <string name="library_removed">%1$s をライブラリから削除しました</string>
+    <string name="library_undo">元に戻す</string>
+    <string name="library_hide_title">ホーム画面とアプリ一覧からゲームを非表示にする</string>
+    <string name="library_hide_confirmation_title">ゲームを非表示にしますか？</string>
+    <string name="library_hide_confirmation_body">ライブラリ内のゲームは、ホーム画面とアプリ一覧に表示されなくなります。</string>
+    <string name="library_hide_action">非表示にする</string>
+    <string name="library_options_defaults">デフォルトと同じ</string>
+    <string name="library_option_changed">このゲームで変更済み</string>
+    <string name="library_reset_defaults">デフォルトにリセット</string>
+    <string name="library_back">戻る</string>
+    <string name="library_hide_sidebar_title">サイドバーを非表示</string>
+    <string name="library_high_touch_title">高タッチ サンプリング レート</string>
+    <string name="library_gesture_lock_summary">システム ジェスチャーは、もう一度スワイプする必要があります。</string>
+    <string name="library_high_touch_summary">タッチ入力をより頻繁に読み取り、応答が速くなります。</string>
+    <string name="library_bypass_summary">バッテリーを充電せず、充電器の電力で動作します。</string>
+    <string name="game_mode_none">なし</string>
+    <string name="game_mode_none_summary">パフォーマンスの調整はシステムに任せます。</string>
+    <string name="library_tuning_off">「なし」モードでは OFF</string>
+    <string name="library_default_mode">デフォルトの優先モード</string>
+    <plurals name="library_game_count">
+        <item quantity="other">%d 個のゲーム</item>
+    </plurals>
+    <plurals name="library_options_count">
+        <item quantity="other">%d 件変更</item>
+    </plurals>
+</resources>

@@ -20,14 +20,10 @@
     <string name="settings_summary">Manage your gaming setup</string>
     <!-- Game options -->
     <string name="in_game_preferences_title">In-game options</string>
-    <string name="suppress_fullscreen_intent_title">Block fullscreen event</string>
-    <string name="suppress_fullscreen_intent_summary">Prevent fullscreen events like incoming calls from appearing</string>
     <string name="stay_awake_title">Stay awake</string>
     <string name="lock_gesture_title">Lock gesture</string>
     <string name="auto_brightness_disabled_title">Disable auto-brightness</string>
     <string name="three_screenshot_disabled_title">Disable three fingers swipe gesture</string>
-    <string name="adb_disabled_title">Disable USB debugging</string>
-    <string name="gamespace_menu_opacity_title">Overlay menu opacity level</string>
     <!-- Notification Mode -->
     <string name="notification_mode_title">Notification mode</string>
     <string name="notification_mode_hide">Do not show</string>
