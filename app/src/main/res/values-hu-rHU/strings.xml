@@ -28,17 +28,11 @@
     <!-- Lock gesture -->
     <string name="lock_gesture_title">Gesztusok gátlása</string>
     <string name="lock_gesture_summary">A képernyőgesztusok letiltása játék közben</string>
-    <!-- Suppress full screen intent -->
-    <string name="suppress_fullscreen_intent_title">Teljes képernyős mód blokkolása</string>
-    <string name="suppress_fullscreen_intent_summary">Teljes képernyős események, mint például a bejövő hívás megjelenítésének megakadályozása</string>
     <!-- Per app settings -->
     <string name="per_app_title">Játék konfigurálása</string>
     <string name="per_app_mode_title">Preferált mód</string>
     <string name="per_app_angle_title">ANGLE használata (kísérleti)</string>
     <string name="per_app_unregister">%1$s eltávolítása a könyvtáradból</string>
-    <!-- Disable ADB debugging -->
-    <string name="adb_disabled_title">Az USB-hibakeresés tiltása</string>
-    <string name="adb_disabled_summary">Ideiglenesen kikapcsolja az USB ABD debugging-ot játék közben</string>
     <!-- Ringer Mode -->
     <string name="in_game_calls_title">Hívás mód</string>
     <string name="in_game_calls_no_action">Nincs művelet</string>
@@ -49,8 +43,6 @@
     <!-- Danmaku Notification Mode -->
     <string name="danmaku_notification_mode_title">Danmaku Értesítő mód</string>
     <string name="danmaku_notification_mode_summary">Értesítések danmakuként mutatása, avagy kommentek kilövése játék mód közben</string>
-    <!-- Gamespace opacity -->
-    <string name="gamespace_menu_opacity_title">Átfedés menü átlátszósági szintje</string>
     <!-- Bypass charging -->
     <string name="bypass_charge_enabled_title">Bypass-töltés</string>
     <string name="bypass_charge_enabled_summary">Játék közben engedélyezi a Bypass-töltést</string>
@@ -80,7 +72,7 @@
     <string name="fps_stats">min %1$d | átl %2$d | max %3$d</string>
     <!-- Tile Labels -->
     <string name="tile_danmaku">Danmaku</string>
-    <string name="tile_stay_awake">Ne zárja le a képernyőt</string>
+    <string name="tile_stay_awake">Képernyő bekapcsolva játék közben</string>
     <string name="tile_wifi">Wi-Fi</string>
     <string name="tile_dnd">Ne zavarjanak</string>
     <string name="tile_fps_info">FPS-adatok</string>
@@ -129,7 +121,6 @@
     <string name="mapper_press_button">Nyomj meg egy gombot a kontrolleren vagy a billentyűzeten\u2026</string>
     <string name="mapper_add_point">Érintési pont hozzáadása</string>
     <string name="mapper_delete_point">Érintési pont törlése</string>
-    <string name="mapper_map_controls">Térkép vezérlők</string>
     <!-- Content Descriptions (Accessibility) -->
     <string name="cd_reject">Elutasít</string>
     <string name="cd_accept">Elfogad</string>
@@ -142,8 +133,6 @@
     <string name="game_optimization_title">Optimalizálás indítása</string>
     <string name="game_memory_management_title">Okos memóriakezelő</string>
     <string name="game_memory_management_summary">Játék indításakor automatikusan leállítja a háttérben futó alkalmazásokat</string>
-    <string name="game_cache_management_title">Gyorsítótár kezelő</string>
-    <string name="game_cache_management_summary">Optimalizálja a játék gyorsítótárát a gyorsabb betöltésért</string>
     <string name="game_memory_boosted">Memóriagyorsítás</string>
     <!-- Game auto-detect -->
     <string name="auto_game_detect_title">Automatikus játékészlelés</string>

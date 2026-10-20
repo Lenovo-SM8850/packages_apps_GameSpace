@@ -28,17 +28,11 @@
     <!-- Lock gesture -->
     <string name="lock_gesture_title">Blochează gesturile</string>
     <string name="lock_gesture_summary">Dezactivează gesturile ecranului în timpul jocului</string>
-    <!-- Suppress full screen intent -->
-    <string name="suppress_fullscreen_intent_title">Blocare eveniment pe tot ecranul</string>
-    <string name="suppress_fullscreen_intent_summary">Împiedică apariția evenimentelor pe tot ecranul, cum ar fi apelurile primite în timpul jocului</string>
     <!-- Per app settings -->
     <string name="per_app_title">Configurare joc</string>
     <string name="per_app_mode_title">Mod preferat</string>
     <string name="per_app_angle_title">Utilizează ANGLE (experimental)</string>
     <string name="per_app_unregister">Elimină %1$s din bibliotecă</string>
-    <!-- Disable ADB debugging -->
-    <string name="adb_disabled_title">Dezactivează depanarea USB</string>
-    <string name="adb_disabled_summary">Dezactivați temporar depanarea USB ADB în timpul jocului</string>
     <!-- Ringer Mode -->
     <string name="in_game_calls_title">Mod apel</string>
     <string name="in_game_calls_no_action">Nicio acțiune</string>
@@ -49,8 +43,6 @@
     <!-- Danmaku Notification Mode -->
     <string name="danmaku_notification_mode_title">Mod notificări Danmaku</string>
     <string name="danmaku_notification_mode_summary">Arată notificarea ca și comentariile de tip glonț aka glonț cât timp jocul este activ</string>
-    <!-- Gamespace opacity -->
-    <string name="gamespace_menu_opacity_title">Opacitate pentru meniul suprapus</string>
     <!-- Bypass charging -->
     <string name="bypass_charge_enabled_title">Ignoră încărcarea</string>
     <string name="bypass_charge_enabled_summary">Activare încărcare bypass în timpul jocului</string>
@@ -80,7 +72,7 @@
     <string name="fps_stats">min %1$d %2$d Amax %3$d</string>
     <!-- Tile Labels -->
     <string name="tile_danmaku">Danmaku</string>
-    <string name="tile_stay_awake">Menține ecranul activ</string>
+    <string name="tile_stay_awake">Ecran activ în timpul jocului</string>
     <string name="tile_wifi">Wi-Fi</string>
     <string name="tile_dnd">DND</string>
     <string name="tile_fps_info">Info FPS</string>
@@ -113,7 +105,7 @@
     <string name="tile_dream">Economizor de ecran</string>
     <string name="tile_reading_mode">Mod lectură</string>
     <string name="tile_power_share">Distribuire energie</string>
-    <string name="tile_caffeine">Caffeine</string>
+    <string name="tile_caffeine">Ecran activ timp de 5 minute</string>
     <string name="tile_vpn">VPN</string>
     <string name="tile_cast">Transmite</string>
     <string name="tile_profiles">Profiluri</string>
@@ -129,7 +121,6 @@
     <string name="mapper_press_button">Apăsați un buton de pe controlerul sau tastatura\u2026</string>
     <string name="mapper_add_point">Adaugă punct apăsare</string>
     <string name="mapper_delete_point">Șterge punctul de atingere</string>
-    <string name="mapper_map_controls">Comenzi hartă</string>
     <!-- Content Descriptions (Accessibility) -->
     <string name="cd_reject">Respinge</string>
     <string name="cd_accept">Acceptă</string>
@@ -142,8 +133,6 @@
     <string name="game_optimization_title">Lansare optimizare</string>
     <string name="game_memory_management_title">Managementul memoriei inteligente</string>
     <string name="game_memory_management_summary">Șterge automat aplicațiile de fundal la lansarea jocurilor</string>
-    <string name="game_cache_management_title">Gestionare cache</string>
-    <string name="game_cache_management_summary">Optimizează cache-ul jocului pentru o încărcare mai rapidă</string>
     <string name="game_memory_boosted">Memorie amplificată</string>
     <!-- Game auto-detect -->
     <string name="auto_game_detect_title">Detectare automată a jocurilor</string>

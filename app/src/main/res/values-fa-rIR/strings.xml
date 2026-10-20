@@ -28,17 +28,11 @@
     <!-- Lock gesture -->
     <string name="lock_gesture_title">قفل کردن ژست</string>
     <string name="lock_gesture_summary">غیرفعال کردن ژست‌های حرکتی صفحه هنگام بازی</string>
-    <!-- Suppress full screen intent -->
-    <string name="suppress_fullscreen_intent_title">مسدود کردن رویداد تمام صفحه</string>
-    <string name="suppress_fullscreen_intent_summary">از نمایش رویدادهای تمام صفحه مانند تماس های دریافتی جلوگیری کنید</string>
     <!-- Per app settings -->
     <string name="per_app_title">پیکربندی بازی</string>
     <string name="per_app_mode_title">حالت ترجیحی</string>
     <string name="per_app_angle_title">درایور گرافیک</string>
     <string name="per_app_unregister">%1$s را از مجموعه حذف کنید</string>
-    <!-- Disable ADB debugging -->
-    <string name="adb_disabled_title">غیرفعال کردن اشکال زدایی USB</string>
-    <string name="adb_disabled_summary">اشکال‌زدایی USB ADB را هنگام بازی موقتاً غیرفعال کنید</string>
     <!-- Ringer Mode -->
     <string name="in_game_calls_title">حالت تماس</string>
     <string name="in_game_calls_no_action">هیچ کاری انجام نده</string>
@@ -49,8 +43,6 @@
     <!-- Danmaku Notification Mode -->
     <string name="danmaku_notification_mode_title">اعلان‌های شناور متحرک</string>
     <string name="danmaku_notification_mode_summary">در حالی که بازی فعال است، اعلان را به حالت اعلان گلوله جهنمی نشان دهید</string>
-    <!-- Gamespace opacity -->
-    <string name="gamespace_menu_opacity_title">سطح شفافیت منوی همپوشانی</string>
     <!-- Bypass charging -->
     <string name="bypass_charge_enabled_title">شارژ مستقیم</string>
     <string name="bypass_charge_enabled_summary">فعال‌سازی شارژ مستقیم هنگام بازی کردن</string>
@@ -80,7 +72,7 @@
     <string name="fps_stats">کمترین %1$d | میانگین %2$d | حداکثر %3$d</string>
     <!-- Tile Labels -->
     <string name="tile_danmaku">اعلان های شفاف متحرک</string>
-    <string name="tile_stay_awake">بیدار بمان</string>
+    <string name="tile_stay_awake">روشن ماندن صفحه هنگام بازی</string>
     <string name="tile_wifi">وای فای</string>
     <string name="tile_dnd">مزاحم‌نشوید</string>
     <string name="tile_fps_info">اطلاعات فریم بر ثانیه</string>
@@ -129,7 +121,6 @@
     <string name="mapper_press_button">یک دکمه روی دسته بازی یا کیبورد خود فشار دهید\u2026</string>
     <string name="mapper_add_point">افزودن نقطه لمس</string>
     <string name="mapper_delete_point">حذف نقطه لمس</string>
-    <string name="mapper_map_controls">شخصی‌سازی کنترل‌ها / مپ کردن کنترل‌ها</string>
     <!-- Content Descriptions (Accessibility) -->
     <string name="cd_reject">رد کردن</string>
     <string name="cd_accept">پذیرفتن</string>
@@ -142,8 +133,6 @@
     <string name="game_optimization_title">راه‌اندازی بهینه‌سازی</string>
     <string name="game_memory_management_title">مدیریت هوشمند حافظه</string>
     <string name="game_memory_management_summary">پاکسازی خودکار برنامه‌های پس‌زمینه هنگام اجرای بازی‌ها</string>
-    <string name="game_cache_management_title">مدیریت حافظه پنهان</string>
-    <string name="game_cache_management_summary">بهینه‌سازی کش بازی برای زمان بارگذاری سریع‌تر</string>
     <string name="game_memory_boosted">حافظه تقویت شد</string>
     <!-- Game auto-detect -->
     <string name="auto_game_detect_title">شناسایی خودکار بازی</string>

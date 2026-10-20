@@ -28,17 +28,11 @@
     <!-- Lock gesture -->
     <string name="lock_gesture_title">Gestes de verrouillage</string>
     <string name="lock_gesture_summary">Désactiver les gestes de l\'écran en jeu</string>
-    <!-- Suppress full screen intent -->
-    <string name="suppress_fullscreen_intent_title">Bloquer les évènements plein écran</string>
-    <string name="suppress_fullscreen_intent_summary">Empêcher les événements plein écran comme montrer les appels entrants</string>
     <!-- Per app settings -->
     <string name="per_app_title">Configurer le jeu</string>
     <string name="per_app_mode_title">Mode préféré</string>
     <string name="per_app_angle_title">Pilote graphique</string>
     <string name="per_app_unregister">Retirer %1$s de la bibliothèque</string>
-    <!-- Disable ADB debugging -->
-    <string name="adb_disabled_title">Désactiver le débogage USB</string>
-    <string name="adb_disabled_summary">Désactiver temporairement le débogage USB ADB pendant le jeu</string>
     <!-- Ringer Mode -->
     <string name="in_game_calls_title">Mode d\'appels</string>
     <string name="in_game_calls_no_action">Pas d\'action</string>
@@ -49,8 +43,6 @@
     <!-- Danmaku Notification Mode -->
     <string name="danmaku_notification_mode_title">Mode de notification Danmaku</string>
     <string name="danmaku_notification_mode_summary">Afficher une notification en tant que danmaku (les commentaires flottants) lorsque le jeu est actif</string>
-    <!-- Gamespace opacity -->
-    <string name="gamespace_menu_opacity_title">Niveau d\'opacité du menu de superposition</string>
     <!-- Bypass charging -->
     <string name="bypass_charge_enabled_title">Contournement de charge</string>
     <string name="bypass_charge_enabled_summary">Activer le chargement du bypass pendant les parties</string>
@@ -80,7 +72,7 @@
     <string name="fps_stats">min %1$d | moy %2$d | max %3$d</string>
     <!-- Tile Labels -->
     <string name="tile_danmaku">Danmaku</string>
-    <string name="tile_stay_awake">Rester éveillé</string>
+    <string name="tile_stay_awake">Écran allumé pendant le jeu</string>
     <string name="tile_wifi">Wi-Fi</string>
     <string name="tile_dnd">DND</string>
     <string name="tile_fps_info">Infos FPS</string>
@@ -129,7 +121,6 @@
     <string name="mapper_press_button">Appuyez sur un bouton de votre manette ou clavier\u2026</string>
     <string name="mapper_add_point">Ajouter un point d\'appui</string>
     <string name="mapper_delete_point">Supprimer le point d\'appui</string>
-    <string name="mapper_map_controls">Commandes multimédias</string>
     <!-- Content Descriptions (Accessibility) -->
     <string name="cd_reject">Refuser</string>
     <string name="cd_accept">Accepter</string>
@@ -142,8 +133,6 @@
     <string name="game_optimization_title">Optimisation du lancement</string>
     <string name="game_memory_management_title">Gestion de la mémoire intelligente</string>
     <string name="game_memory_management_summary">Effacer automatiquement les applications en arrière-plan lors du lancement de jeux</string>
-    <string name="game_cache_management_title">Gestion des caches</string>
-    <string name="game_cache_management_summary">Optimiser le cache du jeu pour accélérer les temps de chargement</string>
     <string name="game_memory_boosted">Mémoire boostée</string>
     <!-- Game auto-detect -->
     <string name="auto_game_detect_title">Détection automatique du jeu</string>

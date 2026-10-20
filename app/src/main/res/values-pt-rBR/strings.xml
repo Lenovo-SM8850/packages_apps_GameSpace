@@ -28,17 +28,11 @@
     <!-- Lock gesture -->
     <string name="lock_gesture_title">Bloquear gestos</string>
     <string name="lock_gesture_summary">Desativar gestos na tela durante o jogo</string>
-    <!-- Suppress full screen intent -->
-    <string name="suppress_fullscreen_intent_title">Bloquear eventos em tela cheia</string>
-    <string name="suppress_fullscreen_intent_summary">Impedir que eventos em tela cheia apareçam durante o jogo</string>
     <!-- Per app settings -->
     <string name="per_app_title">Configurar jogo</string>
     <string name="per_app_mode_title">Modo preferencial</string>
     <string name="per_app_angle_title">Usar ANGLE (experimental)</string>
     <string name="per_app_unregister">Remover %1$s da biblioteca</string>
-    <!-- Disable ADB debugging -->
-    <string name="adb_disabled_title">Desativar depuração USB</string>
-    <string name="adb_disabled_summary">Desativar temporariamente a depuração USB durante o jogo</string>
     <!-- Ringer Mode -->
     <string name="in_game_calls_title">Modo de chamada</string>
     <string name="in_game_calls_no_action">Nenhuma ação</string>
@@ -49,8 +43,6 @@
     <!-- Danmaku Notification Mode -->
     <string name="danmaku_notification_mode_title">Modo de notificação Danmaku</string>
     <string name="danmaku_notification_mode_summary">Mostrar notificações como balões de comentários durante o jogo</string>
-    <!-- Gamespace opacity -->
-    <string name="gamespace_menu_opacity_title">Nível de opacidade do menu de opções</string>
     <!-- Bypass charging -->
     <string name="bypass_charge_enabled_title">Carregamento Bypass</string>
     <string name="bypass_charge_enabled_summary">Habilite o carregamento por bypass durante os jogos</string>
@@ -80,7 +72,7 @@
     <string name="fps_stats">min %1$d | avg %2$d | max %3$d</string>
     <!-- Tile Labels -->
     <string name="tile_danmaku">Danmaku</string>
-    <string name="tile_stay_awake">Permanecer ativo</string>
+    <string name="tile_stay_awake">Manter tela ativa durante o jogo</string>
     <string name="tile_wifi">Wi-Fi</string>
     <string name="tile_dnd">Não perturbe</string>
     <string name="tile_fps_info">Informação de FPS</string>
@@ -129,7 +121,6 @@
     <string name="mapper_press_button">Pressione um botão no controle ou teclado\u2026</string>
     <string name="mapper_add_point">Adicionar ponto de toque</string>
     <string name="mapper_delete_point">Excluir ponto de toque</string>
-    <string name="mapper_map_controls">Controles do Mapa</string>
     <!-- Content Descriptions (Accessibility) -->
     <string name="cd_reject">Recusar</string>
     <string name="cd_accept">Aceitar</string>
@@ -142,8 +133,6 @@
     <string name="game_optimization_title">Otimização de Inicialização</string>
     <string name="game_memory_management_title">Gerenciamento inteligente de memória</string>
     <string name="game_memory_management_summary">Limpe automaticamente aplicativos em segundo plano ao iniciar jogos</string>
-    <string name="game_cache_management_title">Gerenciamento de Cache</string>
-    <string name="game_cache_management_summary">Otimize o cache do jogo para tempos de carregamento mais rápidos</string>
     <string name="game_memory_boosted">Memória otimizada</string>
     <!-- Game auto-detect -->
     <string name="auto_game_detect_title">Detecção automática de jogo</string>
