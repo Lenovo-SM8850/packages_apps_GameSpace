@@ -28,17 +28,11 @@
     <!-- Lock gesture -->
     <string name="lock_gesture_title">Bloquear gestos</string>
     <string name="lock_gesture_summary">Desativar gestos na tela durante o jogo</string>
-    <!-- Suppress full screen intent -->
-    <string name="suppress_fullscreen_intent_title">Bloquear eventos em ecrã inteiro</string>
-    <string name="suppress_fullscreen_intent_summary">Impedir que eventos em ecrã inteiro, como receber chamadas, ocorram durante o jogo</string>
     <!-- Per app settings -->
     <string name="per_app_title">Configurar jogo</string>
     <string name="per_app_mode_title">Modo preferido</string>
     <string name="per_app_angle_title">Usar ANGLE (experimental)</string>
     <string name="per_app_unregister">Remover %1$s da biblioteca</string>
-    <!-- Disable ADB debugging -->
-    <string name="adb_disabled_title">Desativar depuração USB</string>
-    <string name="adb_disabled_summary">Desativar temporariamente a depuração USB ADB durante o jogo</string>
     <!-- Ringer Mode -->
     <string name="in_game_calls_title">Modo de chamada</string>
     <string name="in_game_calls_no_action">Nenhuma ação</string>
@@ -49,8 +43,6 @@
     <!-- Danmaku Notification Mode -->
     <string name="danmaku_notification_mode_title">Modo de notificação Danmaku</string>
     <string name="danmaku_notification_mode_summary">Mostrar notificações enquanto o jogo estiver aberto</string>
-    <!-- Gamespace opacity -->
-    <string name="gamespace_menu_opacity_title">Transparência do menu de sobreposição</string>
     <!-- Bypass charging -->
     <string name="bypass_charge_enabled_title">Alimentação Direta</string>
     <string name="bypass_charge_enabled_summary">Ativar alimentação direta durante o jogo</string>
@@ -80,7 +72,7 @@
     <string name="fps_stats">min %1$d | méd %2$d | max %3$d</string>
     <!-- Tile Labels -->
     <string name="tile_danmaku">Danmaku</string>
-    <string name="tile_stay_awake">Manter ativo</string>
+    <string name="tile_stay_awake">Manter ecrã ligado durante o jogo</string>
     <string name="tile_wifi">Wi-Fi</string>
     <string name="tile_dnd">Não incomodar</string>
     <string name="tile_fps_info">Info. de FPS</string>
@@ -89,7 +81,7 @@
     <string name="tile_settings">Definições</string>
     <string name="tile_airplane_mode">Modo de Avião</string>
     <string name="tile_bluetooth">Bluetooth</string>
-    <string name="tile_mobile_data">Dados Móveis</string>
+    <string name="tile_mobile_data">Dados móveis</string>
     <string name="tile_touch_boost">Touch Boost</string>
     <string name="tile_flashlight">Lanterna</string>
     <string name="tile_dark_mode">Modo Escuro</string>
@@ -113,7 +105,7 @@
     <string name="tile_dream">Protetor de ecrã</string>
     <string name="tile_reading_mode">Modo de Leitura</string>
     <string name="tile_power_share">Power Share</string>
-    <string name="tile_caffeine">Cafeína</string>
+    <string name="tile_caffeine">Manter ecrã ligado por 5 minutos</string>
     <string name="tile_vpn">VPN</string>
     <string name="tile_cast">Transmitir</string>
     <string name="tile_profiles">Perfis</string>
@@ -129,7 +121,6 @@
     <string name="mapper_press_button">Pressione um botão no comando ou teclado\u2026</string>
     <string name="mapper_add_point">Adicionar ponto de toque</string>
     <string name="mapper_delete_point">Eliminar ponto de toque</string>
-    <string name="mapper_map_controls">Mapear Controlos</string>
     <!-- Content Descriptions (Accessibility) -->
     <string name="cd_reject">Rejeitar</string>
     <string name="cd_accept">Aceitar</string>
@@ -142,8 +133,6 @@
     <string name="game_optimization_title">Lançar Otimização</string>
     <string name="game_memory_management_title">Gestão Inteligente de Memória</string>
     <string name="game_memory_management_summary">Limpar automaticamente ‘apps’ em segundo plano ao lançar jogos</string>
-    <string name="game_cache_management_title">Gestão de Cache</string>
-    <string name="game_cache_management_summary">Otimizar a cache do jogo para tempos de carregamento mais rápidos</string>
     <string name="game_memory_boosted">Otimizador memória</string>
     <!-- Game auto-detect -->
     <string name="auto_game_detect_title">Deteção automática de jogo</string>

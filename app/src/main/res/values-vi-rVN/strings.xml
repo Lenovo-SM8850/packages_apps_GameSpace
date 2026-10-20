@@ -28,17 +28,11 @@
     <!-- Lock gesture -->
     <string name="lock_gesture_title">Khóa cử chỉ</string>
     <string name="lock_gesture_summary">Tắt cử chỉ màn hình khi đang trong trò chơi </string>
-    <!-- Suppress full screen intent -->
-    <string name="suppress_fullscreen_intent_title">Chặn sự kiện toàn màn hình</string>
-    <string name="suppress_fullscreen_intent_summary">Ngăn các sự kiện toàn màn hình như cuộc gọi đến xuất hiện khi ở trong trò chơi</string>
     <!-- Per app settings -->
     <string name="per_app_title">Định cấu hình trò chơi</string>
     <string name="per_app_mode_title">Chế độ ưu tiên</string>
     <string name="per_app_angle_title">Sử dụng ANGLE (thử nghiệm)</string>
     <string name="per_app_unregister">Xóa %1$s khỏi thư viện</string>
-    <!-- Disable ADB debugging -->
-    <string name="adb_disabled_title">Tắt gỡ lỗi USB</string>
-    <string name="adb_disabled_summary">Tạm thời vô hiệu hóa gỡ lỗi USB ADB khi ở trong trò chơi</string>
     <!-- Ringer Mode -->
     <string name="in_game_calls_title">Chế độ cuộc gọi</string>
     <string name="in_game_calls_no_action">Không làm gì</string>
@@ -49,8 +43,6 @@
     <!-- Danmaku Notification Mode -->
     <string name="danmaku_notification_mode_title">Chế độ thông báo hiện đại</string>
     <string name="danmaku_notification_mode_summary">Hiển thị thông báo hiện đại hay còn gọi là nhận xét về dấu đầu dòng khi trò chơi đang hoạt động</string>
-    <!-- Gamespace opacity -->
-    <string name="gamespace_menu_opacity_title">Độ mờ bảng điều khiển nổi</string>
     <!-- Bypass charging -->
     <string name="bypass_charge_enabled_title">Bỏ qua sạc</string>
     <string name="bypass_charge_enabled_summary">Bật chế độ ngắt sạc khi đang chơi</string>
@@ -80,7 +72,7 @@
     <string name="fps_stats">tối thiểu %1$d | trung bình %2$d | tối đa %3$d</string>
     <!-- Tile Labels -->
     <string name="tile_danmaku">Kiểu hiện đại</string>
-    <string name="tile_stay_awake">Không khóa màn hình</string>
+    <string name="tile_stay_awake">Giữ màn hình bật khi chơi game</string>
     <string name="tile_wifi">Wifi</string>
     <string name="tile_dnd">Không làm phiền</string>
     <string name="tile_fps_info">Thông tin FPS</string>
@@ -113,7 +105,7 @@
     <string name="tile_dream">Trình bảo vệ màn hình</string>
     <string name="tile_reading_mode">Chế độ đọc sách</string>
     <string name="tile_power_share">Chia sẻ năng lượng</string>
-    <string name="tile_caffeine">Chất gây nghiện</string>
+    <string name="tile_caffeine">Giữ màn hình bật trong 5 phút</string>
     <string name="tile_vpn">Mạng riêng ảo</string>
     <string name="tile_cast">Truyền</string>
     <string name="tile_profiles">Cấu hình</string>
@@ -129,7 +121,6 @@
     <string name="mapper_press_button">Nhấn một nút trên bộ điều khiển hoặc bàn phím\u2026</string>
     <string name="mapper_add_point">Thêm điểm chạm</string>
     <string name="mapper_delete_point">Xóa điểm chạm</string>
-    <string name="mapper_map_controls">Điều khiển bản đồ</string>
     <!-- Content Descriptions (Accessibility) -->
     <string name="cd_reject">Từ chối</string>
     <string name="cd_accept">Chấp nhận</string>
@@ -142,8 +133,6 @@
     <string name="game_optimization_title">Tối ưu khởi chạy</string>
     <string name="game_memory_management_title">Quản lý bộ nhớ thông minh</string>
     <string name="game_memory_management_summary">Tự động dọn sạch ứng dụng nền khi khởi chạy trò chơi</string>
-    <string name="game_cache_management_title">Quản lý bộ nhớ đệm</string>
-    <string name="game_cache_management_summary">Tối ưu bộ nhớ đệm trò chơi để rút ngắn thời gian tải</string>
     <string name="game_memory_boosted">Bộ nhớ được tăng cường</string>
     <!-- Game auto-detect -->
     <string name="auto_game_detect_title">Tự động phát hiện trò chơi</string>
