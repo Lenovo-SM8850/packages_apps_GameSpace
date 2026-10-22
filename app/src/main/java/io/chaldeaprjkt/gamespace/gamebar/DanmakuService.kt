@@ -20,38 +20,44 @@
 
 package io.chaldeaprjkt.gamespace.gamebar
 
-import android.animation.ValueAnimator
-import android.app.Notification
+import android.animation.Animator
+import android.animation.AnimatorListenerAdapter
 import android.content.ComponentName
 import android.content.Context
 import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.PixelFormat
+import android.graphics.Rect
 import android.os.Handler
 import android.os.Looper
 import android.os.RemoteException
+import android.os.SystemClock
 import android.os.UserHandle
-import android.service.notification.NotificationListenerService
-import android.service.notification.StatusBarNotification
+import android.text.TextUtils
 import android.util.Log
 import android.util.TypedValue
 import android.view.Gravity
+import android.view.View
 import android.view.WindowManager
 import android.view.WindowManager.LayoutParams
+import android.view.animation.LinearInterpolator
+import android.widget.FrameLayout
 import android.widget.TextView
-
-import androidx.core.animation.addListener
 
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.android.scopes.ServiceScoped
 
-import java.util.LinkedList
+import java.util.ArrayDeque
+
+import kotlin.math.ceil
+import kotlin.math.floor
+import kotlin.math.max
+import kotlin.math.min
 
 import javax.inject.Inject
 
 import io.chaldeaprjkt.gamespace.R
 import io.chaldeaprjkt.gamespace.data.AppSettings
-import io.chaldeaprjkt.gamespace.gamebar.DanmakuServiceListener
 
 interface DanmakuServiceInterface {
     val danmakuNotificationMode: Boolean
@@ -67,28 +73,62 @@ class DanmakuService @Inject constructor(
 
     private lateinit var notificationListener: DanmakuServiceListener
 
-    private val notificationOverlay = TextView(context).apply {
-        gravity = Gravity.CENTER
-        maxLines = 2
-        setTextColor(Color.WHITE)
-        isFocusable = false
-        isClickable = false
+    /** A horizontal track that holds one line of moving text at a time. */
+    private class Lane(val top: Int)
+
+    /** A notification waiting for a free lane. Width and speed are measured on demand. */
+    private class Pending(val text: String) {
+        var width = 0
+        var speed = 0f
+        var prepared = false
     }
+
+    /** A notification crossing the screen. Positions follow from the start time and speed. */
+    private class Danmaku(
+        val text: String,
+        val view: TextView,
+        val lane: Lane,
+        val width: Int,
+        val speed: Float,
+        val startTime: Long,
+        val duration: Long
+    ) {
+        var finished = false
+        var endRunnable: Runnable? = null
+    }
+
+    private val density = context.resources.displayMetrics.density
 
     private val windowManager: WindowManager = context.getSystemService(WindowManager::class.java)!!
 
     private val handler = Handler(Looper.getMainLooper())
 
-    private val notificationStack = LinkedList<String>()
+    // The container only holds the moving lines. It never takes touches or focus.
+    private val container = FrameLayout(context).apply {
+        layoutDirection = View.LAYOUT_DIRECTION_LTR
+        isFocusable = false
+        isClickable = false
+    }
+
+    private val measurer = createTextView("")
+
+    private val pending = ArrayDeque<Pending>()
+    private val active = ArrayList<Danmaku>()
+    private val lastInLane = HashMap<Lane, Danmaku>()
+    private var lanes: List<Lane> = emptyList()
 
     private var layoutParams: LayoutParams = LayoutParams().apply {
-        height = LayoutParams.WRAP_CONTENT
         flags = flags or LayoutParams.FLAG_NOT_FOCUSABLE or
                 LayoutParams.FLAG_NOT_TOUCHABLE or
+                LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                LayoutParams.FLAG_LAYOUT_NO_LIMITS or
                 LayoutParams.FLAG_HARDWARE_ACCELERATED
         type = LayoutParams.TYPE_SECURE_SYSTEM_OVERLAY
         format = PixelFormat.TRANSLUCENT
-        gravity = Gravity.TOP
+        gravity = Gravity.TOP or Gravity.START
+        layoutInDisplayCutoutMode = LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+        fitInsetsTypes = 0
+        setTitle(TAG)
     }
 
     private var isPortrait: Boolean =
@@ -97,8 +137,15 @@ class DanmakuService @Inject constructor(
     private var verticalOffsetLandscape = 0
     private var verticalOffsetPortrait = 0
 
-    private var overlayAlphaAnimator: ValueAnimator? = null
-    private var overlayPositionAnimator: ValueAnimator? = null
+    private var screenWidth = 0
+    private var screenHeight = 0
+    private var lineHeight = 0
+    private var bandTop = 0
+    private var laneGap = 0f
+    private var drainAfterAttach = false
+
+    private var destroyed = false
+    private val drainRunnable = Runnable { drainPending() }
 
     fun init() {
         notificationListener = DanmakuServiceListener()
@@ -109,17 +156,24 @@ class DanmakuService @Inject constructor(
 
     fun updateConfiguration(newConfig: Configuration) {
         isPortrait = newConfig.orientation == Configuration.ORIENTATION_PORTRAIT
-        overlayAlphaAnimator?.end()
-        overlayPositionAnimator?.end()
+        // Lanes and speeds depend on the screen size, so lines in flight start over in the new
+        // geometry instead of being lost.
+        val replay = active.map { Pending(it.text) }
+        clearActive()
+        removeWindow()
+        replay.asReversed().forEach { pending.addFirst(it) }
         updateParams()
-        updateViewLayoutSafely(layoutParams)
+        pending.forEach { it.prepared = false }
+        if (pending.isNotEmpty()) drainPending()
     }
 
     fun destroy() {
+        destroyed = true
         unregisterListener()
-        overlayAlphaAnimator?.cancel()
-        overlayPositionAnimator?.cancel()
-        removeViewSafely()
+        handler.removeCallbacksAndMessages(null)
+        pending.clear()
+        clearActive()
+        removeWindow()
     }
 
     private fun registerListener() {
@@ -143,6 +197,24 @@ class DanmakuService @Inject constructor(
         }
     }
 
+    private fun createTextView(text: String): TextView = TextView(context).apply {
+        layoutParams = FrameLayout.LayoutParams(LayoutParams.WRAP_CONTENT,
+                LayoutParams.WRAP_CONTENT)
+        maxLines = 1
+        setSingleLine(true)
+        ellipsize = TextUtils.TruncateAt.END
+        textDirection = View.TEXT_DIRECTION_FIRST_STRONG
+        textAlignment = View.TEXT_ALIGNMENT_VIEW_START
+        gravity = Gravity.CENTER_VERTICAL
+        setTextColor(Color.WHITE)
+        setPadding((8 * density).toInt(), (4 * density).toInt(),
+                (8 * density).toInt(), (4 * density).toInt())
+        setTextSize(TypedValue.COMPLEX_UNIT_PX, NOTIFICATION_SIZE.toFloat())
+        isFocusable = false
+        isClickable = false
+        this.text = text
+    }
+
     private fun updateParams() {
         with(context.resources) {
             verticalOffsetLandscape =
@@ -150,12 +222,53 @@ class DanmakuService @Inject constructor(
             verticalOffsetPortrait =
                 getDimensionPixelSize(R.dimen.notification_vertical_offset_portrait)
         }
-        layoutParams.y = getOffsetForPosition()
-        layoutParams.width = (NOTIFICATION_MAX_WIDTH * windowManager.currentWindowMetrics.bounds.width()) / 100
-        notificationOverlay.setTextSize(
-            TypedValue.COMPLEX_UNIT_PX,
-            (if (isPortrait) NOTIFICATION_SIZE_PORTRAIT else NOTIFICATION_SIZE_LANDSCAPE).toFloat()
+        val metrics = windowManager.currentWindowMetrics
+        screenWidth = metrics.bounds.width()
+        screenHeight = metrics.bounds.height()
+        laneGap = LANE_GAP_DP * density
+
+        // Every line has the same height, so one probe line sizes all lanes.
+        measurer.text = LINE_HEIGHT_PROBE
+        measurer.measure(
+            View.MeasureSpec.makeMeasureSpec(screenWidth, View.MeasureSpec.AT_MOST),
+            View.MeasureSpec.UNSPECIFIED
         )
+        lineHeight = measurer.measuredHeight
+        val pitch = lineHeight + (LANE_SPACING_DP * density).toInt()
+
+        // Keep the text of the base lane where the single line used to sit.
+        val baseTop = getOffsetForPosition() - measurer.paddingTop
+        val cutout = metrics.windowInsets.displayCutout
+        val safeTop = cutout?.safeInsetTop ?: 0
+        val safeBottom = cutout?.safeInsetBottom ?: 0
+        val cutoutRects = cutout?.boundingRects ?: emptyList()
+        fun usable(top: Int): Boolean {
+            val bottom = top + lineHeight
+            return top >= safeTop && bottom <= screenHeight - safeBottom &&
+                    cutoutRects.none { it.top < bottom && it.bottom > top }
+        }
+
+        // Alternate around the base lane, towards the roomier side of the screen first.
+        val belowFirst = baseTop + lineHeight / 2 < screenHeight / 2
+        val candidates = ArrayList<Int>()
+        candidates.add(baseTop)
+        for (step in 1..MAX_LANE_STEPS) {
+            val first = if (belowFirst) step else -step
+            candidates.add(baseTop + first * pitch)
+            candidates.add(baseTop - first * pitch)
+        }
+        lanes = candidates.filter { usable(it) }.take(MAX_LANES).map { Lane(it) }
+            .ifEmpty {
+                val lowest = max(safeTop, screenHeight - safeBottom - lineHeight)
+                listOf(Lane(baseTop.coerceIn(safeTop, lowest)))
+            }
+        bandTop = lanes.minOf { it.top }
+        val bandBottom = lanes.maxOf { it.top } + lineHeight
+
+        layoutParams.x = 0
+        layoutParams.y = bandTop
+        layoutParams.width = screenWidth
+        layoutParams.height = bandBottom - bandTop
     }
 
     private fun getOffsetForPosition(): Int {
@@ -163,16 +276,15 @@ class DanmakuService @Inject constructor(
     }
 
     override fun showNotificationAsOverlay(notification: String) {
-        if (notificationOverlay.parent == null) {
-            notificationOverlay.alpha = 0f
-            notificationOverlay.text = notification
-            windowManager.addView(notificationOverlay, layoutParams)
-            pushNotification()
-        } else {
-            notificationStack.add(notification)
-        }
+        if (destroyed) return
+        val text = notification.replace(WHITESPACE, " ").trim()
+        if (text.isEmpty()) return
+        pending.addLast(Pending(text))
+        // A flood must not grow without bound: the oldest waiting line goes first.
+        while (pending.size > MAX_PENDING) pending.removeFirst()
+        drainPending()
     }
-    
+
     override fun getApplabel(packageName: String): String {
         return packageName.let {
                 try {
@@ -187,84 +299,169 @@ class DanmakuService @Inject constructor(
     override val danmakuNotificationMode: Boolean
         get() = appSettings.danmakuNotification
 
-    private fun pushNotification() {
-        val end = getOffsetForPosition().toFloat()
-        val start = end * (1 - SLIDE_ANIMATION_DISTANCE_FACTOR)
-        overlayPositionAnimator = getPositionAnimator(APPEAR_ANIMATION_DURATION, start, end).also {
-            it.addListener(onEnd = {
-                handler.postDelayed({
-                    popNotification()
-                }, DISPLAY_NOTIFICATION_DURATION)
+    /** Moves waiting lines onto the nearest free lanes, or schedules the next attempt. */
+    private fun drainPending() {
+        handler.removeCallbacks(drainRunnable)
+        if (destroyed || pending.isEmpty()) return
+        if (!container.isAttachedToWindow) {
+            // Lines start together once the window exists, so lane timing stays exact.
+            if (container.parent == null) addWindow()
+            if (!drainAfterAttach) {
+                drainAfterAttach = true
+                container.post {
+                    drainAfterAttach = false
+                    drainPending()
+                }
+            }
+            return
+        }
+        val now = SystemClock.uptimeMillis()
+        var nextTry = Long.MAX_VALUE
+        while (pending.isNotEmpty()) {
+            val line = pending.first()
+            prepare(line)
+            var chosen: Lane? = null
+            for (lane in lanes) {
+                val enter = earliestEnter(lane, line)
+                if (enter <= now) {
+                    chosen = lane
+                    break
+                }
+                nextTry = min(nextTry, enter)
+            }
+            if (chosen == null) break
+            pending.removeFirst()
+            place(line, chosen, now)
+        }
+        if (pending.isNotEmpty()) {
+            handler.postDelayed(drainRunnable,
+                    (nextTry - now).coerceIn(MIN_RETRY_DELAY, MAX_RETRY_DELAY))
+        }
+    }
+
+    private fun prepare(line: Pending) {
+        if (line.prepared) return
+        measurer.text = line.text
+        measurer.measure(
+            View.MeasureSpec.makeMeasureSpec(screenWidth * 2, View.MeasureSpec.AT_MOST),
+            View.MeasureSpec.UNSPECIFIED
+        )
+        line.width = measurer.measuredWidth
+        // Wider lines move a bit faster so that long text does not hang on screen for too long.
+        val base = screenWidth / CROSSING_TIME_MS
+        val boost = 1f + (MAX_SPEED_BOOST - 1f) * min(line.width.toFloat() / screenWidth, 1f)
+        line.speed = base * boost
+        line.prepared = true
+    }
+
+    /**
+     * Earliest uptime at which a line may enter the lane at the right edge: the previous line
+     * must have moved clear of the edge, and a faster new line must not run into the previous
+     * one before that one has left on the left.
+     */
+    private fun earliestEnter(lane: Lane, line: Pending): Long {
+        val last = lastInLane[lane] ?: return 0L
+        val clearAt = last.startTime + ((last.width + laneGap) / last.speed).toLong() +
+                FRAME_SKEW_MS
+        val exitAt = last.startTime + ((screenWidth + last.width) / last.speed).toLong()
+        val catchUpAt = exitAt - ((screenWidth - laneGap) / line.speed).toLong()
+        return max(clearAt, catchUpAt)
+    }
+
+    private fun place(line: Pending, lane: Lane, now: Long) {
+        val view = createTextView(line.text)
+        view.layoutParams = FrameLayout.LayoutParams(line.width, lineHeight,
+                Gravity.TOP or Gravity.LEFT).apply { topMargin = lane.top - bandTop }
+        // The line starts just outside the right edge and ends just outside the left edge.
+        view.translationX = screenWidth.toFloat()
+        val duration = ((screenWidth + line.width) / line.speed).toLong()
+        val danmaku = Danmaku(line.text, view, lane, line.width, line.speed, now,
+                duration)
+        active.add(danmaku)
+        lastInLane[lane] = danmaku
+        container.addView(view)
+        // Property animation of the translation runs on the render thread, without layout.
+        view.animate()
+            .translationX(-line.width.toFloat())
+            .setDuration(duration)
+            .setInterpolator(LinearInterpolator())
+            .setListener(object : AnimatorListenerAdapter() {
+                override fun onAnimationEnd(animation: Animator) {
+                    finish(danmaku)
+                }
             })
-            it.start()
-        }
-        startAlphaAnimation(APPEAR_ANIMATION_DURATION, 0f, 1f)
+            .start()
+        // Backstop for animations that never report their end, such as with the screen off.
+        val end = Runnable { finish(danmaku) }
+        danmaku.endRunnable = end
+        handler.postDelayed(end, duration + END_BACKSTOP_MS)
     }
 
-    private fun popNotification() {
-        val start = getOffsetForPosition().toFloat()
-        val end = start * (1 + SLIDE_ANIMATION_DISTANCE_FACTOR)
-        overlayPositionAnimator =
-            getPositionAnimator(DISAPPEAR_ANIMATION_DURATION, start, end).also {
-                it.addListener(onEnd = {
-                    if (notificationStack.isEmpty()) {
-                        removeViewSafely()
-                    } else {
-                        notificationOverlay.alpha = 0f
-                        notificationOverlay.text = notificationStack.pop()
-                        pushNotification()
-                    }
-                })
-                it.start()
-            }
-        startAlphaAnimation(DISAPPEAR_ANIMATION_DURATION, 1f, 0f)
-    }
-
-    private fun getPositionAnimator(duration: Long, vararg values: Float): ValueAnimator {
-        val lpCopy = LayoutParams().also { it.copyFrom(layoutParams) }
-        return ValueAnimator.ofFloat(*values).apply {
-            this.duration = duration
-            addUpdateListener {
-                lpCopy.y = (it.animatedValue as Float).toInt()
-                updateViewLayoutSafely(lpCopy)
-            }
+    private fun finish(danmaku: Danmaku) {
+        if (danmaku.finished) return
+        danmaku.finished = true
+        danmaku.endRunnable?.let { handler.removeCallbacks(it) }
+        danmaku.view.animate().cancel()
+        container.removeView(danmaku.view)
+        active.remove(danmaku)
+        if (active.isEmpty()) {
+            if (pending.isEmpty()) removeWindow()
         }
     }
 
-    private fun startAlphaAnimation(duration: Long, vararg values: Float) {
-        overlayAlphaAnimator = ValueAnimator.ofFloat(*values).apply {
-            this.duration = duration
-            addUpdateListener {
-                notificationOverlay.alpha = it.animatedValue as Float
+    private fun clearActive() {
+        active.toList().forEach { danmaku ->
+            danmaku.finished = true
+            danmaku.endRunnable?.let { handler.removeCallbacks(it) }
+            danmaku.view.animate().cancel()
+        }
+        container.removeAllViews()
+        active.clear()
+        lastInLane.clear()
+    }
+
+    private fun addWindow() {
+        if (container.parent != null) return
+        try {
+            windowManager.addView(container, layoutParams)
+        } catch (e: RuntimeException) {
+            Log.e(TAG, "Failed to add the danmaku window", e)
+        }
+    }
+
+    private fun removeWindow() {
+        if (container.parent != null) {
+            try {
+                windowManager.removeViewImmediate(container)
+            } catch (e: RuntimeException) {
+                Log.e(TAG, "Failed to remove the danmaku window", e)
             }
-        }.also { it.start() }
-    }
-
-    private fun updateViewLayoutSafely(layoutParams: LayoutParams) {
-        if (notificationOverlay.parent != null)
-            windowManager.updateViewLayout(notificationOverlay, layoutParams)
-    }
-
-    private fun removeViewSafely() {
-        if (notificationOverlay.parent != null)
-            windowManager.removeViewImmediate(notificationOverlay)
+        }
     }
 
     companion object {
-    
+
         private const val TAG = "DanmakuService"
 
-        private const val SLIDE_ANIMATION_DISTANCE_FACTOR = 0.5f
+        private const val NOTIFICATION_SIZE = 60
 
-        private const val APPEAR_ANIMATION_DURATION = 500L
-        private const val DISPLAY_NOTIFICATION_DURATION = 2000L
-        private const val DISAPPEAR_ANIMATION_DURATION = 300L
+        private const val LINE_HEIGHT_PROBE = "Ag"
+        private val WHITESPACE = Regex("\\s+")
 
-        private const val NOTIFICATION_SIZE_LANDSCAPE = 60
-        private const val NOTIFICATION_SIZE_PORTRAIT = 60
+        // Time a short line needs to cross the screen width, which sets the base speed.
+        private const val CROSSING_TIME_MS = 8000f
+        private const val MAX_SPEED_BOOST = 1.5f
 
-        private const val NOTIFICATION_MAX_WIDTH = 75
+        private const val MAX_LANES = 8
+        private const val MAX_LANE_STEPS = 16
+        private const val LANE_SPACING_DP = 2
+        private const val LANE_GAP_DP = 32f
+        private const val FRAME_SKEW_MS = 32L
 
-        private const val NOTIFICATIONS_MAX_CACHED = 99
+        private const val MAX_PENDING = 64
+        private const val MIN_RETRY_DELAY = 16L
+        private const val MAX_RETRY_DELAY = 500L
+        private const val END_BACKSTOP_MS = 1000L
+
     }
 }
