@@ -185,6 +185,9 @@ class TileRepository @Inject constructor(
     private val preferredTileOrder = mutableListOf<String>()
     private var supportedFeatures = emptySet<String>()
     private val _availableTiles = mutableStateListOf<TileAction>()
+    private val haloState = mutableStateOf(false)
+    private val haloEnabledSetting = "halo_reactive_enabled"
+    private val haloAvailableSetting = "halo_ring_available"
     private val notificationState = mutableStateOf(appSettings.danmakuNotification)
     private val touchBoostState = mutableStateOf(false)
     private val bypassChargeState = mutableStateOf(systemSettings.bypassChargeEnabled)
@@ -258,7 +261,7 @@ class TileRepository @Inject constructor(
         preferences.registerOnSharedPreferenceChangeListener(preferenceListener)
         platform.addListener(platformListener)
         listOf(
-            Settings.Secure.SCREENSAVER_ENABLED, Settings.Secure.SMART_PIXEL_FILTER_ENABLED,
+            haloEnabledSetting, haloAvailableSetting, Settings.Secure.SCREENSAVER_ENABLED, Settings.Secure.SMART_PIXEL_FILTER_ENABLED,
             Settings.Secure.FLASHLIGHT_AVAILABLE, Settings.Secure.FLASHLIGHT_ENABLED,
             Settings.Secure.DOZE_ALWAYS_ON, Settings.Secure.NIGHT_DISPLAY_ACTIVATED,
             Settings.Secure.ACCESSIBILITY_DISPLAY_INVERSION_ENABLED,
@@ -286,6 +289,9 @@ class TileRepository @Inject constructor(
             updatePlatformTile(tile, platform.getState(tile.id))
         }
         notificationState.value = appSettings.danmakuNotification
+        haloState.value = Settings.Secure.getIntForUser(
+            context.contentResolver, haloEnabledSetting, 0, UserHandle.USER_SYSTEM
+        ) == 1
         bypassChargeState.value = systemSettings.bypassChargeEnabled
         isFpsInfoVisible.value = appSettings.showFps
         touchBoostState.value = SystemProperties.getInt("persist.sys.touchboost_enable", 0) == 1
@@ -389,6 +395,10 @@ class TileRepository @Inject constructor(
                 context.resources.getBoolean(com.android.internal.R.bool.config_dreamsSupported) &&
                     pm.queryIntentServices(Intent(DreamService.SERVICE_INTERFACE), 0)
                         .any { it.serviceInfo.permission == Manifest.permission.BIND_DREAM_SERVICE }
+            "halo" -> UserHandle.myUserId() == UserHandle.USER_SYSTEM &&
+                ActivityManager.getCurrentUser() == UserHandle.USER_SYSTEM &&
+                Settings.Secure.getIntForUser(context.contentResolver,
+                    haloAvailableSetting, 0, UserHandle.USER_SYSTEM) == 1
             "fps_info" -> context.checkSelfPermission(Manifest.permission.ACCESS_FPS_COUNTER) ==
                 PackageManager.PERMISSION_GRANTED
             "stay_awake" -> context.checkSelfPermission(Manifest.permission.WAKE_LOCK) ==
@@ -461,7 +471,11 @@ class TileRepository @Inject constructor(
             preferences.edit().putBoolean("bypass_tile_added", true).apply()
             if (selection.isNotEmpty()) selection + "bypass_charge_enabled" else selection
         } else selection
-        val filteredOrder = order.filter { it in catalogIds }.distinct()
+        val haloOrder = if (!preferences.getBoolean("halo_tile_added", false)) {
+            preferences.edit().putBoolean("halo_tile_added", true).apply()
+            if (order.isNotEmpty()) order + "halo" else order
+        } else order
+        val filteredOrder = haloOrder.filter { it in catalogIds }.distinct()
         if (appSettings.preferredTileOrder != filteredOrder) {
             appSettings.preferredTileOrder = filteredOrder
         }
@@ -613,6 +627,21 @@ class TileRepository @Inject constructor(
 
     private fun buildDefaultTiles(): List<TileAction> = buildList {
         platformTiles.clear()
+
+        add(ToggleableTile(
+            id = "halo",
+            label = context.getString(R.string.tile_halo),
+            icon = R.drawable.materialsymbols_ic_palette_rounded_filled,
+            state = haloState,
+            setter = { enabled ->
+                if (hasDeviceCapability("halo")) {
+                    Settings.Secure.putIntForUser(context.contentResolver, haloEnabledSetting,
+                        if (enabled) 1 else 0, UserHandle.USER_SYSTEM)
+                }
+                haloState.value = Settings.Secure.getIntForUser(context.contentResolver,
+                    haloEnabledSetting, 0, UserHandle.USER_SYSTEM) == 1
+            },
+        ))
 
         add(platformTile(
             AxPlatformClient.FEATURE_WIFI,

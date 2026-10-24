@@ -181,4 +181,5 @@
     <string name="tile_screen_off">Screen off</string>
     <string name="tile_screen_off_description">Keep the game running with the screen off</string>
     <string name="screen_off_notice">Press the power button to turn the screen back on</string>
+    <string name="tile_halo">Halo</string>
 </resources>
