@@ -19,7 +19,9 @@
 package io.chaldeaprjkt.gamespace.gamebar
 
 import android.annotation.SuppressLint
+import android.app.ActivityManager
 import android.app.ActivityTaskManager
+import android.app.TaskStackListener
 import android.content.*
 import android.content.res.Configuration
 import android.graphics.PixelFormat
@@ -29,6 +31,7 @@ import android.os.Handler
 import android.os.Process
 import android.os.UserHandle
 import android.provider.Settings
+import android.util.Log
 import android.view.*
 import android.window.TaskFpsCallback
 import androidx.activity.OnBackPressedDispatcher
@@ -89,6 +92,13 @@ class GameSidebar(
     private var safeArea = 0
     private var shouldClose = false
     private var panelShowing = false
+    private var barReady = false
+    private var screenshotInProgress = false
+    private var mapperEditing = false
+    private var gameTaskHidden = false
+    private var gamePackage: String? = null
+    private var gameTaskId = ActivityTaskManager.INVALID_TASK_ID
+    private var taskListenerRegistered = false
 
     private lateinit var gameBarView: ComposeView
     private var panelView: View? = null
@@ -118,6 +128,77 @@ class GameSidebar(
     private val barTopState = mutableIntStateOf(0)
     private val taskManager by lazy { ActivityTaskManager.getService() }
 
+    private val refreshGameTask = Runnable { updateGameTaskVisibility() }
+
+    private val taskListener = object : TaskStackListener() {
+        override fun onTaskFocusChanged(taskId: Int, focused: Boolean) {
+            scheduleGameTaskRefresh()
+        }
+
+        override fun onTaskStackChanged() {
+            scheduleGameTaskRefresh()
+        }
+
+        override fun onTaskMovedToFront(taskInfo: ActivityManager.RunningTaskInfo) {
+            scheduleGameTaskRefresh()
+        }
+    }
+
+    private fun scheduleGameTaskRefresh() {
+        handler.post {
+            handler.removeCallbacks(refreshGameTask)
+            if (gamePackage != null) {
+                updateGameTaskVisibility()
+                handler.postDelayed(refreshGameTask, TASK_RECHECK_DELAY_MS)
+            }
+        }
+    }
+
+    private fun updateGameTaskVisibility() {
+        val packageName = gamePackage ?: return
+        val tasks = try {
+            val matchesGame = { task: ActivityManager.RunningTaskInfo ->
+                task.userId == UserHandle.myUserId() &&
+                    (task.baseActivity?.packageName == packageName ||
+                        task.topActivity?.packageName == packageName)
+            }
+            val activityTaskManager = ActivityTaskManager.getInstance()
+            val nearbyTasks = activityTaskManager.getTasks(TASK_QUERY_LIMIT).filter(matchesGame)
+            if (nearbyTasks.isEmpty() || (gameTaskId != ActivityTaskManager.INVALID_TASK_ID &&
+                    nearbyTasks.none { it.taskId == gameTaskId })) {
+                activityTaskManager.getTasks(Int.MAX_VALUE).filter(matchesGame)
+            } else {
+                nearbyTasks
+            }
+        } catch (e: Exception) {
+            Log.w("GameSidebar", "Unable to query the game task", e)
+            return
+        }
+        val task = tasks.firstOrNull { it.taskId == gameTaskId }
+            ?: tasks.firstOrNull { it.isFocused }
+            ?: tasks.firstOrNull { it.isVisible }
+            ?: tasks.firstOrNull()
+        gameTaskId = task?.taskId ?: ActivityTaskManager.INVALID_TASK_ID
+        val hidden = task != null && task.isFloatingWindow && !task.isFocused
+        if (gameTaskHidden == hidden) return
+        gameTaskHidden = hidden
+        if (hidden) {
+            forceRemovePanel()
+            collapseVerticalPill()
+            setPillExpanded(false)
+        }
+        updateGameBarVisibility()
+    }
+
+    private fun updateGameBarVisibility() {
+        gameBarView.visibility = if (barReady && !shouldClose && !gameTaskHidden &&
+            !panelShowing && !screenshotInProgress && !mapperEditing) {
+            View.VISIBLE
+        } else {
+            View.INVISIBLE
+        }
+    }
+
     private val taskFpsCallback = object : TaskFpsCallback() {
         override fun onFpsReported(fps: Float) {
             if (::gameBarView.isInitialized && gameBarView.isAttachedToWindow) {
@@ -137,8 +218,9 @@ class GameSidebar(
         tileRepository.onBeforePlatformAction = { feature ->
             when (feature) {
                 AxPlatformClient.FEATURE_SCREENSHOT -> {
+                    screenshotInProgress = true
                     forceRemovePanel()
-                    gameBarView.visibility = View.INVISIBLE
+                    updateGameBarVisibility()
                 }
                 AxPlatformClient.FEATURE_SCREEN_RECORD -> {
                     if (!platform.getState(feature).getBoolean("enabled", false)) forceRemovePanel()
@@ -146,7 +228,8 @@ class GameSidebar(
             }
         }
         tileRepository.onScreenshotComplete = {
-            if (!shouldClose) gameBarView.visibility = View.VISIBLE
+            screenshotInProgress = false
+            updateGameBarVisibility()
         }
         gameBarView = ComposeView(context).apply {
             repeatWhenAttached {
@@ -230,6 +313,22 @@ class GameSidebar(
     }
 
     fun onGameStart(packageName: String) {
+        shouldClose = false
+        barReady = false
+        screenshotInProgress = false
+        mapperEditing = false
+        gameTaskHidden = false
+        gamePackage = packageName
+        gameTaskId = ActivityTaskManager.INVALID_TASK_ID
+        if (!taskListenerRegistered) {
+            try {
+                taskManager.registerTaskStackListener(taskListener)
+                taskListenerRegistered = true
+            } catch (e: Exception) {
+                Log.w("GameSidebar", "Unable to observe the game task", e)
+            }
+        }
+        scheduleGameTaskRefresh()
         if (BuildFlags.MAPPER_ENABLED) {
             mapperController.onGameStart(packageName)
         }
@@ -247,6 +346,12 @@ class GameSidebar(
     }
 
     fun onGameLeave() {
+        gamePackage = null
+        handler.removeCallbacks(refreshGameTask)
+        if (taskListenerRegistered) {
+            runCatching { taskManager.unregisterTaskStackListener(taskListener) }
+            taskListenerRegistered = false
+        }
         mapperController.onGameLeave()
         platform.removeListener(recordingListener)
         stopFpsTracking()
@@ -287,7 +392,8 @@ class GameSidebar(
     }
 
     private fun showPanel() {
-        if (panelShowing) return
+        updateGameTaskVisibility()
+        if (shouldClose || gameTaskHidden || panelShowing) return
         panelShowing = true
         panelDismissing.value = false
         handler.removeCallbacks(idleRunnable)
@@ -335,7 +441,7 @@ class GameSidebar(
         }
 
         if (!shouldClose) {
-            gameBarView.visibility = View.VISIBLE
+            updateGameBarVisibility()
             scheduleIdle()
         }
     }
@@ -352,7 +458,7 @@ class GameSidebar(
             runCatching { wm.removeViewImmediate(pv) }
             panelView = null
         }
-        if (::gameBarView.isInitialized) gameBarView.visibility = View.VISIBLE
+        if (::gameBarView.isInitialized) updateGameBarVisibility()
     }
 
     private fun createPanelView(): ComposeView {
@@ -482,6 +588,9 @@ class GameSidebar(
         pillExpandedState.value = expanded
         if (expanded) {
             barTopState.intValue = gameBarLayoutParam.y
+            gameBarLayoutParam.gravity = Gravity.TOP or Gravity.START
+            gameBarLayoutParam.x = 0
+            gameBarLayoutParam.y = 0
             gameBarLayoutParam.width = WindowManager.LayoutParams.MATCH_PARENT
             gameBarLayoutParam.height = WindowManager.LayoutParams.MATCH_PARENT
             gameBarLayoutParam.flags = gameBarLayoutParam.flags and
@@ -491,6 +600,7 @@ class GameSidebar(
             gameBarLayoutParam.height = WindowManager.LayoutParams.WRAP_CONTENT
             gameBarLayoutParam.flags = gameBarLayoutParam.flags or
                 WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
+            gameBarLayoutParam.y = barTopState.intValue
             dockGameBar()
         }
         runCatching { wm.updateViewLayout(gameBarView, gameBarLayoutParam) }
@@ -525,7 +635,9 @@ class GameSidebar(
 
     private fun initActions() {
         if (shouldClose) return
-        gameBarView.visibility = View.VISIBLE
+        updateGameTaskVisibility()
+        barReady = true
+        updateGameBarVisibility()
         gameBarView.animate().alpha(1f).setDuration(300).start()
         circleOnLeft = appSettings.x < 0
         dockedOnLeftState.value = circleOnLeft
@@ -549,6 +661,7 @@ class GameSidebar(
     }
 
     private fun enterMapperEdit() {
+        mapperEditing = true
         forceRemovePanel()
         gameBarView.animate().alpha(0f).setDuration(150).withEndAction {
             gameBarView.visibility = View.GONE
@@ -556,7 +669,8 @@ class GameSidebar(
         mapperController.onEditStarted = null
         mapperController.onEditFinished = {
             handler.post {
-                gameBarView.visibility = View.VISIBLE
+                mapperEditing = false
+                updateGameBarVisibility()
                 gameBarView.animate().alpha(1f).setDuration(200).start()
                 scheduleIdle()
             }
@@ -615,5 +729,7 @@ class GameSidebar(
 
     companion object {
         private const val IDLE_TIMEOUT_MS = 3000L
+        private const val TASK_RECHECK_DELAY_MS = 500L
+        private const val TASK_QUERY_LIMIT = 16
     }
 }
