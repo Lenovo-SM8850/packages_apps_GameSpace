@@ -482,6 +482,9 @@ class GameSidebar(
         pillExpandedState.value = expanded
         if (expanded) {
             barTopState.intValue = gameBarLayoutParam.y
+            gameBarLayoutParam.gravity = Gravity.TOP or Gravity.START
+            gameBarLayoutParam.x = 0
+            gameBarLayoutParam.y = 0
             gameBarLayoutParam.width = WindowManager.LayoutParams.MATCH_PARENT
             gameBarLayoutParam.height = WindowManager.LayoutParams.MATCH_PARENT
             gameBarLayoutParam.flags = gameBarLayoutParam.flags and
@@ -491,6 +494,7 @@ class GameSidebar(
             gameBarLayoutParam.height = WindowManager.LayoutParams.WRAP_CONTENT
             gameBarLayoutParam.flags = gameBarLayoutParam.flags or
                 WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
+            gameBarLayoutParam.y = barTopState.intValue
             dockGameBar()
         }
         runCatching { wm.updateViewLayout(gameBarView, gameBarLayoutParam) }
