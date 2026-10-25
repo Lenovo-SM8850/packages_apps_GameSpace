@@ -25,24 +25,6 @@
         app:lottie_rawRes="@raw/game_settings_illustration" />
 
     <PreferenceCategory
-        android:key="game_optimization"
-        android:title="@string/game_optimization_title">
-
-        <SwitchPreferenceCompat
-            android:key="game_memory_management"
-            android:title="@string/game_memory_management_title"
-            android:summary="@string/game_memory_management_summary"
-            android:defaultValue="false" />
-
-        <SwitchPreferenceCompat
-            android:key="game_cache_management"
-            android:title="@string/game_cache_management_title"
-            android:summary="@string/game_cache_management_summary"
-            android:defaultValue="true" />
-
-    </PreferenceCategory>
-
-    <PreferenceCategory
         android:key="in_game_preferences"
         android:title="@string/in_game_preferences_title">
 
