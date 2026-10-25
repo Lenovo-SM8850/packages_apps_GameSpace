@@ -54,7 +54,7 @@ class SystemSettings @Inject constructor(
                 resolver,
                 Settings.System.SCREEN_BRIGHTNESS_MODE,
                 Settings.System.SCREEN_BRIGHTNESS_MODE_AUTOMATIC,
-                UserHandle.USER_CURRENT
+                userId
             ) ==
                     Settings.System.SCREEN_BRIGHTNESS_MODE_AUTOMATIC
         set(auto) {
@@ -63,7 +63,7 @@ class SystemSettings @Inject constructor(
                 Settings.System.SCREEN_BRIGHTNESS_MODE,
                 if (auto) Settings.System.SCREEN_BRIGHTNESS_MODE_AUTOMATIC
                 else Settings.System.SCREEN_BRIGHTNESS_MODE_MANUAL,
-                UserHandle.USER_CURRENT
+                userId
             )
         }
 
@@ -71,12 +71,12 @@ class SystemSettings @Inject constructor(
         get() =
             Settings.System.getIntForUser(
                 resolver, Settings.System.STATUS_BAR_BRIGHTNESS_CONTROL, 0,
-                UserHandle.USER_CURRENT
+                userId
             ) == 1
         set(value) {
             Settings.System.putIntForUser(
                 resolver, Settings.System.STATUS_BAR_BRIGHTNESS_CONTROL,
-                if (value) 1 else 0, UserHandle.USER_CURRENT
+                if (value) 1 else 0, userId
             )
         }
 
@@ -110,12 +110,12 @@ class SystemSettings @Inject constructor(
     var threeScreenshot
         get() = LineageSettings.System.getIntForUser(
             resolver, LineageSettings.System.KEY_THREE_FINGERS_SWIPE_ACTION, 0,
-            UserHandle.USER_CURRENT
+            userId
         )
         set(value) {
             LineageSettings.System.putIntForUser(
                 resolver, LineageSettings.System.KEY_THREE_FINGERS_SWIPE_ACTION,
-                value, UserHandle.USER_CURRENT
+                value, userId
             )
         }
 
@@ -156,12 +156,12 @@ class SystemSettings @Inject constructor(
         get() =
             Settings.Secure.getIntForUser(
                 resolver, Settings.Secure.PULSE_BASS_HAPTICS, 0,
-                UserHandle.USER_CURRENT
+                userId
             )
         set(value) {
             Settings.Secure.putIntForUser(
                 resolver, Settings.Secure.PULSE_BASS_HAPTICS,
-                value, UserHandle.USER_CURRENT
+                value, userId
             )
         }
 
