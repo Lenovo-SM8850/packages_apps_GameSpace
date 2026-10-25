@@ -53,7 +53,8 @@ class GameSession @Inject constructor(
             .apply()
 
     fun register(sessionName: String) {
-        if (state?.packageName != sessionName) unregister()
+        if (state?.packageName == sessionName) return
+        unregister()
 
         state = SessionState(
             packageName = sessionName,
@@ -63,6 +64,10 @@ class GameSession @Inject constructor(
             threeScreenshot = systemSettings.threeScreenshot,
             ringerMode = audioManager.ringerModeInternal,
             pulseBassHaptics = systemSettings.pulseBassHaptics,
+            ownsBrightness = appSettings.noAutoBrightness,
+            ownsThreeScreenshot = appSettings.noThreeScreenshot,
+            ownsRingerMode = appSettings.ringerMode != 3,
+            ownsPulseBassHaptics = appSettings.noPulseBassHaptics,
         )
         systemSettings.bypassChargeEnabled = appSettings.isBypassChargeEnabled(sessionName)
         if (appSettings.noAutoBrightness) {
@@ -108,20 +113,20 @@ class GameSession @Inject constructor(
 
     fun unregister() {
         val orig = state?.copy() ?: return
-        if (appSettings.noAutoBrightness) {
+        if (orig.ownsBrightness) {
             orig.autoBrightness?.let { systemSettings.autoBrightness = it }
             orig.statusbarBrightness?.let { systemSettings.statusbarBrightness = it }
         }
         if (appSettings.danmakuNotification) {
             orig.headsup?.let { systemSettings.headsup = it }
         }
-        if (appSettings.noThreeScreenshot) {
+        if (orig.ownsThreeScreenshot) {
             systemSettings.threeScreenshot = orig.threeScreenshot
         }
-        if (appSettings.ringerMode != 3) {
+        if (orig.ownsRingerMode) {
             audioManager.ringerModeInternal = orig.ringerMode
         }
-        if (appSettings.noPulseBassHaptics) {
+        if (orig.ownsPulseBassHaptics) {
             systemSettings.pulseBassHaptics = orig.pulseBassHaptics
         }
         systemSettings.stayAwake = false
