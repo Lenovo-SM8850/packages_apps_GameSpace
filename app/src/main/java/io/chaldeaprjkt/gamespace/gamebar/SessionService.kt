@@ -23,6 +23,8 @@ import android.annotation.SuppressLint
 import android.app.GameManager
 import android.app.NotificationManager
 import android.app.Service
+import android.content.BroadcastReceiver
+import android.content.IntentFilter
 import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
@@ -82,12 +84,24 @@ class SessionService : Hilt_SessionService() {
         }
     }
 
+    private val dndReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            val nm = getSystemService(NotificationManager::class.java)
+            if (dndEnabledByUs && nm.currentInterruptionFilter !=
+                NotificationManager.INTERRUPTION_FILTER_PRIORITY) {
+                dndEnabledByUs = false
+            }
+        }
+    }
+
     @SuppressLint("WrongConstant")
     override fun onCreate() {
         super.onCreate()
         Log.d(TAG, "SessionService created")
         contentResolver.registerContentObserver(
             Settings.System.getUriFor("bypass_charge_enabled"), false, bypassObserver)
+        registerReceiver(dndReceiver, IntentFilter(
+            NotificationManager.ACTION_INTERRUPTION_FILTER_CHANGED), RECEIVER_EXPORTED)
 
         platform = AxPlatformClient.getInstance()
         platform.init(this)
@@ -209,7 +223,9 @@ class SessionService : Hilt_SessionService() {
         if (!dndEnabledByUs) return
         dndEnabledByUs = false
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        nm.setInterruptionFilter(previousDndFilter)
+        if (nm.currentInterruptionFilter == NotificationManager.INTERRUPTION_FILTER_PRIORITY) {
+            nm.setInterruptionFilter(previousDndFilter)
+        }
     }
 
     private fun applyGameModeConfig(app: String) {
@@ -228,6 +244,7 @@ class SessionService : Hilt_SessionService() {
         Log.d(TAG, "SessionService destroyed")
         contentResolver.unregisterContentObserver(bypassObserver)
         stopGameSession()
+        unregisterReceiver(dndReceiver)
         tileRepository.onScreenOff = null
         callListener.onIncomingCall = null
         tileRepository.dispose()
