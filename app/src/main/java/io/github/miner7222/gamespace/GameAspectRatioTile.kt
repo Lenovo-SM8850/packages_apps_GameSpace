@@ -118,7 +118,21 @@ class GameAspectRatioTile @Inject constructor(
         val next = if (option.id == FULLSCREEN_ID) null else option.id
         if (next !in PICKER_MODES) return
         reload()
-        select(next)
+        // Keep a bottom placement while switching between ratios.
+        val keepBottom = mode.value?.startsWith(BOTTOM_PREFIX) == true
+        select(if (keepBottom && next != null && next != DEEP_VIEW) {
+            BOTTOM_PREFIX + next.removePrefix(CENTER_PREFIX)
+        } else {
+            next
+        })
+    }
+
+    /** Moves the game window to the bottom or back to the center, keeping its ratio. */
+    fun setBottomPlacement(bottom: Boolean) {
+        reload()
+        val current = mode.value ?: return
+        if (current == DEEP_VIEW) return
+        select((if (bottom) BOTTOM_PREFIX else CENTER_PREFIX) + current.substringAfter(':'))
     }
 
     fun select(next: String?) {

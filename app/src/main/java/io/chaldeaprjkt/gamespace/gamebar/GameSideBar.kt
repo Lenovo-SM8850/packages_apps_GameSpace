@@ -84,6 +84,9 @@ class GameSidebar(
     private val platform: AxPlatformClient,
     private val mapperController: MapperController,
 ) {
+    /** Called when the pill, the panel or the mapper editor starts or stops covering the game. */
+    var onUiBlockingChanged: ((Boolean) -> Unit)? = null
+
     private val gameBarLayoutParam = createGameBarLayoutParam()
     private val panelLayoutParam = createPanelLayoutParam()
 
@@ -188,6 +191,10 @@ class GameSidebar(
             setPillExpanded(false)
         }
         updateGameBarVisibility()
+    }
+
+    private fun notifyUiBlocking() {
+        onUiBlockingChanged?.invoke(panelShowing || pillExpanded || mapperEditing)
     }
 
     private fun updateGameBarVisibility() {
@@ -317,6 +324,7 @@ class GameSidebar(
         barReady = false
         screenshotInProgress = false
         mapperEditing = false
+        notifyUiBlocking()
         gameTaskHidden = false
         gamePackage = packageName
         gameTaskId = ActivityTaskManager.INVALID_TASK_ID
@@ -395,6 +403,7 @@ class GameSidebar(
         updateGameTaskVisibility()
         if (shouldClose || gameTaskHidden || panelShowing) return
         panelShowing = true
+        notifyUiBlocking()
         panelDismissing.value = false
         handler.removeCallbacks(idleRunnable)
         isIdleState.value = false
@@ -416,6 +425,7 @@ class GameSidebar(
             brightnessInteractor.dispose()
             fpsInteractor.dispose()
             panelShowing = false
+            notifyUiBlocking()
         }
     }
 
@@ -426,6 +436,7 @@ class GameSidebar(
     private fun removePanelAndRestoreCircle() {
         if (!panelShowing) return
         panelShowing = false
+        notifyUiBlocking()
 
         brightnessInteractor.dispose()
         fpsInteractor.dispose()
@@ -449,6 +460,7 @@ class GameSidebar(
     private fun forceRemovePanel() {
         if (!panelShowing) return
         panelShowing = false
+        notifyUiBlocking()
         panelDismissing.value = true
 
         brightnessInteractor.dispose()
@@ -586,6 +598,7 @@ class GameSidebar(
         if (pillExpanded == expanded) return
         pillExpanded = expanded
         pillExpandedState.value = expanded
+        notifyUiBlocking()
         if (expanded) {
             barTopState.intValue = gameBarLayoutParam.y
             gameBarLayoutParam.gravity = Gravity.TOP or Gravity.START
@@ -662,6 +675,7 @@ class GameSidebar(
 
     private fun enterMapperEdit() {
         mapperEditing = true
+        notifyUiBlocking()
         forceRemovePanel()
         gameBarView.animate().alpha(0f).setDuration(150).withEndAction {
             gameBarView.visibility = View.GONE
@@ -670,6 +684,7 @@ class GameSidebar(
         mapperController.onEditFinished = {
             handler.post {
                 mapperEditing = false
+                notifyUiBlocking()
                 updateGameBarVisibility()
                 gameBarView.animate().alpha(1f).setDuration(200).start()
                 scheduleIdle()
