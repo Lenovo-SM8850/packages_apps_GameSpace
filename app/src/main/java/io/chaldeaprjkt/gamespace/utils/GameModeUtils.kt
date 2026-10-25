@@ -85,11 +85,16 @@ class GameModeUtils @Inject constructor(private val context: Context) {
 
     fun setActiveGameMode(systemSettings: SystemSettings, mode: Int) {
         val packageName = activeGame?.packageName ?: return
-        manager?.setGameMode(packageName, mode)
         activeGame = setGameModeFor(packageName, systemSettings, mode)
     }
 
+    @Synchronized
     fun setGameModeFor(packageName: String, systemSettings: SystemSettings, mode: Int): UserGame {
+        // Settings can change while no session is bound. Use this context's user in both cases.
+        val gameManager = manager ?: context.getSystemService(GameManager::class.java)
+        if (gameManager != null && gameManager.getGameMode(packageName) != mode) {
+            gameManager.setGameMode(packageName, mode)
+        }
         val data = UserGame(packageName, mode)
         systemSettings.userGames = systemSettings.userGames
             .filter { x -> x.packageName != packageName }
