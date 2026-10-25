@@ -17,8 +17,12 @@
 package io.chaldeaprjkt.gamespace
 
 import android.app.Application
+import android.os.UserHandle
 import android.util.Log
 import dagger.hilt.android.HiltAndroidApp
+import io.chaldeaprjkt.gamespace.utils.di.ServiceViewEntryPoint
+import io.chaldeaprjkt.gamespace.utils.entryPointOf
+import io.github.miner7222.gamespace.GameInterventionUpdater
 
 @HiltAndroidApp(Application::class)
 class GameSpace : Hilt_GameSpace() {
@@ -28,5 +32,10 @@ class GameSpace : Hilt_GameSpace() {
     override fun onCreate() {
         super.onCreate()
         Log.d(TAG, "Application created")
+        if (UserHandle.myUserId() == UserHandle.USER_SYSTEM) {
+            GameInterventionUpdater(
+                this, entryPointOf<ServiceViewEntryPoint>().gameModeUtils()
+            ).start()
+        }
     }
 }
