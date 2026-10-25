@@ -33,6 +33,7 @@ import android.view.WindowManager
 import android.widget.Toast
 import com.android.internal.policy.DesktopModeCompatPolicy
 import com.android.settingslib.display.BrightnessUtils.*
+import androidx.annotation.StringRes
 import androidx.collection.LruCache
 import androidx.core.graphics.drawable.*
 import androidx.compose.*
@@ -450,7 +451,7 @@ private fun InfoRow(
         )
         Spacer(modifier = Modifier.weight(1f))
         Text(
-            text = currentMode.displayName,
+            text = stringResource(currentMode.displayNameRes),
             style = MaterialTheme.typography.bodyLarge,
             color = modeColor
         )
@@ -1150,7 +1151,7 @@ fun GameModeSelector(
             ) {
                 Icon(
                     imageVector = mode.icon,
-                    contentDescription = mode.displayName,
+                    contentDescription = stringResource(mode.displayNameRes),
                     tint = color.copy(alpha = if (isSelected) 1f else 0.4f),
                     modifier = Modifier.size(24.dp)
                 )
@@ -1393,10 +1394,10 @@ private fun getPercentage(value: Double, min: Float, max: Float): Double {
     return ((value - min) / (max - min)).coerceIn(0.0, 1.0)
 }
 
-enum class GameMode(val displayName: String, val icon: ImageVector) {
-    Balanced("Balanced", Icons.Filled.SportsEsports),
-    PowerSave("Power Save", Icons.Filled.EnergySavingsLeaf),
-    Performance("Performance", Icons.Filled.ElectricBolt)
+enum class GameMode(@StringRes val displayNameRes: Int, val icon: ImageVector) {
+    Balanced(R.string.game_mode_balanced, Icons.Filled.SportsEsports),
+    PowerSave(R.string.game_mode_battery, Icons.Filled.EnergySavingsLeaf),
+    Performance(R.string.game_mode_performance, Icons.Filled.ElectricBolt)
 }
 
 fun GameMode.toSystemGameMode(): Int = when (this) {

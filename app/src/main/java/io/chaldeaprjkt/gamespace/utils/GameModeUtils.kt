@@ -15,6 +15,7 @@
  */
 package io.chaldeaprjkt.gamespace.utils
 
+import android.app.IGameManagerService
 import android.app.GameManager
 import android.content.Context
 import android.content.Intent
@@ -26,10 +27,10 @@ import android.os.ServiceManager
 import android.provider.Settings
 import io.chaldeaprjkt.gamespace.R
 import io.chaldeaprjkt.gamespace.data.GameConfig
-import io.chaldeaprjkt.gamespace.data.GameConfig.Companion.asConfig
 import io.chaldeaprjkt.gamespace.data.SystemSettings
 import io.chaldeaprjkt.gamespace.data.UserGame
 import javax.inject.Inject
+import kotlin.math.abs
 
 class GameModeUtils @Inject constructor(private val context: Context) {
 
@@ -45,24 +46,55 @@ class GameModeUtils @Inject constructor(private val context: Context) {
     }
 
     fun setIntervention(packageName: String, modeData: List<GameConfig>? = null) {
-        // Separate key and value by ;; to identify them from
-        // com.android.server.app.GameManagerService for the device_config property.
-        // Example: com.libremobileos.game;;mode=2,downscaleFactor=0.7:mode=3,downscaleFactor=0.8
-        val configValue = "${packageName};;${modeData?.asConfig()}"
-        Settings.Secure.putString(
-                context.contentResolver,
-                "game_overlay",
-                configValue
-        )
+        setInterventionForUser(packageName, modeData, context.userId)
+    }
+
+    @Synchronized
+    internal fun setInterventionForUser(
+        packageName: String, modeData: List<GameConfig>?, userId: Int
+    ): Boolean {
+        val service = IGameManagerService.Stub.asInterface(
+            ServiceManager.getService(Context.GAME_SERVICE)
+        ) ?: return false
+        if (modeData == null) {
+            service.resetGameModeConfigOverride(packageName, userId,
+                GameManager.GAME_MODE_PERFORMANCE)
+            service.resetGameModeConfigOverride(packageName, userId,
+                GameManager.GAME_MODE_BATTERY)
+        } else {
+            val previousMode = service.getGameMode(packageName, userId)
+            var updated = false
+            try {
+                modeData.forEach { config ->
+                    val currentFactor = service.getResolutionScalingFactor(
+                        packageName, config.mode, userId)
+                    if (abs(currentFactor - config.downscaleFactor) > 0.0001f) {
+                        service.updateResolutionScalingFactor(packageName, config.mode,
+                            config.downscaleFactor, userId)
+                        updated = true
+                    }
+                }
+            } finally {
+                if (updated && service.getGameMode(packageName, userId) != previousMode) {
+                    service.setGameMode(packageName, previousMode, userId)
+                }
+            }
+        }
+        return true
     }
 
     fun setActiveGameMode(systemSettings: SystemSettings, mode: Int) {
         val packageName = activeGame?.packageName ?: return
-        manager?.setGameMode(packageName, mode)
         activeGame = setGameModeFor(packageName, systemSettings, mode)
     }
 
+    @Synchronized
     fun setGameModeFor(packageName: String, systemSettings: SystemSettings, mode: Int): UserGame {
+        // Settings can change while no session is bound. Use this context's user in both cases.
+        val gameManager = manager ?: context.getSystemService(GameManager::class.java)
+        if (gameManager != null && gameManager.getGameMode(packageName) != mode) {
+            gameManager.setGameMode(packageName, mode)
+        }
         val data = UserGame(packageName, mode)
         systemSettings.userGames = systemSettings.userGames
             .filter { x -> x.packageName != packageName }

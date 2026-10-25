@@ -235,7 +235,7 @@ class SessionService : Hilt_SessionService() {
         gameModeUtils.activeGame = userGame
         
         val availableModes = gameManager.getAvailableGameModes(app)
-        if (availableModes.contains(preferred)) {
+        if (availableModes.contains(preferred) && gameManager.getGameMode(app) != preferred) {
             gameManager.setGameMode(app, preferred)
         }
     }
