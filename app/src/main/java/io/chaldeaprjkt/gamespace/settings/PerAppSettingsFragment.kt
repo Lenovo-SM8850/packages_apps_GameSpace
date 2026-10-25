@@ -64,8 +64,8 @@ class PerAppSettingsFragment : Hilt_PerAppSettingsFragment(),
         // Game mode picker — entries supplied dynamically by the ViewModel
         findPreference<ListPreference>(PREF_PREFERRED_MODE)?.apply {
             val opts = viewModel.gameModeOptions
-            entries = opts.map { it.second }.toTypedArray()
-            entryValues = opts.map { it.first.toString() }.toTypedArray()
+            entries = opts.map { context.getString(it.labelRes) }.toTypedArray()
+            entryValues = opts.map { it.mode.toString() }.toTypedArray()
             value = viewModel.preferredMode.toString()
             onPreferenceChangeListener = this@PerAppSettingsFragment
         }
