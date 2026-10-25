@@ -5,6 +5,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.SystemProperties
 import android.graphics.drawable.Drawable
+import androidx.annotation.StringRes
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -13,12 +14,18 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import io.chaldeaprjkt.gamespace.R
 import io.chaldeaprjkt.gamespace.data.AppSettings
 import io.chaldeaprjkt.gamespace.data.GameSession
 import io.chaldeaprjkt.gamespace.data.SystemSettings
 import io.chaldeaprjkt.gamespace.data.UserGame
 import io.chaldeaprjkt.gamespace.utils.GameModeUtils
 import javax.inject.Inject
+
+data class GameModeOption(
+    val mode: Int,
+    @StringRes val labelRes: Int
+)
 
 data class RegisteredGame(
     val packageName: String,
@@ -185,7 +192,11 @@ class SettingsViewModel @Inject constructor(
         loadRegisteredGames()
     }
 
-    val gameModeOptions = listOf(1 to "Standard", 2 to "Performance", 3 to "Battery")
+    val gameModeOptions = listOf(
+        GameModeOption(1, R.string.game_mode_balanced),
+        GameModeOption(2, R.string.game_mode_performance),
+        GameModeOption(3, R.string.game_mode_battery)
+    )
 
     val angleFeatureAvailable: Boolean
         get() = gameModeUtils.findAnglePackage()?.isEnabled == true && gameModeUtils.isVulkanSupported()
