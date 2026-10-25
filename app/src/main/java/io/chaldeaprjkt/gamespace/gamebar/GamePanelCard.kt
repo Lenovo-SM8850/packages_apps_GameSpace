@@ -52,6 +52,7 @@ import androidx.compose.material.icons.filled.ElectricBolt
 import androidx.compose.material.icons.filled.EnergySavingsLeaf
 import androidx.compose.material.icons.filled.SportsEsports
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Remove
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.runtime.*
@@ -72,6 +73,7 @@ import androidx.compose.ui.text.style.*
 import androidx.compose.ui.unit.*
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.input.pointer.*
+import androidx.compose.ui.window.PopupProperties
 import io.chaldeaprjkt.gamespace.R
 import io.chaldeaprjkt.gamespace.data.SystemSettings
 import io.chaldeaprjkt.gamespace.gamebar.brightness.*
@@ -838,6 +840,7 @@ fun SettingToggleRow(
 @Composable
 fun TileButton(tile: TileAction, modifier: Modifier = Modifier) {
     val isEnabled by tile.observeEnabled()
+    var pickerOpen by remember { mutableStateOf(false) }
     val bgColor = if (isEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceBright
     val fgColor = if (isEnabled) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
 
@@ -868,7 +871,10 @@ fun TileButton(tile: TileAction, modifier: Modifier = Modifier) {
                 .clickable(
                     interactionSource = interactionSource,
                     indication = null,
-                ) { tile.toggle() },
+                ) {
+                    tile.toggle()
+                    if (tile.options.isNotEmpty()) pickerOpen = true
+                },
             contentAlignment = Alignment.Center,
         ) {
             Icon(
@@ -876,6 +882,11 @@ fun TileButton(tile: TileAction, modifier: Modifier = Modifier) {
                 contentDescription = tile.description,
                 tint = fgColor,
                 modifier = Modifier.size(22.dp),
+            )
+            TileOptionMenu(
+                tile = tile,
+                expanded = pickerOpen,
+                onDismiss = { pickerOpen = false },
             )
         }
         Text(
@@ -888,6 +899,44 @@ fun TileButton(tile: TileAction, modifier: Modifier = Modifier) {
                 .width(64.dp)
                 .basicMarquee(),
         )
+    }
+}
+
+@Composable
+private fun TileOptionMenu(tile: TileAction, expanded: Boolean, onDismiss: () -> Unit) {
+    val options = tile.options
+    // The panel window never takes focus, so keep the menu from taking it from the game too.
+    DropdownMenu(
+        expanded = expanded && options.isNotEmpty(),
+        onDismissRequest = onDismiss,
+        properties = PopupProperties(focusable = false),
+        modifier = Modifier.heightIn(max = (LocalConfiguration.current.screenHeightDp - 64).dp),
+    ) {
+        options.forEach { option ->
+            DropdownMenuItem(
+                text = {
+                    Text(
+                        text = option.label,
+                        color = if (option.selected) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.onSurface,
+                        fontWeight = if (option.selected) FontWeight.Bold else FontWeight.Normal,
+                    )
+                },
+                trailingIcon = if (option.selected) {
+                    {
+                        Icon(
+                            imageVector = Icons.Rounded.Check,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                } else null,
+                onClick = {
+                    onDismiss()
+                    tile.selectOption(option)
+                },
+            )
+        }
     }
 }
 

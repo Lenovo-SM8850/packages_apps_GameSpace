@@ -182,4 +182,15 @@
     <string name="tile_screen_off_description">Keep the game running with the screen off</string>
     <string name="screen_off_notice">Press the power button to turn the screen back on</string>
     <string name="tile_halo">Halo</string>
+    <string name="tile_aspect_ratio">Aspect ratio</string>
+    <string name="aspect_ratio_16_9">16:9</string>
+    <string name="aspect_ratio_fullscreen">Full screen</string>
+    <string name="aspect_ratio_21_10">21:10</string>
+    <string name="aspect_ratio_24_10">24:10</string>
+    <string name="aspect_ratio_28_10">28:10</string>
+    <string name="aspect_ratio_32_9">32:9</string>
+    <string name="aspect_ratio_deep_view">Deep view</string>
+    <string name="aspect_ratio_change_failed">Could not change aspect ratio.</string>
+    <string name="aspect_ratio_swipe_down_again">Swipe down again to move the game to the bottom</string>
+    <string name="aspect_ratio_swipe_up_again">Swipe up again to move the game back to the center</string>
 </resources>

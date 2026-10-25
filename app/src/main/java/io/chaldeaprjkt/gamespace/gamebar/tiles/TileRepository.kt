@@ -53,6 +53,7 @@ import androidx.preference.PreferenceManager
 import com.android.axion.platform.AxPlatformClient
 import com.android.internal.util.ScreenshotHelper
 import io.chaldeaprjkt.gamespace.R
+import io.github.miner7222.gamespace.GameAspectRatioTile
 import io.chaldeaprjkt.gamespace.data.AppSettings
 import io.chaldeaprjkt.gamespace.data.GameSession
 import io.chaldeaprjkt.gamespace.data.SystemSettings
@@ -60,14 +61,20 @@ import javax.inject.Inject
 import javax.inject.Singleton
 import lineageos.hardware.LineageHardwareManager
 
+/** One row of a tile's picker; [id] is only meaningful to the tile that produced it. */
+data class TileOption(val id: String, val label: String, val selected: Boolean)
+
 interface TileAction {
     val id: String
     val label: String
     val description: String get() = label
     val icon: Int
     val isEnabled: Boolean
+    /** Non-empty when tapping the tile opens a picker after [toggle] ran. */
+    val options: List<TileOption> get() = emptyList()
     @Composable fun observeEnabled(): State<Boolean>
     fun toggle()
+    fun selectOption(option: TileOption) {}
 }
 
 class ToggleableTile(
@@ -153,6 +160,7 @@ class TileRepository @Inject constructor(
     private val appSettings: AppSettings,
     private val systemSettings: SystemSettings,
     private val gameSession: GameSession,
+    private val aspectRatioTile: GameAspectRatioTile,
 ) {
     private lateinit var platform: AxPlatformClient
     private var listening = false
@@ -282,8 +290,18 @@ class TileRepository @Inject constructor(
         refreshPlatformStates()
     }
 
+    fun onGameStart(packageName: String) {
+        aspectRatioTile.onGameStart(packageName)
+        refreshPlatformStates()
+    }
+
+    fun onGameStop() {
+        aspectRatioTile.onGameStop()
+    }
+
     fun refreshPlatformStates() {
         if (!listening || !::platform.isInitialized) return
+        aspectRatioTile.refresh()
         supportedFeatures = platform.supportedFeatures.toSet()
         platformTiles.forEach { tile ->
             updatePlatformTile(tile, platform.getState(tile.id))
@@ -406,6 +424,7 @@ class TileRepository @Inject constructor(
             "bypass_charge_enabled" -> Build.MANUFACTURER.equals("Google", ignoreCase = true) ||
                 SystemProperties.getBoolean("persist.sys.ax_chg_bypass", false) ||
                 SystemProperties.getBoolean("persist.sys.battery_bypass_supported", false)
+            "screen_aspect_ratio" -> aspectRatioTile.isAvailable
             "touch_boost" -> SystemProperties.getBoolean("persist.sys.ax_touch_boost", false)
             "boost_memory" ->
                 context.checkSelfPermission(Manifest.permission.KILL_BACKGROUND_PROCESSES) ==
@@ -475,7 +494,11 @@ class TileRepository @Inject constructor(
             preferences.edit().putBoolean("halo_tile_added", true).apply()
             if (order.isNotEmpty()) order + "halo" else order
         } else order
-        val filteredOrder = haloOrder.filter { it in catalogIds }.distinct()
+        val aspectOrder = if (!preferences.getBoolean("aspect_ratio_tile_added", false)) {
+            preferences.edit().putBoolean("aspect_ratio_tile_added", true).apply()
+            if (haloOrder.isNotEmpty()) haloOrder + aspectRatioTile.id else haloOrder
+        } else haloOrder
+        val filteredOrder = aspectOrder.filter { it in catalogIds }.distinct()
         if (appSettings.preferredTileOrder != filteredOrder) {
             appSettings.preferredTileOrder = filteredOrder
         }
@@ -838,6 +861,8 @@ class TileRepository @Inject constructor(
                 setter = { gameSession.setBypassChargeEnabled(it) }
             )
         )
+
+        add(aspectRatioTile)
 
         add(
             ToggleableTile(

@@ -28,6 +28,7 @@ import io.chaldeaprjkt.gamespace.data.SystemSettings
 import io.chaldeaprjkt.gamespace.gamebar.brightness.*
 import io.chaldeaprjkt.gamespace.gamebar.fps.FpsInteractor
 import io.chaldeaprjkt.gamespace.gamebar.tiles.TileRepository
+import io.github.miner7222.gamespace.GameAspectRatioTile
 import io.chaldeaprjkt.gamespace.utils.GameModeUtils
 import io.chaldeaprjkt.gamespace.utils.ScreenUtils
 import javax.inject.Singleton
@@ -88,5 +89,6 @@ object MainModule {
         appSettings: AppSettings,
         systemSettings: SystemSettings,
         gameSession: GameSession,
-    ): TileRepository = TileRepository(context, appSettings, systemSettings, gameSession)
+        aspectRatioTile: GameAspectRatioTile,
+    ): TileRepository = TileRepository(context, appSettings, systemSettings, gameSession, aspectRatioTile)
 }

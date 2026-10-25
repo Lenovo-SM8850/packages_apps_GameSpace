@@ -188,6 +188,7 @@ class SessionService : Hilt_SessionService() {
         
         applyAutoDnd()
 
+        tileRepository.onGameStart(packageName)
         sidebar.onGameStart(packageName)
         screenOffSession.onGameStart(packageName)
 
@@ -197,6 +198,7 @@ class SessionService : Hilt_SessionService() {
     private fun stopGameSession() {
         Log.i(TAG, "Stopping game session")
 
+        tileRepository.onGameStop()
         screenOffSession.onGameStop()
         sidebar.onGameLeave()
         session.unregister()
