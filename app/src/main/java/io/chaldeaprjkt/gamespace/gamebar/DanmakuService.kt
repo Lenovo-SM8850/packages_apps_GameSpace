@@ -239,11 +239,11 @@ class DanmakuService @Inject constructor(
         textDirection = View.TEXT_DIRECTION_FIRST_STRONG
         textAlignment = View.TEXT_ALIGNMENT_VIEW_START
         gravity = Gravity.CENTER_VERTICAL
-        setTextSize(TypedValue.COMPLEX_UNIT_PX, NOTIFICATION_SIZE.toFloat())
         setTextColor(context.getColor(R.color.danmaku_text))
         val paddingHorizontal = resources.getDimensionPixelSize(R.dimen.danmaku_padding_horizontal)
         val paddingVertical = resources.getDimensionPixelSize(R.dimen.danmaku_padding_vertical)
         setPadding(paddingHorizontal, paddingVertical, paddingHorizontal, paddingVertical)
+        setTextSize(TypedValue.COMPLEX_UNIT_PX, resources.getDimension(R.dimen.danmaku_text_size))
         isFocusable = false
         isClickable = false
         this.text = text
@@ -566,8 +566,6 @@ class DanmakuService @Inject constructor(
     companion object {
 
         private const val TAG = "DanmakuService"
-
-        private const val NOTIFICATION_SIZE = 60
 
         private const val LINE_HEIGHT_PROBE = "Ag"
         private val WHITESPACE = Regex("\\s+")
