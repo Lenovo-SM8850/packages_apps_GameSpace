@@ -18,6 +18,9 @@
 package io.chaldeaprjkt.gamespace.gamebar
 
 import io.github.miner7222.gamespace.ScreenOffSessionController
+import io.github.miner7222.gamespace.GameScreenSampler
+import java.io.FileDescriptor
+import java.io.PrintWriter
 
 import android.annotation.SuppressLint
 import android.app.ActivityManager
@@ -82,6 +85,7 @@ class SessionService : Hilt_SessionService() {
     @Inject lateinit var gameModeUtils: GameModeUtils
     @Inject lateinit var callListener: CallListener
     @Inject lateinit var danmakuService: DanmakuService
+    @Inject lateinit var screenSampler: GameScreenSampler
     @Inject lateinit var brightnessInteractor: BrightnessInteractor
     @Inject lateinit var fpsInteractor: FpsInteractor
     @Inject lateinit var tileRepository: TileRepository
@@ -363,6 +367,7 @@ class SessionService : Hilt_SessionService() {
         currentPackage = packageName
         gameTaskIds = tasks.orEmpty()
         bypassChargeActive = false
+        screenSampler.start(packageName)
         
         session.unregister()
         session.register(packageName)
@@ -392,6 +397,7 @@ class SessionService : Hilt_SessionService() {
         releaseWifiLock()
 
         setGameUiVisible(false)
+        screenSampler.stop()
         tileRepository.onGameStop()
         screenOffSession.onGameStop()
         sidebar.onGameLeave()
@@ -582,7 +588,12 @@ class SessionService : Hilt_SessionService() {
         mediaVolume.dispose()
         gameModeUtils.unbind()
         danmakuService.destroy()
+        screenSampler.destroy()
         super.onDestroy()
+    }
+
+    override fun dump(fd: FileDescriptor, writer: PrintWriter, args: Array<out String>) {
+        screenSampler.dump(writer)
     }
 
     override fun onBind(intent: Intent?): IBinder = sessionBinder
