@@ -18,4 +18,9 @@
 <resources>
     <dimen name="notification_vertical_offset_landscape">48dp</dimen>
     <dimen name="notification_vertical_offset_portrait">36dp</dimen>
+    <dimen name="danmaku_padding_horizontal">8dp</dimen>
+    <dimen name="danmaku_padding_vertical">4dp</dimen>
+    <dimen name="danmaku_backing_radius">8dp</dimen>
+    <dimen name="danmaku_lane_spacing">2dp</dimen>
+    <dimen name="danmaku_lane_gap">32dp</dimen>
 </resources>

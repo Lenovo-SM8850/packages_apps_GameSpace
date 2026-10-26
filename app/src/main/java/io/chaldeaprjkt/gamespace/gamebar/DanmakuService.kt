@@ -26,7 +26,6 @@ import android.animation.ValueAnimator
 import android.content.ComponentName
 import android.content.Context
 import android.content.res.Configuration
-import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.Rect
 import android.graphics.drawable.GradientDrawable
@@ -108,8 +107,6 @@ class DanmakuService @Inject constructor(
     }
 
     private class SampleTarget(val danmaku: Danmaku, val bounds: Rect)
-
-    private val density = context.resources.displayMetrics.density
 
     private val windowManager: WindowManager = context.getSystemService(WindowManager::class.java)!!
 
@@ -242,10 +239,11 @@ class DanmakuService @Inject constructor(
         textDirection = View.TEXT_DIRECTION_FIRST_STRONG
         textAlignment = View.TEXT_ALIGNMENT_VIEW_START
         gravity = Gravity.CENTER_VERTICAL
-        setTextColor(Color.WHITE)
-        setPadding((8 * density).toInt(), (4 * density).toInt(),
-                (8 * density).toInt(), (4 * density).toInt())
         setTextSize(TypedValue.COMPLEX_UNIT_PX, NOTIFICATION_SIZE.toFloat())
+        setTextColor(context.getColor(R.color.danmaku_text))
+        val paddingHorizontal = resources.getDimensionPixelSize(R.dimen.danmaku_padding_horizontal)
+        val paddingVertical = resources.getDimensionPixelSize(R.dimen.danmaku_padding_vertical)
+        setPadding(paddingHorizontal, paddingVertical, paddingHorizontal, paddingVertical)
         isFocusable = false
         isClickable = false
         this.text = text
@@ -261,7 +259,7 @@ class DanmakuService @Inject constructor(
         val metrics = windowManager.currentWindowMetrics
         screenWidth = metrics.bounds.width()
         screenHeight = metrics.bounds.height()
-        laneGap = LANE_GAP_DP * density
+        laneGap = context.resources.getDimension(R.dimen.danmaku_lane_gap)
 
         // Every line has the same height, so one probe line sizes all lanes.
         measurer.text = LINE_HEIGHT_PROBE
@@ -270,7 +268,7 @@ class DanmakuService @Inject constructor(
             View.MeasureSpec.UNSPECIFIED
         )
         lineHeight = measurer.measuredHeight
-        val pitch = lineHeight + (LANE_SPACING_DP * density).toInt()
+        val pitch = lineHeight + context.resources.getDimensionPixelSize(R.dimen.danmaku_lane_spacing)
 
         // Keep the text of the base lane where the single line used to sit.
         val baseTop = getOffsetForPosition() - measurer.paddingTop
@@ -407,8 +405,8 @@ class DanmakuService @Inject constructor(
     private fun place(line: Pending, lane: Lane, now: Long) {
         val view = createTextView(line.text)
         val backing = GradientDrawable().apply {
-            setColor(Color.BLACK)
-            cornerRadius = 8f * density
+            setColor(context.getColor(R.color.danmaku_backing))
+            cornerRadius = context.resources.getDimension(R.dimen.danmaku_backing_radius)
             alpha = 0
         }
         view.background = backing
@@ -580,8 +578,6 @@ class DanmakuService @Inject constructor(
 
         private const val MAX_LANES = 8
         private const val MAX_LANE_STEPS = 16
-        private const val LANE_SPACING_DP = 2
-        private const val LANE_GAP_DP = 32f
         private const val FRAME_SKEW_MS = 32L
 
         private const val MAX_PENDING = 64
