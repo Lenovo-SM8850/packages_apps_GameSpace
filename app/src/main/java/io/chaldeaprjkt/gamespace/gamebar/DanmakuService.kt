@@ -26,8 +26,6 @@ import android.animation.ValueAnimator
 import android.content.ComponentName
 import android.content.Context
 import android.content.res.Configuration
-import android.graphics.Bitmap
-import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.Rect
 import android.graphics.drawable.GradientDrawable
@@ -40,22 +38,18 @@ import android.text.TextUtils
 import android.util.Log
 import android.util.TypedValue
 import android.view.Gravity
-import android.view.SurfaceControl
 import android.view.View
 import android.view.WindowManager
 import android.view.WindowManager.LayoutParams
-import android.view.WindowManagerGlobal
+import android.view.animation.AnimationUtils
 import android.view.animation.LinearInterpolator
 import android.widget.FrameLayout
 import android.widget.TextView
-import android.window.ScreenCapture
-import android.window.ScreenCaptureInternal
 
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.android.scopes.ServiceScoped
 
 import java.util.ArrayDeque
-import java.util.concurrent.Executors
 
 import kotlin.math.ceil
 import kotlin.math.floor
@@ -66,6 +60,7 @@ import javax.inject.Inject
 
 import io.chaldeaprjkt.gamespace.R
 import io.chaldeaprjkt.gamespace.data.AppSettings
+import io.github.miner7222.gamespace.GameScreenSampler
 
 interface DanmakuServiceInterface {
     val danmakuNotificationMode: Boolean
@@ -76,7 +71,8 @@ interface DanmakuServiceInterface {
 @ServiceScoped
 class DanmakuService @Inject constructor(
     @ApplicationContext private val context: Context,
-    private val appSettings: AppSettings
+    private val appSettings: AppSettings,
+    private val screenSampler: GameScreenSampler
 ) : DanmakuServiceInterface {
 
     private lateinit var notificationListener: DanmakuServiceListener
@@ -110,8 +106,6 @@ class DanmakuService @Inject constructor(
     }
 
     private class SampleTarget(val danmaku: Danmaku, val bounds: Rect)
-
-    private val density = context.resources.displayMetrics.density
 
     private val windowManager: WindowManager = context.getSystemService(WindowManager::class.java)!!
 
@@ -158,10 +152,8 @@ class DanmakuService @Inject constructor(
     private var laneGap = 0f
     private var drainAfterAttach = false
 
-    private val samplingExecutor = Executors.newSingleThreadExecutor()
     private var samplingEnabled = false
-    private var samplingInFlight = false
-    private var samplingGeneration = 0
+    private var lastFrameAt = -1L
     private var destroyed = false
     private val sampleBrightness = Runnable { sampleBackgroundBrightness() }
     private val drainRunnable = Runnable { drainPending() }
@@ -193,7 +185,6 @@ class DanmakuService @Inject constructor(
         pending.clear()
         clearActive()
         removeWindow()
-        samplingExecutor.shutdownNow()
     }
 
     private fun registerListener() {
@@ -226,10 +217,11 @@ class DanmakuService @Inject constructor(
         textDirection = View.TEXT_DIRECTION_FIRST_STRONG
         textAlignment = View.TEXT_ALIGNMENT_VIEW_START
         gravity = Gravity.CENTER_VERTICAL
-        setTextColor(Color.WHITE)
-        setPadding((8 * density).toInt(), (4 * density).toInt(),
-                (8 * density).toInt(), (4 * density).toInt())
-        setTextSize(TypedValue.COMPLEX_UNIT_PX, NOTIFICATION_SIZE.toFloat())
+        setTextColor(context.getColor(R.color.danmaku_text))
+        val paddingHorizontal = resources.getDimensionPixelSize(R.dimen.danmaku_padding_horizontal)
+        val paddingVertical = resources.getDimensionPixelSize(R.dimen.danmaku_padding_vertical)
+        setPadding(paddingHorizontal, paddingVertical, paddingHorizontal, paddingVertical)
+        setTextSize(TypedValue.COMPLEX_UNIT_PX, resources.getDimension(R.dimen.danmaku_text_size))
         isFocusable = false
         isClickable = false
         this.text = text
@@ -245,7 +237,7 @@ class DanmakuService @Inject constructor(
         val metrics = windowManager.currentWindowMetrics
         screenWidth = metrics.bounds.width()
         screenHeight = metrics.bounds.height()
-        laneGap = LANE_GAP_DP * density
+        laneGap = context.resources.getDimension(R.dimen.danmaku_lane_gap)
 
         // Every line has the same height, so one probe line sizes all lanes.
         measurer.text = LINE_HEIGHT_PROBE
@@ -254,7 +246,7 @@ class DanmakuService @Inject constructor(
             View.MeasureSpec.UNSPECIFIED
         )
         lineHeight = measurer.measuredHeight
-        val pitch = lineHeight + (LANE_SPACING_DP * density).toInt()
+        val pitch = lineHeight + context.resources.getDimensionPixelSize(R.dimen.danmaku_lane_spacing)
 
         // Keep the text of the base lane where the single line used to sit.
         val baseTop = getOffsetForPosition() - measurer.paddingTop
@@ -391,8 +383,8 @@ class DanmakuService @Inject constructor(
     private fun place(line: Pending, lane: Lane, now: Long) {
         val view = createTextView(line.text)
         val backing = GradientDrawable().apply {
-            setColor(Color.BLACK)
-            cornerRadius = 8f * density
+            setColor(context.getColor(R.color.danmaku_backing))
+            cornerRadius = context.resources.getDimension(R.dimen.danmaku_backing_radius)
             alpha = 0
         }
         view.background = backing
@@ -479,7 +471,8 @@ class DanmakuService @Inject constructor(
 
     private fun stopBrightnessSampling() {
         samplingEnabled = false
-        samplingGeneration++
+        lastFrameAt = -1L
+        screenSampler.setDanmakuRegion(null)
         handler.removeCallbacks(sampleBrightness)
     }
 
@@ -501,114 +494,24 @@ class DanmakuService @Inject constructor(
             stopBrightnessSampling()
             return
         }
-        if (samplingInFlight) return
         val targets = active.mapNotNull { danmaku ->
             getTextBoundsOnScreen(danmaku)?.let { SampleTarget(danmaku, it) }
         }
-        val surface = container.viewRootImpl?.surfaceControl
-        if (targets.isEmpty() || surface == null || !surface.isValid) {
-            handler.postDelayed(sampleBrightness, BRIGHTNESS_SAMPLE_INTERVAL)
-            return
-        }
-
-        // One capture of the lane band serves every line in it.
-        val band = Rect(0, layoutParams.y, screenWidth, layoutParams.y + layoutParams.height)
-        // Keep our surface alive until the capture request has been sent on the worker.
-        val excludedSurface = SurfaceControl(surface, TAG)
-        val displayId = container.display.displayId
-        val generation = samplingGeneration
-        samplingInFlight = true
-        samplingExecutor.execute {
-            val shares = try {
-                captureBrightShares(band, targets, displayId, excludedSurface)
-            } catch (e: RemoteException) {
-                null
-            } catch (e: RuntimeException) {
-                null
-            } finally {
-                excludedSurface.release()
-            }
-            handler.post {
-                samplingInFlight = false
-                if (samplingEnabled) {
-                    if (generation == samplingGeneration) {
-                        targets.forEach { target ->
-                            val danmaku = target.danmaku
-                            if (danmaku.finished) return@forEach
-                            // Keep text readable if a capture is temporarily unavailable.
-                            if (shares == null) {
-                                updateBacking(danmaku, null)
-                            } else {
-                                shares[danmaku]?.let { updateBacking(danmaku, it) }
-                            }
-                        }
-                    }
-                    handler.postDelayed(sampleBrightness, BRIGHTNESS_SAMPLE_INTERVAL)
+        screenSampler.setDanmakuRegion(if (targets.isEmpty()) null else
+                Rect(0, layoutParams.y, screenWidth, layoutParams.y + layoutParams.height))
+        val frame = screenSampler.freshFrame()
+        if (frame == null) {
+            // Keep text readable if a capture is temporarily unavailable.
+            targets.forEach { updateBacking(it.danmaku, null) }
+        } else if (frame.capturedAt != lastFrameAt) {
+            lastFrameAt = frame.capturedAt
+            targets.forEach { target ->
+                if (!target.danmaku.finished) {
+                    updateBacking(target.danmaku, frame.brightShare(target.bounds, BRIGHT_LUMINANCE))
                 }
             }
         }
-    }
-
-    private class BackgroundCaptureArgsBuilder :
-            ScreenCaptureInternal.CaptureArgs.Builder<BackgroundCaptureArgsBuilder>()
-
-    private fun captureBrightShares(band: Rect, targets: List<SampleTarget>, displayId: Int,
-            excludedSurface: SurfaceControl): Map<Danmaku, Float>? {
-        val scale = min(1f, SAMPLE_MAX_WIDTH.toFloat() / band.width())
-        val args = BackgroundCaptureArgsBuilder()
-            .setSourceCrop(band)
-            .setFrameScale(scale)
-            .setPixelFormat(PixelFormat.RGBA_8888)
-            .setSecureContentPolicy(ScreenCapture.ScreenCaptureParams.SECURE_CONTENT_POLICY_CAPTURE)
-            .setExcludeLayers(arrayOf(excludedSurface))
-            .build()
-        val wmService = WindowManagerGlobal.getWindowManagerService() ?: return null
-        val listener = ScreenCaptureInternal.createSyncCaptureListener()
-        // WindowManager captures the display's layer tree in logical screen coordinates.
-        wmService.captureDisplay(displayId, args, listener)
-        val capture = listener.buffer ?: return null
-        val buffer = capture.hardwareBuffer ?: return null
-        try {
-            val hardwareBitmap = capture.asBitmap() ?: return null
-            val bitmap = try {
-                hardwareBitmap.copy(Bitmap.Config.ARGB_8888, false)
-            } finally {
-                hardwareBitmap.recycle()
-            } ?: return null
-            try {
-                val width = bitmap.width
-                val height = bitmap.height
-                val pixels = IntArray(width * height)
-                bitmap.getPixels(pixels, 0, width, 0, 0, width, height)
-                val scaleX = width.toFloat() / band.width()
-                val scaleY = height.toFloat() / band.height()
-                val shares = HashMap<Danmaku, Float>()
-                for (target in targets) {
-                    val left = floor((target.bounds.left - band.left) * scaleX).toInt()
-                        .coerceIn(0, width)
-                    val right = ceil((target.bounds.right - band.left) * scaleX).toInt()
-                        .coerceIn(0, width)
-                    val top = floor((target.bounds.top - band.top) * scaleY).toInt()
-                        .coerceIn(0, height)
-                    val bottom = ceil((target.bounds.bottom - band.top) * scaleY).toInt()
-                        .coerceIn(0, height)
-                    if (right <= left || bottom <= top) continue
-                    var bright = 0
-                    for (y in top until bottom) {
-                        for (x in left until right) {
-                            // Color.luminance linearizes sRGB before applying the weights.
-                            if (Color.luminance(pixels[y * width + x]) > BRIGHT_LUMINANCE) bright++
-                        }
-                    }
-                    shares[target.danmaku] = bright.toFloat() / ((right - left) * (bottom - top))
-                }
-                return shares
-            } finally {
-                bitmap.recycle()
-            }
-        } finally {
-            buffer.close()
-        }
+        handler.postDelayed(sampleBrightness, BRIGHTNESS_SAMPLE_INTERVAL)
     }
 
     private fun updateBacking(danmaku: Danmaku, brightShare: Float?) {
@@ -631,7 +534,8 @@ class DanmakuService @Inject constructor(
         danmaku.backingAnimator?.cancel()
         danmaku.backingAnimator = ValueAnimator.ofInt(danmaku.backing.alpha,
                 if (showBacking) BACKING_ALPHA else 0).apply {
-            duration = BACKING_FADE_DURATION
+            duration = context.resources.getInteger(android.R.integer.config_shortAnimTime).toLong()
+            interpolator = AnimationUtils.loadInterpolator(context, android.R.interpolator.fast_out_slow_in)
             addUpdateListener { danmaku.backing.alpha = it.animatedValue as Int }
             start()
         }
@@ -640,8 +544,6 @@ class DanmakuService @Inject constructor(
     companion object {
 
         private const val TAG = "DanmakuService"
-
-        private const val NOTIFICATION_SIZE = 60
 
         private const val LINE_HEIGHT_PROBE = "Ag"
         private val WHITESPACE = Regex("\\s+")
@@ -652,8 +554,6 @@ class DanmakuService @Inject constructor(
 
         private const val MAX_LANES = 8
         private const val MAX_LANE_STEPS = 16
-        private const val LANE_SPACING_DP = 2
-        private const val LANE_GAP_DP = 32f
         private const val FRAME_SKEW_MS = 32L
 
         private const val MAX_PENDING = 64
@@ -662,12 +562,10 @@ class DanmakuService @Inject constructor(
         private const val END_BACKSTOP_MS = 1000L
 
         private const val BRIGHTNESS_SAMPLE_INTERVAL = 200L
-        private const val SAMPLE_MAX_WIDTH = 512
         private const val BRIGHT_LUMINANCE = 0.7f
         private const val BRIGHT_SHARE_SHOW = 0.08f
         private const val BRIGHT_SHARE_HIDE = 0.04f
         private const val DARK_SAMPLES_TO_HIDE = 2
         private const val BACKING_ALPHA = 102
-        private const val BACKING_FADE_DURATION = 150L
     }
 }

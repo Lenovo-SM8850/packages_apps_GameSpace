@@ -16,4 +16,9 @@
     <color name="barButtonAccent">@android:color/system_accent1_600</color>
     <color name="barButtonBackground">@android:color/system_accent1_600</color>
     <color name="onBarBackground">@android:color/system_neutral1_0</color>
+
+    <!-- Danmaku lines scroll over game content of any colour, so they keep white text and a black
+         backing in both themes. -->
+    <color name="danmaku_text">@android:color/white</color>
+    <color name="danmaku_backing">@android:color/black</color>
 </resources>
