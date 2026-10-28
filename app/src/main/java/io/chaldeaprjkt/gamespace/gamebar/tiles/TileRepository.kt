@@ -289,6 +289,7 @@ class TileRepository @Inject constructor(
 
     fun onGameStart(packageName: String) {
         aspectRatioTile.onGameStart(packageName)
+        if (appSettings.autoBoostMemory) clearBackgroundProcesses()
         refreshPlatformStates()
     }
 
@@ -511,8 +512,8 @@ class TileRepository @Inject constructor(
                 activityManager.killBackgroundProcesses(packageName)
                 memoryBoosted = true
             }
-        if (memoryBoosted)
-            Toast.makeText(context, context.getString(R.string.game_memory_boosted), Toast.LENGTH_SHORT).show()
+        val message = if (memoryBoosted) R.string.game_memory_boosted else R.string.game_memory_nothing_to_boost
+        Toast.makeText(context, context.getString(message), Toast.LENGTH_SHORT).show()
     }
 
     fun updateTileSelection(selectedIds: List<String>) {
