@@ -60,6 +60,11 @@ class AppSettings @Inject constructor(private val context: Context) {
         get() = db.getBoolean(KEY_3SCREENSHOT_DISABLE, false)
         set(it) = db.edit().putBoolean(KEY_3SCREENSHOT_DISABLE, it).apply()
 
+    // Runs the Boost Memory tile's cleanup when a game session starts.
+    var autoBoostMemory
+        get() = db.getBoolean(KEY_AUTO_BOOST_MEMORY, false)
+        set(value) = db.edit().putBoolean(KEY_AUTO_BOOST_MEMORY, value).apply()
+
     var danmakuNotification
         get() = db.getBoolean(KEY_DANMAKU_NOTIFICATION_MODE, true)
         set(value) = db.edit().putBoolean(KEY_DANMAKU_NOTIFICATION_MODE, value).apply()
@@ -133,6 +138,7 @@ class AppSettings @Inject constructor(private val context: Context) {
         const val KEY_3SCREENSHOT_DISABLE = "gamespace_tfgesture_disabled"
         const val KEY_STAY_AWAKE = "gamespace_stay_awake"
         const val KEY_DANMAKU_NOTIFICATION_MODE = "gamespace_danmaku_notification_mode"
+        const val KEY_AUTO_BOOST_MEMORY = "game_memory_management"
         const val KEY_CALLS_MODE = "gamespace_calls_mode"
         const val KEY_RINGER_MODE = "gamespace_ringer_mode"
         const val KEY_LOCK_GESTURE = "gamespace_lock_gesture"
