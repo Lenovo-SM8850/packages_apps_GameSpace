@@ -23,6 +23,7 @@ import android.graphics.PixelFormat
 import android.hardware.input.InputManager
 import android.os.Handler
 import android.view.KeyEvent
+import android.view.View
 import android.view.WindowManager
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.MaterialExpressiveTheme
@@ -53,6 +54,7 @@ class MapperController(
     private var overlayView: ComposeView? = null
     private var currentPackage: String? = null
     private var editing = false
+    private var gameVisible = false
     private var capturingPointId = -1
 
     val keyCaptureEvent = mutableStateOf<KeyCaptureEvent?>(null)
@@ -60,6 +62,11 @@ class MapperController(
 
     var onEditStarted: (() -> Unit)? = null
     var onEditFinished: (() -> Unit)? = null
+
+    fun setGameVisible(visible: Boolean) {
+        gameVisible = visible
+        overlayView?.visibility = if (visible) View.VISIBLE else View.INVISIBLE
+    }
 
     fun onGameStart(packageName: String) {
         currentPackage = packageName
@@ -84,7 +91,7 @@ class MapperController(
 
     fun enterEditMode() {
         val pkg = currentPackage ?: return
-        if (editing) return
+        if (!gameVisible || editing) return
         editing = true
         stopPlayMode()
         onEditStarted?.invoke()

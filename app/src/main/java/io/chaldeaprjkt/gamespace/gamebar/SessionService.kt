@@ -50,6 +50,8 @@ import io.chaldeaprjkt.gamespace.gamebar.mapper.MapperController
 import io.chaldeaprjkt.gamespace.gamebar.tiles.TileRepository
 import io.chaldeaprjkt.gamespace.utils.GameModeUtils
 import io.chaldeaprjkt.gamespace.utils.ScreenUtils
+import io.github.miner7222.gamespace.GameAspectRatioGesture
+import io.github.miner7222.gamespace.GameAspectRatioTile
 import javax.inject.Inject
 
 @AndroidEntryPoint(Service::class)
@@ -64,6 +66,7 @@ class SessionService : Hilt_SessionService() {
     @Inject lateinit var brightnessInteractor: BrightnessInteractor
     @Inject lateinit var fpsInteractor: FpsInteractor
     @Inject lateinit var tileRepository: TileRepository
+    @Inject lateinit var aspectRatioTile: GameAspectRatioTile
     @Inject lateinit var gson: Gson
 
     private var currentPackage: String? = null
@@ -71,6 +74,7 @@ class SessionService : Hilt_SessionService() {
     private var bypassChargeActive = false
     private lateinit var gameManager: GameManager
     private lateinit var sidebar: GameSidebar
+    private lateinit var aspectRatioGesture: GameAspectRatioGesture
     private lateinit var screenOffSession: ScreenOffSessionController
     private lateinit var mapperController: MapperController
     private lateinit var platform: AxPlatformClient
@@ -137,6 +141,9 @@ class SessionService : Hilt_SessionService() {
             mapperController = mapperController,
         )
         sidebar.onCreate()
+        aspectRatioGesture = GameAspectRatioGesture(this, windowManager, mainHandler,
+            aspectRatioTile)
+        sidebar.onUiBlockingChanged = { aspectRatioGesture.setUiBlocked(it) }
         screenOffSession = ScreenOffSessionController(this)
         tileRepository.onScreenOff = {
             sidebar.collapseForScreenOff()
@@ -150,6 +157,7 @@ class SessionService : Hilt_SessionService() {
             val packageName = intent.getStringExtra(EXTRA_PACKAGE_NAME)
             if (packageName != null) {
                 startGameSession(packageName)
+                setGameUiVisible(intent.getBooleanExtra(EXTRA_GAME_VISIBLE, true))
                 val bypassActive = intent.getBooleanExtra("bypass_charge_active", false)
                 if (bypassActive && !bypassChargeActive) {
                     Toast.makeText(this, R.string.bypass_charging_on, Toast.LENGTH_SHORT).show()
@@ -159,13 +167,28 @@ class SessionService : Hilt_SessionService() {
                 Log.e(TAG, "No package name provided, stopping")
                 stopSelf()
             }
+        } else if (intent?.action == ACTION_VISIBILITY) {
+            if (currentPackage == null) {
+                // A visibility update must never resurrect a stopped session.
+                stopSelf(startId)
+            } else if (currentPackage == intent.getStringExtra(EXTRA_PACKAGE_NAME)) {
+                setGameUiVisible(intent.getBooleanExtra(EXTRA_GAME_VISIBLE, false))
+            }
         }
         return START_NOT_STICKY
+    }
+
+    private fun setGameUiVisible(visible: Boolean) {
+        sidebar.setGameVisible(visible)
+        aspectRatioGesture.setGameVisible(visible)
+        danmakuService.setGameVisible(visible)
+        callListener.setGameVisible(visible)
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
         sidebar.onConfigurationChanged(newConfig)
+        aspectRatioGesture.onConfigurationChanged()
     }
 
     private fun startGameSession(packageName: String) {
@@ -198,6 +221,7 @@ class SessionService : Hilt_SessionService() {
     private fun stopGameSession() {
         Log.i(TAG, "Stopping game session")
 
+        setGameUiVisible(false)
         tileRepository.onGameStop()
         screenOffSession.onGameStop()
         sidebar.onGameLeave()
@@ -246,6 +270,7 @@ class SessionService : Hilt_SessionService() {
         Log.d(TAG, "SessionService destroyed")
         contentResolver.unregisterContentObserver(bypassObserver)
         stopGameSession()
+        aspectRatioGesture.release()
         unregisterReceiver(dndReceiver)
         tileRepository.onScreenOff = null
         callListener.onIncomingCall = null
@@ -260,6 +285,8 @@ class SessionService : Hilt_SessionService() {
     companion object {
         const val TAG = "SessionService"
         const val ACTION_START = "game_start"
+        const val ACTION_VISIBILITY = "game_visibility"
+        const val EXTRA_GAME_VISIBLE = "game_visible"
         const val EXTRA_PACKAGE_NAME = "package_name"
     }
 }
