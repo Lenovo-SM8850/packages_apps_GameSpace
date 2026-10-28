@@ -34,6 +34,7 @@ import android.telecom.TelecomManager
 import android.telephony.PhoneStateListener 
 import android.telephony.TelephonyManager
 import android.view.Gravity
+import android.view.View
 import android.view.WindowManager
 import android.widget.Toast
 import androidx.compose.animation.*
@@ -86,6 +87,7 @@ class CallListener @Inject constructor(
 
     private var ringerOverlay: ComposeView? = null
     private var isOverlayShowing = false
+    private var gameVisible = false
 
     @Suppress("DEPRECATION")
     private val phoneStateListener = object : PhoneStateListener() {
@@ -97,6 +99,11 @@ class CallListener @Inject constructor(
                 TelephonyManager.CALL_STATE_IDLE -> handleIdleState()
             }
         }
+    }
+
+    fun setGameVisible(visible: Boolean) {
+        gameVisible = visible
+        ringerOverlay?.visibility = if (visible) View.VISIBLE else View.INVISIBLE
     }
 
     fun init() {
@@ -200,7 +207,7 @@ class CallListener @Inject constructor(
     }
 
     private fun showRingerOverlay(incomingNumber: String) {
-        if (isOverlayShowing) return
+        if (!gameVisible || isOverlayShowing) return
 
         val sidebarX = appSettings.x
 

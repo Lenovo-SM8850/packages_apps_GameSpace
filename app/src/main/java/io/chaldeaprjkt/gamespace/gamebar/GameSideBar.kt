@@ -111,6 +111,7 @@ class GameSidebar(
     private var screenshotInProgress = false
     private var mapperEditing = false
     private var gameTaskHidden = false
+    private var gameVisible = false
     private var gamePackage: String? = null
     private var gameTaskId = ActivityTaskManager.INVALID_TASK_ID
     private var taskListenerRegistered = false
@@ -232,7 +233,7 @@ class GameSidebar(
     }
 
     private fun updateGameBarVisibility() {
-        gameBarView.visibility = if (barReady && !shouldClose && !gameTaskHidden &&
+        gameBarView.visibility = if (gameVisible && barReady && !shouldClose && !gameTaskHidden &&
             !panelShowing && !screenshotInProgress && !mapperEditing) {
             View.VISIBLE
         } else {
@@ -353,6 +354,19 @@ class GameSidebar(
         danmakuService.init()
     }
 
+    fun setGameVisible(visible: Boolean) {
+        updateGameTaskVisibility()
+        if (gameVisible == visible) return
+        gameVisible = visible
+        if (!visible) {
+            forceRemovePanel()
+            collapseVerticalPill()
+            setPillExpanded(false)
+        }
+        updateGameBarVisibility()
+        mapperController.setGameVisible(visible)
+    }
+
     fun onGameStart(packageName: String) {
         shouldClose = false
         barReady = false
@@ -439,7 +453,7 @@ class GameSidebar(
 
     private fun showPanel() {
         updateGameTaskVisibility()
-        if (shouldClose || gameTaskHidden || panelShowing) return
+        if (!gameVisible || shouldClose || gameTaskHidden || panelShowing) return
         panelShowing = true
         notifyUiBlocking()
         panelDismissing.value = false
@@ -633,6 +647,7 @@ class GameSidebar(
     }
 
     private fun setPillExpanded(expanded: Boolean) {
+        if (expanded && !gameVisible) return
         if (pillExpanded == expanded) return
         pillExpanded = expanded
         pillExpandedState.value = expanded
@@ -712,6 +727,8 @@ class GameSidebar(
     }
 
     private fun enterMapperEdit() {
+        updateGameTaskVisibility()
+        if (!gameVisible || shouldClose || gameTaskHidden) return
         mapperEditing = true
         notifyUiBlocking()
         forceRemovePanel()
