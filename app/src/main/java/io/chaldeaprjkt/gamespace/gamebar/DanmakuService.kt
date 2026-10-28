@@ -155,6 +155,7 @@ class DanmakuService @Inject constructor(
     private var samplingEnabled = false
     private var lastFrameAt = -1L
     private var destroyed = false
+    private var gameVisible = false
     private val sampleBrightness = Runnable { sampleBackgroundBrightness() }
     private val drainRunnable = Runnable { drainPending() }
 
@@ -163,6 +164,17 @@ class DanmakuService @Inject constructor(
         notificationListener.danmakuServiceInterface = this
         updateParams()
         registerListener()
+    }
+
+    fun setGameVisible(visible: Boolean) {
+        if (gameVisible == visible) return
+        gameVisible = visible
+        if (!visible) {
+            handler.removeCallbacks(drainRunnable)
+            pending.clear()
+            clearActive()
+            removeWindow()
+        }
     }
 
     fun updateConfiguration(newConfig: Configuration) {
@@ -288,7 +300,7 @@ class DanmakuService @Inject constructor(
     }
 
     override fun showNotificationAsOverlay(notification: String) {
-        if (destroyed) return
+        if (destroyed || !gameVisible) return
         val text = notification.replace(WHITESPACE, " ").trim()
         if (text.isEmpty()) return
         pending.addLast(Pending(text))
@@ -309,12 +321,12 @@ class DanmakuService @Inject constructor(
     }
 
     override val danmakuNotificationMode: Boolean
-        get() = appSettings.danmakuNotification
+        get() = gameVisible && appSettings.danmakuNotification
 
     /** Moves waiting lines onto the nearest free lanes, or schedules the next attempt. */
     private fun drainPending() {
         handler.removeCallbacks(drainRunnable)
-        if (destroyed || pending.isEmpty()) return
+        if (destroyed || !gameVisible || pending.isEmpty()) return
         if (!container.isAttachedToWindow) {
             // Lines start together once the window exists, so lane timing stays exact.
             if (container.parent == null) addWindow()
