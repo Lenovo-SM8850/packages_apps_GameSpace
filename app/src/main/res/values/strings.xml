@@ -39,6 +39,9 @@
     <string name="per_app_title">Configure Game</string>
     <string name="per_app_mode_title">Preferred Mode</string>
     <string name="per_app_angle_title">Graphics driver</string>
+    <string name="per_app_performance_title">Performance preset</string>
+    <string name="per_app_performance_summary">Speeds, heat and benchmark records for this game</string>
+    <string name="per_app_performance_active" translatable="false">%1$s · %2$s</string>
     <string name="per_app_unregister">Remove %1$s from library</string>
 
     <!-- Ringer Mode -->

@@ -30,6 +30,11 @@
         android:summary="%s"
         android:title="@string/per_app_mode_title" />
 
+    <Preference
+        android:key="per_app_performance"
+        android:summary="@string/per_app_performance_summary"
+        android:title="@string/per_app_performance_title" />
+
     <ListPreference
         android:key="per_app_angle_driver"
         android:persistent="false"
