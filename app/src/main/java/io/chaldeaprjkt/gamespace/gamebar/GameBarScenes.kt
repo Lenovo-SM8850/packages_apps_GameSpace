@@ -28,13 +28,13 @@ import com.android.compose.animation.scene.content.state.TransitionState
 import com.android.compose.animation.scene.transitions
 
 object GameBarScenes {
-    val Pill = SceneKey("gamebar_pill_idle")
-    val VerticalPill = SceneKey("gamebar_pill")
+    val Handle = SceneKey("gamebar_handle")
+    val MiniBar = SceneKey("gamebar_mini_bar")
 }
 
 object GameBarElements {
-    val PillContent = ElementKey("gamebar_pill_content")
-    val VerticalPillContent = ElementKey("gamebar_vertical_pill_content")
+    val HandleContent = ElementKey("gamebar_handle_content")
+    val MiniBarContent = ElementKey("gamebar_mini_bar_content")
 }
 
 val GameBarTransitions: SceneTransitions = transitions {
@@ -48,15 +48,15 @@ val GameBarTransitions: SceneTransitions = transitions {
         )
     }
 
-    from(GameBarScenes.Pill, to = GameBarScenes.VerticalPill) {
+    from(GameBarScenes.Handle, to = GameBarScenes.MiniBar) {
         spec = tween(durationMillis = 180, easing = FastOutSlowInEasing)
-        fractionRange(end = 0.25f) { fade(GameBarElements.PillContent) }
-        fractionRange(start = 0.15f) { fade(GameBarElements.VerticalPillContent) }
+        fractionRange(end = 0.25f) { fade(GameBarElements.HandleContent) }
+        fractionRange(start = 0.15f) { fade(GameBarElements.MiniBarContent) }
     }
 
-    from(GameBarScenes.VerticalPill, to = GameBarScenes.Pill) {
+    from(GameBarScenes.MiniBar, to = GameBarScenes.Handle) {
         spec = tween(durationMillis = 150, easing = FastOutLinearInEasing)
-        fractionRange(end = 0.4f) { fade(GameBarElements.VerticalPillContent) }
-        fractionRange(start = 0.3f) { fade(GameBarElements.PillContent) }
+        fractionRange(end = 0.4f) { fade(GameBarElements.MiniBarContent) }
+        fractionRange(start = 0.3f) { fade(GameBarElements.HandleContent) }
     }
 }
