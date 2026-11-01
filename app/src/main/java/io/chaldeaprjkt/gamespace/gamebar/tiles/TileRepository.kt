@@ -45,6 +45,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.rememberUpdatedState
@@ -56,7 +57,9 @@ import io.chaldeaprjkt.gamespace.R
 import io.github.miner7222.gamespace.GameAspectRatioTile
 import io.github.miner7222.gamespace.gamebar.RecordingPhase
 import io.github.miner7222.gamespace.gamebar.RecordingStateController
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import io.github.miner7222.gamespace.library.GameOption
 import io.github.miner7222.gamespace.library.SidebarVisibility
@@ -82,7 +85,16 @@ enum class TileCategory(val labelRes: Int) {
 }
 
 /** A completed one-shot action; backends publish confirmed results, not button presses. */
-data class TileActionResult(val message: String, val successful: Boolean)
+data class TileActionResult(val message: String, val successful: Boolean,
+    val cleanup: MemoryCleanupResult? = null)
+
+data class TileActionCompletion(val tileId: String, val result: TileActionResult)
+
+/** Counts kill requests returning without an exception, not processes or bytes reclaimed. */
+data class MemoryCleanupResult(val count: Int, val failed: Int) {
+    // A failed process-list query counts as one failed operation.
+    val ok: Boolean get() = failed == 0
+}
 
 interface TileAction {
     val id: String
@@ -95,7 +107,6 @@ interface TileAction {
     val isAvailable: Boolean get() = true
     /** Current value for cycles/dialogs; toggles expose their state through [isEnabled]. */
     val valueLine: String? get() = null
-    // A3 wires completion results; A4 presents them through the dashboard snackbar.
     val actionResult: TileActionResult? get() = null
     val sessionOption: GameOption? get() = null
     val isSessionTile: Boolean get() = sessionOption != null
@@ -139,7 +150,9 @@ class FixedActionTile(
     private val action: () -> Unit,
     override val description: String = label,
     private val available: () -> Boolean = { true },
+    private val readResult: () -> TileActionResult? = { null },
 ) : TileAction {
+    override val actionResult: TileActionResult? get() = readResult()
     override val kind = TileKind.ACTION
     override val isAvailable: Boolean get() = available()
     override val isEnabled: Boolean = false
@@ -177,8 +190,10 @@ class PlatformTile(
     private val readActive: (() -> Boolean)? = null,
     private val toggleAction: (() -> Unit)? = null,
     private val readSavedDifference: () -> Boolean = { false },
+    private val readResult: () -> TileActionResult? = { null },
 ) : TileAction {
     override val differsFromSaved: Boolean get() = readSavedDifference()
+    override val actionResult: TileActionResult? get() = readResult()
     val activeState = mutableStateOf(false)
     val labelState = mutableStateOf("")
     val availableState = mutableStateOf(false)
@@ -200,7 +215,7 @@ class PlatformTile(
             // QS highlights access, whereas the hook reports whether access is blocked.
             AxPlatformClient.FEATURE_CAMERA_PRIVACY, AxPlatformClient.FEATURE_MIC_PRIVACY ->
                 !state.getBoolean("active", false)
-            AxPlatformClient.FEATURE_SCREEN_RECORD -> state.getBoolean("enabled", false)
+            AxPlatformClient.FEATURE_SCREEN_RECORD -> state.getBoolean("active", false)
             else -> state.getBoolean("active", false)
         }
         secondaryLabelState.value = state.getString("secondaryLabel")?.takeIf { it.isNotBlank() }
@@ -226,6 +241,11 @@ class TileRepository @Inject constructor(
     var onBeforePlatformAction: ((String) -> Unit)? = null
     var onScreenshotComplete: (() -> Unit)? = null
     var onScreenOff: (() -> Unit)? = null
+    private val latestResults = mutableStateMapOf<String, TileActionResult>()
+    private val mutableActionResults = MutableSharedFlow<TileActionCompletion>(extraBufferCapacity = 16)
+    val actionResults = mutableActionResults.asSharedFlow()
+    private val mutableStartupCleanup = MutableStateFlow<MemoryCleanupResult?>(null)
+    val startupMemoryCleanup = mutableStartupCleanup.asStateFlow()
     private val mutableWifiLowLatencyActive = MutableStateFlow(false)
     val wifiLowLatencyActive = mutableWifiLowLatencyActive.asStateFlow()
     val recordingState = recording.state
@@ -236,6 +256,11 @@ class TileRepository @Inject constructor(
         if (listening && recordingState.value.phase == RecordingPhase.ACTIVE) {
             platform.setEnabled(AxPlatformClient.FEATURE_SCREEN_RECORD, false)
         }
+    }
+
+    private fun publishResult(id: String, result: TileActionResult) {
+        latestResults[id] = result
+        mutableActionResults.tryEmit(TileActionCompletion(id, result))
     }
 
 
@@ -366,6 +391,8 @@ class TileRepository @Inject constructor(
     fun init(platform: AxPlatformClient) {
         this.platform = platform
         listening = true
+        latestResults.clear()
+        mutableStartupCleanup.value = null
         mutableWifiLowLatencyActive.value = false
         context.registerReceiver(ringerReceiver,
             IntentFilter(AudioManager.INTERNAL_RINGER_MODE_CHANGED_ACTION).apply {
@@ -409,12 +436,18 @@ class TileRepository @Inject constructor(
 
     fun onGameStart(packageName: String) {
         aspectRatioTile.onGameStart(packageName)
-        if (appSettings.autoBoostMemory) clearBackgroundProcesses()
+        mutableStartupCleanup.value = null
+        if (appSettings.autoBoostMemory) {
+            val result = clearBackgroundProcesses()
+            mutableStartupCleanup.value = result
+            showMemoryCleanupToast(result)
+        }
         refreshPlatformStates()
     }
 
     fun onGameStop() {
         aspectRatioTile.onGameStop()
+        mutableStartupCleanup.value = null
     }
 
     fun refreshPlatformStates() {
@@ -541,6 +574,7 @@ class TileRepository @Inject constructor(
     fun dispose() {
         listening = false
         context.unregisterReceiver(ringerReceiver)
+        mutableStartupCleanup.value = null
         mutableWifiLowLatencyActive.value = false
         platform.removeListener(platformListener)
         context.contentResolver.unregisterContentObserver(settingsObserver)
@@ -621,27 +655,46 @@ class TileRepository @Inject constructor(
         )
     }
 
-    private fun clearBackgroundProcesses() {
-        val activityManager: ActivityManager = context.getSystemService(ActivityManager::class.java)
-        val runningApps = activityManager.runningAppProcesses ?: return
-        var memoryBoosted = false
-        // A process name may contain ":service", and shared processes may host
-        // multiple packages. The ActivityManager API expects a package name.
+    private fun clearBackgroundProcesses(): MemoryCleanupResult {
+        val activityManager = context.getSystemService(ActivityManager::class.java)
+        val runningApps = try {
+            activityManager.runningAppProcesses ?: return MemoryCleanupResult(0, 1)
+        } catch (_: RuntimeException) {
+            return MemoryCleanupResult(0, 1)
+        }
+        // A process may host multiple packages; protect foreground packages and the game
+        // even when a system dialog has temporarily moved that game to the background.
         val protectedPackages = runningApps
             .filter { it.importance <= ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND }
             .flatMap { it.pkgList?.toList().orEmpty() }
-            .toSet() + context.packageName
+            .toSet() + context.packageName + listOfNotNull(SessionOptions.packageName(context))
+        var count = 0
+        var failed = 0
         runningApps
             .filter { it.importance > ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND }
             .flatMap { it.pkgList?.toList().orEmpty() }
             .distinct()
             .filterNot { it in protectedPackages }
             .forEach { packageName ->
-                activityManager.killBackgroundProcesses(packageName)
-                memoryBoosted = true
+                try {
+                    activityManager.killBackgroundProcesses(packageName)
+                    count++
+                } catch (_: RuntimeException) {
+                    failed++
+                }
             }
-        val message = if (memoryBoosted) R.string.game_memory_boosted else R.string.game_memory_nothing_to_boost
-        Toast.makeText(context, context.getString(message), Toast.LENGTH_SHORT).show()
+        return MemoryCleanupResult(count, failed)
+    }
+
+    private fun memoryCleanupMessage(result: MemoryCleanupResult): String = context.getString(when {
+        !result.ok -> R.string.game_memory_cleanup_failed
+        result.count > 0 -> R.string.game_memory_cleanup_ran
+        else -> R.string.game_memory_nothing_to_boost
+    })
+
+    // A4/A6 replace the existing manual/startup toast presentation, respectively.
+    private fun showMemoryCleanupToast(result: MemoryCleanupResult) {
+        Toast.makeText(context, memoryCleanupMessage(result), Toast.LENGTH_SHORT).show()
     }
 
     fun updateTileSelection(selectedIds: List<String>) {
@@ -697,6 +750,7 @@ class TileRepository @Inject constructor(
             icon = iconRes,
             feature = feature,
             platform = platform,
+            readResult = { latestResults[feature] },
             kind = when (feature) {
                 AxPlatformClient.FEATURE_SCREENSHOT -> TileKind.ACTION
                 AxPlatformClient.FEATURE_CAST -> TileKind.DIALOG
@@ -1078,8 +1132,11 @@ class TileRepository @Inject constructor(
                 available = { hasDeviceCapability("boost_memory") },
                 label = context.getString(R.string.tile_boost_memory),
                 icon = R.drawable.materialsymbols_ic_speed_rounded_filled,
+                readResult = { latestResults["boost_memory"] },
                 action = {
-                    clearBackgroundProcesses()
+                    val result = clearBackgroundProcesses()
+                    publishResult("boost_memory", TileActionResult(memoryCleanupMessage(result), result.ok, result))
+                    showMemoryCleanupToast(result)
                 }
             )
         )
