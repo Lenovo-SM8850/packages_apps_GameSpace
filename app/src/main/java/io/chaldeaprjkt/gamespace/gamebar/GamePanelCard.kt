@@ -21,79 +21,77 @@ import android.app.*
 import android.content.*
 import android.content.pm.ActivityInfo
 import android.content.res.Configuration
-import android.graphics.Point
-import android.graphics.Rect
-import android.graphics.drawable.*
-import android.net.Uri
+import android.graphics.drawable.Drawable
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
 import android.os.BatteryManager
+import android.os.Handler
+import android.os.Looper
 import android.os.UserHandle
 import android.provider.Settings
 import android.util.Log
-import android.view.WindowManager
 import android.widget.Toast
 import com.android.internal.policy.DesktopModeCompatPolicy
 import com.android.settingslib.display.BrightnessUtils.*
 import androidx.annotation.StringRes
 import androidx.collection.LruCache
-import androidx.core.graphics.drawable.*
-import androidx.compose.*
-import androidx.compose.animation.*
-import androidx.compose.animation.core.*
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.layout.padding
+import androidx.core.graphics.drawable.toBitmap
+import androidx.compose.animation.ExperimentalAnimationApi
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.*
-import androidx.compose.foundation.pager.*
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.scrollBy
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.*
 import androidx.compose.material3.*
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.ArrowBack
-import androidx.compose.material.icons.filled.Block
-import androidx.compose.material.icons.filled.ElectricBolt
-import androidx.compose.material.icons.filled.EnergySavingsLeaf
-import androidx.compose.material.icons.filled.SportsEsports
-import androidx.compose.material.icons.rounded.Add
-import androidx.compose.material.icons.rounded.Check
-import androidx.compose.material.icons.rounded.Remove
-import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.rounded.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.*
 import androidx.compose.ui.draw.*
 import androidx.compose.ui.geometry.*
 import androidx.compose.ui.graphics.*
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.painter.*
-import androidx.compose.ui.hapticfeedback.*
-import androidx.compose.ui.graphics.drawscope.*
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.key.*
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.*
 import androidx.compose.ui.platform.*
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.*
-import androidx.compose.ui.text.style.*
+import androidx.compose.ui.semantics.*
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.*
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.input.pointer.*
-import androidx.compose.ui.window.PopupProperties
 import io.chaldeaprjkt.gamespace.R
 import io.chaldeaprjkt.gamespace.data.SystemSettings
-import io.chaldeaprjkt.gamespace.gamebar.brightness.*
-import io.chaldeaprjkt.gamespace.gamebar.fps.*
+import io.chaldeaprjkt.gamespace.gamebar.brightness.BrightnessInteractor
+import io.chaldeaprjkt.gamespace.gamebar.fps.FpsInteractor
 import io.chaldeaprjkt.gamespace.gamebar.tiles.*
 import io.chaldeaprjkt.gamespace.settings.SettingsActivity
 import io.chaldeaprjkt.gamespace.utils.GameModeUtils
+import io.github.miner7222.gamespace.GameAspectRatioTile
+import io.github.miner7222.gamespace.gamebar.MediaVolumeController
+import io.github.miner7222.gamespace.gamebar.RecordingPhase
+import io.github.miner7222.gamespace.gamebar.RecordingState
+import io.github.miner7222.gamespace.library.*
 import kotlinx.coroutines.*
-import kotlinx.coroutines.flow.*
-import kotlin.math.*
+import kotlinx.coroutines.flow.collect
 import java.text.SimpleDateFormat
-import java.time.LocalTime
-import java.time.format.DateTimeFormatter
 import java.util.Date
 import java.util.Locale
+import kotlin.math.*
 
-private val RoundedTileShape = RoundedCornerShape(100f)
-
-private val TAG = "GamePanelCard"
+private const val TAG = "GamePanelCard"
 
 @Composable
 fun GamePanelCard(
@@ -103,198 +101,436 @@ fun GamePanelCard(
     gameModeUtils: GameModeUtils,
     systemSettings: SystemSettings,
     tileRepository: TileRepository,
-    maxHeight: Dp = Dp.Unspecified,
+    mediaVolume: MediaVolumeController,
+    gamePackage: String,
+    onDismiss: () -> Unit,
+    panelWidth: Dp,
+    maxHeight: Dp,
+    initialGraphExpanded: Boolean = false,
+    onEditingChanged: (Boolean) -> Unit = {},
 ) {
-
-    val context = androidx.compose.ui.platform.LocalContext.current
-    val panelWidth = 300.dp
-
-    val initialMode = remember {
-        fromSystemGameMode(gameModeUtils.activeGame?.mode ?: GameManager.GAME_MODE_STANDARD)
+    val context = LocalContext.current
+    val config = LocalConfiguration.current
+    val tablet = config.smallestScreenWidthDp >= 600
+    val compact = !tablet && config.orientation == Configuration.ORIENTATION_LANDSCAPE
+    val mainCount = if (tablet) 12 else 8
+    val columns = if (tablet) 3 else 4
+    val px = if (compact) 12.dp else 16.dp
+    val tileHeight = if (tablet) 64.dp else if (compact)
+        ((maxHeight - 202.dp) / 2).coerceIn(48.dp, 60.dp) else 72.dp
+    var editing by remember { mutableStateOf(false) }
+    val editingChanged by rememberUpdatedState(onEditingChanged)
+    LaunchedEffect(editing) { editingChanged(editing) }
+    var graphExpanded by remember { mutableStateOf(initialGraphExpanded) }
+    var moreExpanded by remember { mutableStateOf(false) }
+    var dialogTile by remember { mutableStateOf<TileAction?>(null) }
+    val scope = rememberCoroutineScope()
+    val store = remember(context) { InGameOptions(context) }
+    var revision by remember { mutableIntStateOf(0) }
+    DisposableEffect(store) {
+        val observation = store.observe { revision++ }
+        onDispose { observation.close() }
     }
-    var selectedMode by remember { mutableStateOf(initialMode) }
-    var headerExpanded by remember { mutableStateOf(false) }
-
-    val time = rememberCurrentTime()
-
-    Card(
-        modifier = Modifier
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-                onClick = {}
-            )
-            .width(panelWidth)
-            .wrapContentHeight(),
-        shape = RoundedCornerShape(16.dp),
-        elevation = CardDefaults.cardElevation(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)
-    ) {
-        GamePanelContent(
-            apps = apps,
-            headerExpanded = headerExpanded,
-            onToggleExpand = { headerExpanded = !headerExpanded },
-            selectedMode = selectedMode,
-            onModeChange = { mode ->
-                selectedMode = mode
-                io.github.miner7222.gamespace.library.SessionOptions.chooseMode(context, mode.toSystemGameMode())
-            },
-            interactor = interactor,
-            fpsInteractor = fpsInteractor,
-            time = time,
-            tileRepository = tileRepository,
-            maxHeight = maxHeight,
-        )
+    val selectedMode = remember(revision, gamePackage) {
+        fromSystemGameMode(SessionOptions.mode(context) ?: gameModeUtils.activeGame?.mode
+            ?: systemSettings.userGames.firstOrNull { it.packageName == gamePackage }?.mode ?: 1)
     }
-}
-
-@Composable
-fun GamePanelContent(
-    apps: List<AppInfo>,
-    headerExpanded: Boolean,
-    onToggleExpand: () -> Unit,
-    selectedMode: GameMode,
-    onModeChange: (GameMode) -> Unit,
-    interactor: BrightnessInteractor,
-    fpsInteractor: FpsInteractor,
-    time: String,
-    tileRepository: TileRepository,
-    maxHeight: Dp = Dp.Unspecified,
-) {
-    var isEditing by remember { mutableStateOf(false) }
-
-    val scrollState = rememberScrollState()
-
-    val resolvedMaxHeight = if (maxHeight != Dp.Unspecified) maxHeight else {
-        (LocalConfiguration.current.screenHeightDp - 64).dp
+    val openSettings: (GameSettingsDestination) -> Unit = { target ->
+        onDismiss()
+        context.startActivity(LibraryActivity.gameSettingsIntent(context, gamePackage, target))
     }
-
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .heightIn(max = resolvedMaxHeight)
-            .verticalScroll(scrollState)
-            .padding(top = if (isEditing) 4.dp else 12.dp, start = 12.dp, bottom = 12.dp, end = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        if (!isEditing) {
-            HeaderInfoBar(
-                modifier = Modifier.fillMaxWidth(),
-                headerExpanded = headerExpanded,
-                time = time,
-                currentMode = selectedMode,
-                onModeChange = onModeChange,
-                fpsInteractor = fpsInteractor,
-                onToggleExpand = onToggleExpand,
-                onEditClick = { isEditing = true },
-                tileRepository = tileRepository
-            )
-
-            if (apps.isEmpty() == false) {
-                QuickStartAppSidebar(apps = apps)
-            }
-
-            PanelContent(
-                interactor = interactor,
-                tileRepository = tileRepository,
-                currentMode = selectedMode,
-                onEditClick = { isEditing = true },
-                modifier = Modifier.fillMaxWidth()
-            )
-        } else {
-            TileEditPanel(
-                tileRepository = tileRepository,
-                onClose = { isEditing = false }
-            )
+    val message: (String) -> Unit = { text ->
+        Toast.makeText(context, text, Toast.LENGTH_SHORT).show()
+    }
+    val noneMessage = stringResource(R.string.dashboard_modes_off)
+    val noneAction = { message(noneMessage) }
+    val activateTile: (TileAction) -> Unit = { tile ->
+        val wasEnabled = tile.isEnabled
+        if (tile.id == "screen_record" && tileRepository.recordingState.value.phase == RecordingPhase.ACTIVE) {
+            tileRepository.stopRecording()
+        } else tile.toggle()
+        if (tile.options.isNotEmpty()) dialogTile = tile
+        if (tile.id == "gesture_lock" && !wasEnabled && tile.isEnabled) {
+            message(context.getString(R.string.dashboard_gesture_on))
         }
     }
-}
-
-@Composable
-fun PanelContent(
-    interactor: BrightnessInteractor,
-    tileRepository: TileRepository,
-    currentMode: GameMode,
-    onEditClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
+    val recording by tileRepository.recordingState.collectAsState()
     val tiles = tileRepository.tiles
-    val tilesPerPage = 8
-    val pages by remember {
-        derivedStateOf { tiles.chunked(tilesPerPage) }
-    }
-    val pagerState = rememberPagerState { pages.size }
-
-    Column(
-        modifier = modifier.padding(start = 4.dp, end = 4.dp, bottom = 0.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        if (tileRepository.isBrightnessVisible.value) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(12.dp))
-                    .padding(start = 8.dp, bottom = 4.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                BrightnessSlider(interactor = interactor)
-            }
-        }
-
-        HorizontalPager(
-            state = pagerState,
-            modifier = Modifier.fillMaxWidth(),
-            key = { pageIndex -> "page_$pageIndex" }
-        ) { pageIndex ->
-            val pageTiles = pages[pageIndex]
-
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(168.dp)
-                    .padding(horizontal = 4.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.Top)
-            ) {
-                pageTiles.chunked(4).forEach { rowTiles ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        rowTiles.forEach { tile ->
-                            key(tile.id) {
-                                TileButton(
-                                    tile = tile,
-                                    modifier = Modifier.weight(1f)
-                                )
+    val scroll = rememberScrollState()
+    CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides Dp.Unspecified) {
+        Surface(Modifier.width(panelWidth).height(maxHeight), shape = RoundedCornerShape(28.dp),
+            color = MaterialTheme.colorScheme.surfaceContainer, shadowElevation = 2.dp) {
+            Box(Modifier.fillMaxSize()) {
+                if (editing) {
+                    TileEditPanel(tileRepository, apps, mainCount, columns, tablet, compact,
+                        onClose = { editing = false }, onMessage = message,
+                        onEditApps = {
+                            onDismiss()
+                            context.startActivity(Intent(context, SettingsActivity::class.java)
+                                .putExtra(SettingsActivity.EXTRA_EDIT_QUICK_APPS, true)
+                                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                        })
+                } else Column(Modifier.fillMaxSize()) {
+                    if (!tablet && !compact) SheetGrip()
+                    DashboardHeader(gamePackage, fpsInteractor, graphExpanded, compact,
+                        onGraph = { graphExpanded = !graphExpanded }, onEdit = { editing = true },
+                        onSettings = { openSettings(GameSettingsDestination.IN_GAME_OPTIONS) })
+                    DashboardModes(selectedMode, compact, Modifier.padding(horizontal = px).padding(top = if (compact) 4.dp else 8.dp),
+                        onNone = noneAction, onMode = { SessionOptions.chooseMode(context, it.toSystemGameMode()) })
+                    Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(scroll)
+                        .padding(horizontal = px).padding(top = if (compact) 6.dp else 10.dp, bottom = 12.dp)) {
+                        if (graphExpanded) FpsGraph(Modifier.padding(bottom = 10.dp), fpsInteractor)
+                        DashboardSliders(interactor, mediaVolume, compact, onOutput = {
+                            onDismiss()
+                            mediaVolume.openOutputSwitcher()
+                        })
+                        Spacer(Modifier.height(if (compact) 6.dp else 10.dp))
+                        DashboardGrid(tiles.take(mainCount), columns, tablet, compact, tileHeight, recording,
+                            onTile = activateTile,
+                            onDefault = { openSettings(GameSettingsDestination.IN_GAME_OPTIONS) })
+                        if (tiles.size > mainCount) {
+                            HorizontalDivider(Modifier.padding(top = 6.dp))
+                            Row(Modifier.fillMaxWidth().height(48.dp).clickable { moreExpanded = !moreExpanded }
+                                .semantics { stateDescription = context.getString(if (moreExpanded) R.string.dashboard_expanded else R.string.dashboard_collapsed) }
+                                .padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Text(stringResource(R.string.dashboard_more), style = MaterialTheme.typography.labelLarge)
+                                Spacer(Modifier.width(8.dp))
+                                Surface(shape = CircleShape, color = MaterialTheme.colorScheme.secondaryContainer) {
+                                    Text((tiles.size - mainCount).toString(), Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                                        style = MaterialTheme.typography.labelSmall)
+                                }
+                                Spacer(Modifier.weight(1f))
+                                Icon(if (moreExpanded) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore, null)
+                            }
+                            if (moreExpanded) {
+                                Spacer(Modifier.height(if (compact) 6.dp else 8.dp))
+                                DashboardGrid(tiles.drop(mainCount), columns, tablet, compact, tileHeight, recording,
+                                    onTile = activateTile,
+                                    onDefault = { openSettings(GameSettingsDestination.IN_GAME_OPTIONS) })
                             }
                         }
-                        repeat(4 - rowTiles.size) {
-                            Spacer(modifier = Modifier.weight(1f))
-                        }
+                        if (apps.isNotEmpty()) QuickStartAppSidebar(apps, compact, message, onDismiss)
+                    }
+                }
+                dialogTile?.let { tile -> DashboardOptionSheet(tile, onDismiss = { dialogTile = null }) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DashboardHeader(packageName: String, fps: FpsInteractor, expanded: Boolean, compact: Boolean,
+    onGraph: () -> Unit, onEdit: () -> Unit, onSettings: () -> Unit) {
+    val context = LocalContext.current
+    val app = remember(packageName) { runCatching {
+        val info = context.packageManager.getApplicationInfo(packageName, 0)
+        info.loadLabel(context.packageManager).toString() to info.loadIcon(context.packageManager)
+    }.getOrElse { packageName to null } }
+    val history by fps.fpsHistory.collectAsState()
+    val battery = rememberBatteryInfo()
+    val time = rememberCurrentTime()
+    val network = rememberNetworkTransport()
+    Row(Modifier.fillMaxWidth().height(if (compact) 48.dp else 56.dp)
+        .padding(start = if (compact) 12.dp else 16.dp, end = 4.dp, top = if (compact) 6.dp else 8.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(if (compact) 10.dp else 12.dp)) {
+        Image(rememberDrawablePainter(app.second), null, Modifier.size(if (compact) 32.dp else 40.dp).clip(RoundedCornerShape(10.dp)))
+        Column(Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(app.first, Modifier.weight(1f), fontSize = if (compact) 14.sp else 16.sp,
+                    lineHeight = if (compact) 18.sp else 20.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Box(Modifier.width(58.dp).height(if (compact) 22.dp else 24.dp).clip(RoundedCornerShape(10.dp))
+                    .background(if (expanded) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHighest)
+                    .clickable(onClick = onGraph).semantics {
+                        contentDescription = context.getString(R.string.dashboard_fps_graph, history.lastOrNull()?.roundToInt() ?: 0)
+                        stateDescription = context.getString(if (expanded) R.string.dashboard_expanded else R.string.dashboard_collapsed)
+                    }, contentAlignment = Alignment.Center) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(stringResource(R.string.dashboard_fps, history.lastOrNull()?.roundToInt() ?: 0),
+                            fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
+                            color = if (expanded) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
+                            style = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = "tnum"))
+                        Icon(if (expanded) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore, null, Modifier.size(16.dp),
+                            tint = if (expanded) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface)
                     }
                 }
             }
+            Row(verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(if (compact) 6.dp else 8.dp)) {
+                Text(time, fontSize = 12.sp, lineHeight = 16.sp, fontWeight = FontWeight.SemiBold)
+                Icon(when (network) { 1 -> Icons.Rounded.Wifi; 2 -> Icons.Rounded.SignalCellularAlt; else -> Icons.Rounded.SignalWifiOff },
+                    stringResource(when (network) { 1 -> R.string.dashboard_wifi; 2 -> R.string.dashboard_mobile; else -> R.string.dashboard_offline }),
+                    Modifier.size(15.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(1.dp)) {
+                    Icon(Icons.Rounded.BatteryFull, null, Modifier.size(15.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(if (battery.level >= 0) "${battery.level}%" else "–", fontSize = 12.sp, lineHeight = 16.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(1.dp)) {
+                    Icon(Icons.Rounded.Thermostat, null, Modifier.size(15.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(stringResource(R.string.dashboard_temperature, battery.temperatureC.roundToInt()), fontSize = 12.sp,
+                        lineHeight = 16.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
         }
+        Row(horizontalArrangement = Arrangement.spacedBy(if (compact) 8.dp else 4.dp)) {
+            IconButton(onClick = onEdit, modifier = Modifier.size(if (compact) 40.dp else 44.dp)) {
+                Icon(Icons.Rounded.Edit, stringResource(R.string.dashboard_edit), Modifier.size(20.dp))
+            }
+            IconButton(onClick = onSettings, modifier = Modifier.size(if (compact) 40.dp else 44.dp)) {
+                Icon(Icons.Rounded.Settings, stringResource(R.string.library_game_settings), Modifier.size(20.dp))
+            }
+        }
+    }
+}
 
-        if (pages.size > 1) {
-            Row(
-                modifier = Modifier
-                    .align(Alignment.CenterHorizontally),
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                repeat(pages.size) { index ->
-                    val isSelected = index == pagerState.currentPage
-                    Box(
-                        modifier = Modifier
-                            .size(if (isSelected) 8.dp else 6.dp)
-                            .clip(CircleShape)
-                            .background(
-                                if (isSelected)
-                                    MaterialTheme.colorScheme.primary
-                                else
-                                    MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)
-                            )
-                    )
+@Composable
+private fun rememberNetworkTransport(): Int {
+    val context = LocalContext.current
+    val connectivity = remember(context) { context.getSystemService(ConnectivityManager::class.java) }
+    var transport by remember { mutableIntStateOf(0) }
+    DisposableEffect(connectivity) {
+        fun refresh() {
+            val caps = connectivity.getNetworkCapabilities(connectivity.activeNetwork)
+            transport = when {
+                caps?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true -> 1
+                caps?.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) == true -> 2
+                else -> 0
+            }
+        }
+        val callback = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) = refresh()
+            override fun onLost(network: Network) = refresh()
+            override fun onCapabilitiesChanged(network: Network, caps: NetworkCapabilities) = refresh()
+        }
+        refresh()
+        connectivity.registerDefaultNetworkCallback(callback, Handler(Looper.getMainLooper()))
+        onDispose { connectivity.unregisterNetworkCallback(callback) }
+    }
+    return transport
+}
+
+@Composable
+private fun DashboardModes(selected: GameMode, compact: Boolean, modifier: Modifier,
+    onNone: () -> Unit, onMode: (GameMode) -> Unit) {
+    val modes = listOf(GameMode.PowerSave, GameMode.Balanced, GameMode.Performance)
+    val none = selected == GameMode.None
+    val context = LocalContext.current
+    val explanation = stringResource(R.string.dashboard_modes_off)
+    Row(modifier.fillMaxWidth().height(if (compact) 40.dp else 48.dp)
+        .then(if (none) Modifier.semantics(mergeDescendants = true) { stateDescription = explanation }
+            .clickable(role = Role.Button, onClickLabel = explanation, onClick = onNone) else Modifier.selectableGroup()),
+        horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+        modes.forEachIndexed { index, mode ->
+            val checked = !none && selected == mode
+            val shape = if (checked) RoundedCornerShape(24.dp) else when (index) {
+                0 -> RoundedCornerShape(24.dp, 8.dp, 8.dp, 24.dp)
+                2 -> RoundedCornerShape(8.dp, 24.dp, 24.dp, 8.dp)
+                else -> RoundedCornerShape(8.dp)
+            }
+            Surface(Modifier.weight(1f).fillMaxHeight().then(if (!none)
+                Modifier.selectable(checked, role = Role.RadioButton, onClick = { onMode(mode) }) else Modifier), shape = shape,
+                color = when { none -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
+                    checked -> MaterialTheme.colorScheme.primary; else -> MaterialTheme.colorScheme.secondaryContainer },
+                contentColor = when { none -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                    checked -> MaterialTheme.colorScheme.onPrimary; else -> MaterialTheme.colorScheme.onSecondaryContainer }) {
+                Box(contentAlignment = Alignment.Center) { Text(context.getString(mode.displayNameRes), fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DashboardAuxButton(compact: Boolean, secondRow: Boolean, selected: Boolean?, enabled: Boolean,
+    label: String, icon: ImageVector, onClick: () -> Unit) {
+    val context = LocalContext.current
+    val outerOffset = if (!compact) 0.dp else if (secondRow) 2.dp else (-2).dp
+    val innerOffset = -outerOffset
+    val shape = RoundedCornerShape(if (selected == true) 22.dp else if (compact) 14.dp else 16.dp)
+    Box(Modifier.size(if (compact) 40.dp else 48.dp)) {
+        Box(Modifier.requiredSize(48.dp).offset(y = outerOffset)
+            .then(if (selected != null) Modifier.toggleable(selected, enabled, Role.Switch) { onClick() }
+                else Modifier.clickable(enabled = enabled, role = Role.Button, onClick = onClick))
+            .semantics {
+                contentDescription = label
+                if (selected != null) stateDescription = context.getString(if (selected) R.string.dashboard_on else R.string.dashboard_off)
+            }, contentAlignment = Alignment.Center) {
+            Box(Modifier.offset(y = innerOffset).size(if (compact) 40.dp else 48.dp).clip(shape)
+                .background(if (selected == true) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHighest),
+                contentAlignment = Alignment.Center) {
+                Icon(icon, null, Modifier.size(22.dp),
+                    tint = (if (selected == true) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant)
+                        .copy(alpha = if (enabled) 1f else 0.38f))
+            }
+        }
+    }
+}
+
+@Composable
+private fun DashboardSliders(brightness: BrightnessInteractor, media: MediaVolumeController, compact: Boolean,
+    onOutput: () -> Unit) {
+    val info by brightness.brightnessInfo.collectAsState()
+    val auto by brightness.isAuto.collectAsState()
+    val volume by media.state.collectAsState()
+    val context = LocalContext.current
+    val value = (info?.let { convertLinearToGammaFloat(it.brightness, it.brightnessMinimum, it.brightnessMaximum)
+        .toFloat() / GAMMA_SPACE_MAX } ?: 0f).coerceIn(0f, 1f)
+    Column(verticalArrangement = Arrangement.spacedBy(if (compact) 4.dp else 2.dp)) {
+        Row(Modifier.height(if (compact) 40.dp else 48.dp), verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(if (compact) 4.dp else 6.dp)) {
+            DashboardSlider(value, info != null, stringResource(R.string.dashboard_brightness), Icons.Rounded.BrightnessMedium,
+                compact, Modifier.weight(1f)) { brightness.onUserInteracted(); brightness.setBrightness(it) }
+            DashboardAuxButton(compact, secondRow = false, selected = auto == true, enabled = info != null,
+                label = stringResource(R.string.dashboard_auto_brightness), icon = Icons.Rounded.BrightnessAuto,
+                onClick = { brightness.toggleAutoMode() })
+        }
+        Row(Modifier.height(if (compact) 40.dp else 48.dp), verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(if (compact) 4.dp else 6.dp)) {
+            val span = (volume.maximum - volume.minimum).coerceAtLeast(1)
+            DashboardSlider((volume.current - volume.minimum).toFloat() / span, volume.available && !volume.fixed,
+                stringResource(R.string.dashboard_media_volume), Icons.Rounded.VolumeUp, compact, Modifier.weight(1f)) {
+                media.setVolume(volume.minimum + (it * span).roundToInt())
+            }
+            DashboardAuxButton(compact, secondRow = true, selected = null, enabled = true,
+                label = stringResource(R.string.dashboard_media_output), icon = Icons.Rounded.Speaker, onClick = onOutput)
+        }
+    }
+}
+
+@Composable
+private fun DashboardSlider(value: Float, enabled: Boolean, label: String, icon: ImageVector,
+    compact: Boolean, modifier: Modifier, onValue: (Float) -> Unit) {
+    val color = MaterialTheme.colorScheme
+    val currentValue by rememberUpdatedState(onValue)
+    val density = LocalDensity.current
+    val leading = with(density) { (if (compact) 34.dp else 40.dp).toPx() }
+    val end = with(density) { 8.dp.toPx() }
+    var width by remember { mutableFloatStateOf(1f) }
+    fun updateValue(x: Float) {
+        if (enabled) currentValue(((x - leading) / (width - leading - end).coerceAtLeast(1f)).coerceIn(0f, 1f))
+    }
+    Box(modifier.height(if (compact) 40.dp else 48.dp).onSizeChanged { width = it.width.toFloat() }
+        .semantics {
+            contentDescription = label
+            progressBarRangeInfo = ProgressBarRangeInfo(value, 0f..1f)
+            if (!enabled) disabled()
+            setProgress { if (enabled) currentValue(it.coerceIn(0f, 1f)); enabled }
+        }
+        .focusable(enabled).onKeyEvent {
+            if (enabled && it.type == KeyEventType.KeyDown && it.key in listOf(Key.DirectionLeft, Key.DirectionRight)) {
+                currentValue((value + if (it.key == Key.DirectionRight) 0.05f else -0.05f).coerceIn(0f, 1f)); true
+            } else false
+        }
+        .pointerInput(enabled, leading) { detectTapGestures { updateValue(it.x) } }
+        .pointerInput(enabled, leading) { detectHorizontalDragGestures { event, _ -> event.consume(); updateValue(event.position.x) } }) {
+        Canvas(Modifier.fillMaxSize()) {
+            val knob = leading + value * (size.width - leading - end).coerceAtLeast(0f)
+            val track = (if (compact) 28.dp else 40.dp).toPx()
+            val top = (size.height - track) / 2
+            val active = if (enabled) color.primary else color.onSurface.copy(alpha = 0.38f)
+            drawRoundRect(color.surfaceContainerHighest, Offset(0f, top), Size(size.width, track), CornerRadius(track / 2))
+            drawRoundRect(active, Offset(0f, top), Size((knob - 6.dp.toPx()).coerceAtLeast(0f), track), CornerRadius(track / 2))
+            drawRoundRect(active, Offset(knob - 2.dp.toPx(), 0f), Size(4.dp.toPx(), size.height), CornerRadius(2.dp.toPx()))
+        }
+        Icon(icon, null, Modifier.align(Alignment.CenterStart).padding(start = if (compact) 8.dp else 11.dp)
+            .size(if (compact) 18.dp else 20.dp), tint = color.onPrimary.copy(alpha = if (enabled) 1f else 0.6f))
+    }
+}
+
+@Composable
+private fun DashboardGrid(tiles: List<TileAction>, columns: Int, tablet: Boolean, compact: Boolean,
+    height: Dp, recording: RecordingState, onTile: (TileAction) -> Unit, onDefault: () -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(if (compact) 6.dp else 8.dp)) {
+        tiles.chunked(columns).forEach { row ->
+            Row(horizontalArrangement = Arrangement.spacedBy(if (compact) 6.dp else 8.dp)) {
+                row.forEach { tile -> key(tile.id) {
+                    TileButton(tile, Modifier.weight(1f), tablet, compact, height, recording,
+                        onClick = { onTile(tile) }, onDefault = onDefault)
+                } }
+                repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
+            }
+        }
+    }
+}
+
+@Composable
+fun TileButton(tile: TileAction, modifier: Modifier = Modifier, tablet: Boolean = false,
+    compact: Boolean = false, height: Dp = 72.dp, recording: RecordingState = RecordingState(),
+    onClick: () -> Unit = { tile.toggle() }, onDefault: () -> Unit = {}) {
+    val enabled by tile.observeEnabled()
+    val changed = tile.differsFromSaved
+    val active = tile.kind == TileKind.TOGGLE && enabled
+    val record = tile.id == "screen_record" && recording.phase == RecordingPhase.ACTIVE
+    val color = MaterialTheme.colorScheme
+    val background by animateColorAsState(if (record) color.errorContainer else if (active) color.primaryContainer else color.surfaceContainerHighest)
+    val foreground = if (record) color.onErrorContainer else if (active) color.onPrimaryContainer else color.onSurfaceVariant
+    val radius by animateDpAsState(if (active || record) 22.dp else 16.dp)
+    val value = if (tile.id == "screen_record") when (recording.phase) {
+        RecordingPhase.ACTIVE -> recording.elapsedMillis?.let { "%d:%02d".format(Locale.getDefault(), it / 60000, it / 1000 % 60) }
+            ?: stringResource(R.string.dashboard_elapsed_unknown)
+        RecordingPhase.STARTING -> stringResource(R.string.dashboard_record_starting)
+        else -> null
+    } else if (tile.kind == TileKind.CYCLE || tile.kind == TileKind.DIALOG) tile.valueLine else null
+    val label = if (record) stringResource(R.string.dashboard_recording)
+        else if (tile.id == "screen_aspect_ratio") stringResource(R.string.tile_aspect_ratio) else tile.label
+    val actionLabel = if (record) stringResource(R.string.dashboard_stop_recording) else null
+    val context = LocalContext.current
+    val defaultLabel = stringResource(R.string.dashboard_game_default)
+    Box(modifier.height(height).clip(RoundedCornerShape(radius)).background(background)
+        .combinedClickable(onClick = onClick, onClickLabel = actionLabel, onLongClickLabel = defaultLabel,
+            onLongClick = if (tile.isSessionTile) onDefault else null)
+        .semantics(mergeDescendants = true) {
+            contentDescription = listOfNotNull(label, value).joinToString(", ")
+            if (tile.kind == TileKind.TOGGLE) toggleableState = if (enabled) androidx.compose.ui.state.ToggleableState.On else androidx.compose.ui.state.ToggleableState.Off
+            role = if (tile.kind == TileKind.TOGGLE) Role.Switch else Role.Button
+            stateDescription = listOfNotNull(
+                if (tile.kind == TileKind.TOGGLE) context.getString(if (enabled) R.string.dashboard_on else R.string.dashboard_off) else null,
+                if (changed) context.getString(R.string.dashboard_session_changed) else null).joinToString(", ")
+        }, contentAlignment = Alignment.Center) {
+        val text: @Composable () -> Unit = {
+            Column(horizontalAlignment = if (tablet) Alignment.Start else Alignment.CenterHorizontally) {
+                Text(label, fontSize = if (compact) 11.sp else 12.sp, lineHeight = if (compact) 13.sp else if (tablet) 16.sp else 14.sp,
+                    color = foreground, fontWeight = if (active || record) FontWeight.SemiBold else FontWeight.Medium,
+                    maxLines = 2, overflow = TextOverflow.Ellipsis,
+                    textAlign = if (tablet) TextAlign.Start else TextAlign.Center)
+                if (!value.isNullOrBlank()) Text(value, fontSize = if (compact && height < 55.dp) 10.sp else 12.sp,
+                    lineHeight = if (compact && height < 55.dp) 12.sp else 16.sp, color = if (record) foreground else color.onSurfaceVariant,
+                    style = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = if (record) "tnum" else null),
+                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
+        if (tablet) Row(Modifier.fillMaxSize().padding(start = 10.dp, end = if (tile.kind == TileKind.DIALOG) 22.dp else 8.dp),
+            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            if (record) Icon(Icons.Rounded.Stop, null, Modifier.size(24.dp), foreground)
+            else Icon(painterResource(tile.icon), null, Modifier.size(24.dp), foreground)
+            Box(Modifier.weight(1f)) { text() }
+        } else Column(Modifier.padding(horizontal = 3.dp), horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            if (record) Icon(Icons.Rounded.Stop, null, Modifier.size(if (compact && height < 55.dp) 20.dp else 24.dp), foreground)
+            else Icon(painterResource(tile.icon), null, Modifier.size(if (compact && height < 55.dp) 20.dp else 24.dp), foreground)
+            text()
+        }
+        if (tile.kind == TileKind.DIALOG) Icon(Icons.Rounded.ChevronRight, null,
+            Modifier.align(if (tablet) Alignment.CenterEnd else Alignment.TopEnd).padding(2.dp).size(16.dp), color.onSurfaceVariant)
+        if (changed) Box(Modifier.align(Alignment.TopEnd).padding(6.dp).size(8.dp).background(color.tertiary, CircleShape))
+    }
+}
+
+@Composable
+private fun BoxScope.DashboardOptionSheet(tile: TileAction, onDismiss: () -> Unit) {
+    val title = stringResource(R.string.tile_aspect_ratio)
+    Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.3f)).clickable(onClick = onDismiss))
+    Surface(Modifier.align(Alignment.BottomCenter).fillMaxWidth().fillMaxHeight(0.8f).semantics { paneTitle = title },
+        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+        Column(Modifier.verticalScroll(rememberScrollState()).selectableGroup().padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(stringResource(R.string.tile_aspect_ratio), Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
+                TextButton(onClick = onDismiss) { Text(stringResource(R.string.dashboard_done)) }
+            }
+            tile.options.forEach { option ->
+                Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).selectable(option.selected, role = Role.RadioButton,
+                    onClick = { tile.selectOption(option); onDismiss() }), verticalAlignment = Alignment.CenterVertically) {
+                    RadioButton(option.selected, onClick = null)
+                    Text(option.label, Modifier.padding(start = 8.dp))
                 }
             }
         }
@@ -302,947 +538,232 @@ fun PanelContent(
 }
 
 @Composable
-fun HeaderInfoBar(
-    modifier: Modifier = Modifier,
-    headerExpanded: Boolean = true,
-    time: String,
-    currentMode: GameMode,
-    onModeChange: (GameMode) -> Unit,
-    fpsInteractor: FpsInteractor,
-    onToggleExpand: () -> Unit,
-    onEditClick: () -> Unit,
-    tileRepository: TileRepository
-) {
-    val batteryInfo = rememberBatteryInfo()
-    val batteryLevel = batteryInfo.level
-    val temp = batteryInfo.temperatureC.toInt()
-
-    val modeColor = when (currentMode) {
-        GameMode.Performance -> Color(0xFFD32F2F)
-        GameMode.PowerSave -> Color(0xFF388E3C)
-        GameMode.Balanced -> Color(0xFFEF6C00)
-        GameMode.None -> MaterialTheme.colorScheme.onSurfaceVariant
-    }
-
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .animateContentSize(
-                animationSpec = MaterialTheme.motionScheme.fastSpatialSpec()
-            )
-            .background(
-                color = MaterialTheme.colorScheme.surface,
-                shape = RoundedCornerShape(12.dp)
-            )
-            .padding(
-                top = if (headerExpanded) 12.dp else 8.dp,
-                bottom = if (headerExpanded) 12.dp else 8.dp,
-                start = 12.dp,
-                end = 4.dp
-            )
-    ) {
-        Column(
-            verticalArrangement = Arrangement.spacedBy(6.dp),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            TopRowHeader(
-                time = time,
-                headerExpanded = headerExpanded,
-                onToggleExpand = onToggleExpand,
-                onEditClick = onEditClick
-            )
-            InfoRow(
-                batteryInfo = batteryInfo,
-                currentMode = currentMode,
-                modeColor = modeColor
-            )
-        }
-
-        AnimatedVisibility(
-            visible = headerExpanded,
-            enter = fadeIn(
-                animationSpec = MaterialTheme.motionScheme.fastEffectsSpec()
-            ) + expandVertically(
-                animationSpec = MaterialTheme.motionScheme.fastSpatialSpec()
-            ),
-            exit = fadeOut(
-                animationSpec = MaterialTheme.motionScheme.fastEffectsSpec()
-            ) + shrinkVertically(
-                animationSpec = MaterialTheme.motionScheme.fastSpatialSpec()
-            )
-        ) {
-            Column {
-                if (tileRepository.isFpsGraphVisible.value) {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    FpsGraph(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 4.dp),
-                        interactor = fpsInteractor
-                    )
-                }
-                Spacer(modifier = Modifier.height(8.dp))
-                GameModeSelector(
-                    selectedMode = currentMode,
-                    onModeSelected = onModeChange
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun TopRowHeader(
-    time: String,
-    headerExpanded: Boolean,
-    onToggleExpand: () -> Unit,
-    onEditClick: () -> Unit
-) {
-    val rotateArrow by animateFloatAsState(
-        targetValue = if (headerExpanded) 180f else 0f,
-        animationSpec = MaterialTheme.motionScheme.slowSpatialSpec()
-    )
-
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            text = time,
-            style = MaterialTheme.typography.titleMedium,
-            fontSize = 18.sp
-        )
-
-        Spacer(modifier = Modifier.weight(1f))
-
-        IconButton(
-            onClick = onEditClick,
-            modifier = Modifier.size(18.dp)
-        ) {
-            Icon(
-                painter = painterResource(R.drawable.materialsymbols_ic_edit_rounded_filled),
-                contentDescription = stringResource(R.string.cd_edit_tiles)
-            )
-        }
-
-        IconButton(
-            onClick = onToggleExpand,
-            modifier = Modifier.size(36.dp)
-        ) {
-            Icon(
-                painter = painterResource(R.drawable.materialsymbols_ic_expand_more_rounded_filled),
-                contentDescription = if (headerExpanded) stringResource(R.string.cd_collapse) else stringResource(R.string.cd_expand),
-                modifier = Modifier.rotate(rotateArrow)
-            )
-        }
-    }
-}
-
-@Composable
-private fun InfoRow(
-    batteryInfo: BatteryInfo, 
-    modeColor: Color,
-    currentMode: GameMode) {
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(end = 8.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        val temp = batteryInfo.temperatureC.toInt()
-        BatteryIndicator(batteryLevel = batteryInfo.level)
-        Spacer(modifier = Modifier.width(4.dp))
-        InfoItem(
-            icon = painterResource(R.drawable.materialsymbols_ic_device_thermostat_rounded_filled),
-            value = "$temp"
-        )
-        Spacer(modifier = Modifier.weight(1f))
-        Text(
-            text = stringResource(currentMode.displayNameRes),
-            style = MaterialTheme.typography.bodyLarge,
-            color = modeColor
-        )
-    }
-}
-
-@Composable
-private fun InfoItem(
-    icon: Any?,
-    value: String,
-    onClick: (() -> Unit)? = null
-) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier
-    ) {
-        if (icon != null) {
-            when (icon) {
-                is ImageVector -> Icon(
-                    imageVector = icon,
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp)
-                )
-                is Painter -> Icon(
-                    painter = icon,
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp)
-                )
-            }
-            Spacer(modifier = Modifier.width(1.dp))
-        }
-        Text(
-            text = value,
-            style = MaterialTheme.typography.bodyMedium
-        )
-    }
-}
-
-@Composable
-fun TileEditPanel(
-    tileRepository: TileRepository,
-    onClose: () -> Unit
-) {
-    val allTiles = tileRepository.allAvailableTiles
-    val availableIds = allTiles.map { it.id }
-    val dragDropState = remember(availableIds) {
-        TileDragDropState(tileRepository.tiles, columns = 2)
-    }
-
-    val availableList = remember(availableIds) {
-        val activeIds = tileRepository.tiles.map { it.id }.toSet()
-        allTiles.filter { it.id !in activeIds }
-            .map { DragTileData(it.id, it.label, it.icon) }
-            .toMutableStateList()
-    }
-
-    var activeGridOffset by remember { mutableStateOf(Offset.Zero) }
-
-    val localMaxHeight = (LocalConfiguration.current.screenHeightDp - 64).dp
-
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .heightIn(max = localMaxHeight)
-            .padding(top = 4.dp, start = 12.dp, end = 12.dp, bottom = 12.dp)
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            IconButton(onClick = onClose) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
-                    contentDescription = stringResource(R.string.back)
-                )
-            }
-            Spacer(modifier = Modifier.weight(1f))
-            Button(
-                onClick = {
-                    tileRepository.updateTileSelection(dragDropState.tileIds())
-                    onClose()
-                }
-            ) {
-                Text(stringResource(R.string.save))
-            }
-        }
-
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f)
-                .verticalScroll(rememberScrollState())
-        ) {
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(12.dp))
-                .padding(12.dp)
-        ) {
-            Text(stringResource(R.string.panel_options), style = MaterialTheme.typography.titleMedium)
-            Spacer(modifier = Modifier.height(8.dp))
-
-            SettingToggleRow(
-                title = stringResource(R.string.brightness_slider),
-                checked = tileRepository.isBrightnessVisible.value,
-                onCheckedChange = { tileRepository.setBrightnessEnabled(it) }
-            )
-
-            SettingToggleRow(
-                title = stringResource(R.string.fps_graph),
-                checked = tileRepository.isFpsGraphVisible.value,
-                onCheckedChange = { tileRepository.setFpsGraphEnabled(it) }
-            )
-        }
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        Text(
-            stringResource(R.string.selected_tiles),
-            style = MaterialTheme.typography.titleSmall,
-            color = MaterialTheme.colorScheme.primary,
-        )
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .onGloballyPositioned { coords ->
-                    activeGridOffset = coords.positionInRoot()
-                }
-                .dragAndDropActiveGrid(
-                    contentOffset = { activeGridOffset },
-                    dragDropState = dragDropState,
-                ) { ids ->
-                    dragDropState.draggedTile?.let { dragged ->
-                        if (dragDropState.dragType == DragType.Add) {
-                            availableList.removeAll { it.id == dragged.id }
-                        }
-                    }
-                    tileRepository.updateTileSelection(ids)
-                },
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            val tiles = dragDropState.tiles
-            val rows = tiles.chunked(4)
-            rows.forEachIndexed { rowIndex, rowTiles ->
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    rowTiles.forEachIndexed { colIndex, tile ->
-                        val index = rowIndex * 4 + colIndex
-                        val isBeingDragged = dragDropState.isMoving(tile.id)
-
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(80.dp)
-                                .onGloballyPositioned { coords ->
-                                    val posInRoot = coords.positionInRoot()
-                                    val relativeOffset = posInRoot - activeGridOffset
-                                    dragDropState.updateItemPosition(
-                                        tile.id,
-                                        index,
-                                        IntOffset(relativeOffset.x.toInt(), relativeOffset.y.toInt()),
-                                        coords.size,
-                                    )
-                                }
-                        ) {
-                            if (isBeingDragged) {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .background(
-                                            MaterialTheme.colorScheme.secondary.copy(alpha = 0.3f)
-                                        )
-                                )
-                            } else {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .dragAndDropTileSource(tile, dragDropState, DragType.Move)
-                                ) {
-                                    EditorGameTile(
-                                        label = tile.label,
-                                        icon = tile.icon,
-                                        isAdded = true,
-                                        onAction = {
-                                            val removed = dragDropState.removeTile(tile.id)
-                                            if (removed != null) {
-                                                availableList.add(removed)
-                                                tileRepository.updateTileSelection(dragDropState.tileIds())
-                                            }
-                                        },
-                                    )
-                                }
-                            }
-                        }
-                    }
-                    repeat(4 - rowTiles.size) {
-                        Spacer(modifier = Modifier.weight(1f))
-                    }
-                }
-            }
-            if (tiles.isEmpty()) {
-                Box(
-                    modifier = Modifier.fillMaxWidth().height(80.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        stringResource(R.string.drag_tiles_here),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+fun FpsGraph(modifier: Modifier = Modifier, interactor: FpsInteractor) {
+    val history by interactor.fpsHistory.collectAsState()
+    val maximum by interactor.dynamicMaxFps.collectAsState()
+    val color = MaterialTheme.colorScheme.primary
+    Column(modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceContainerHighest, RoundedCornerShape(20.dp)).padding(12.dp)) {
+        val stats = listOf(R.string.dashboard_min to (history.minOrNull()?.roundToInt() ?: 0),
+            R.string.dashboard_average to (if (history.isEmpty()) 0 else history.average().roundToInt()),
+            R.string.dashboard_max to (history.maxOrNull()?.roundToInt() ?: 0))
+        Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+            stats.forEach { (label, value) ->
+                Column {
+                    Text(stringResource(label), fontSize = 11.sp, lineHeight = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(value.toString(), fontSize = 18.sp, lineHeight = 22.sp,
+                        style = MaterialTheme.typography.titleMedium.copy(fontFeatureSettings = "tnum"))
                 }
             }
         }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        Text(
-            stringResource(R.string.available_tiles),
-            style = MaterialTheme.typography.titleSmall,
-            color = MaterialTheme.colorScheme.primary,
-        )
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .dragAndDropAvailableZone(dragDropState) { id ->
-                    val removed = dragDropState.removeTile(id)
-                    if (removed != null) {
-                        availableList.add(removed)
-                        tileRepository.updateTileSelection(dragDropState.tileIds())
-                    }
-                },
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            val rows = availableList.chunked(4)
-            rows.forEach { rowTiles ->
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    rowTiles.forEach { tile ->
-                        val isBeingDragged = dragDropState.isMoving(tile.id)
-
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(80.dp)
-                                .graphicsLayer { alpha = if (isBeingDragged) 0.3f else 1f }
-                                .dragAndDropAvailableTileSource(tile, dragDropState)
-                        ) {
-                            EditorGameTile(
-                                label = tile.label,
-                                icon = tile.icon,
-                                isAdded = false,
-                                onAction = {
-                                    availableList.remove(tile)
-                                    dragDropState.addTile(tile)
-                                    tileRepository.updateTileSelection(dragDropState.tileIds())
-                                },
-                            )
-                        }
-                    }
-                    repeat(4 - rowTiles.size) {
-                        Spacer(modifier = Modifier.weight(1f))
-                    }
+        Canvas(Modifier.fillMaxWidth().height(52.dp).padding(top = 6.dp)) {
+            if (history.size > 1) {
+                val path = Path()
+                history.forEachIndexed { i, value ->
+                    val x = i.toFloat() / (history.size - 1) * size.width
+                    val y = size.height * (1f - (value / maximum.coerceAtLeast(1f)).coerceIn(0f, 1f))
+                    if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
                 }
-            }
-            if (availableList.isEmpty()) {
-                Box(
-                    modifier = Modifier.fillMaxWidth().height(80.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        stringResource(R.string.all_tiles_added),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-        }
-        }
-    }
-}
-
-@Composable
-fun EditorGameTile(
-    label: String,
-    icon: Int,
-    isAdded: Boolean,
-    onAction: () -> Unit,
-) {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(4.dp),
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Box(modifier = Modifier.size(48.dp), contentAlignment = Alignment.Center) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.surfaceBright)
-                    .clickable { onAction() },
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    painter = painterResource(icon),
-                    contentDescription = label,
-                    tint = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.size(22.dp),
-                )
-            }
-
-            Box(
-                modifier = Modifier
-                    .size(18.dp)
-                    .align(Alignment.TopEnd)
-                    .offset(x = 2.dp, y = (-2).dp)
-                    .clip(CircleShape)
-                    .background(
-                        if (isAdded) MaterialTheme.colorScheme.error
-                        else MaterialTheme.colorScheme.primary
-                    )
-                    .clickable { onAction() },
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    if (isAdded) Icons.Rounded.Remove else Icons.Rounded.Add,
-                    contentDescription = null,
-                    tint = if (isAdded) MaterialTheme.colorScheme.onError
-                    else MaterialTheme.colorScheme.onPrimary,
-                    modifier = Modifier.size(12.dp),
-                )
-            }
-        }
-
-        Text(
-            text = label,
-            color = MaterialTheme.colorScheme.onSurface,
-            style = MaterialTheme.typography.labelSmall,
-            modifier = Modifier.width(70.dp).basicMarquee(),
-            maxLines = 1,
-            textAlign = TextAlign.Center,
-        )
-    }
-}
-
-@Composable
-fun SettingToggleRow(
-    title: String,
-    checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            text = title,
-            modifier = Modifier.weight(1f),
-            style = MaterialTheme.typography.bodyLarge
-        )
-        Switch(
-            checked = checked,
-            onCheckedChange = onCheckedChange
-        )
-    }
-}
-
-@Composable
-fun TileButton(tile: TileAction, modifier: Modifier = Modifier) {
-    val isEnabled by tile.observeEnabled()
-    var pickerOpen by remember { mutableStateOf(false) }
-    val bgColor = if (isEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceBright
-    val fgColor = if (isEnabled) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
-
-    val interactionSource = remember { MutableInteractionSource() }
-    val isPressed by interactionSource.collectIsPressedAsState()
-
-    val pressScale by animateFloatAsState(
-        targetValue = if (isPressed) 0.9f else 1f,
-        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
-        label = "press_scale",
-    )
-
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(4.dp),
-        modifier = modifier
-            .graphicsLayer {
-                scaleX = pressScale
-                scaleY = pressScale
-            }
-            .height(80.dp),
-    ) {
-        Box(
-            modifier = Modifier
-                .size(48.dp)
-                .clip(CircleShape)
-                .background(bgColor)
-                .clickable(
-                    interactionSource = interactionSource,
-                    indication = null,
-                ) {
-                    tile.toggle()
-                    if (tile.options.isNotEmpty()) pickerOpen = true
-                },
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                painter = painterResource(tile.icon),
-                contentDescription = tile.description,
-                tint = fgColor,
-                modifier = Modifier.size(22.dp),
-            )
-            TileOptionMenu(
-                tile = tile,
-                expanded = pickerOpen,
-                onDismiss = { pickerOpen = false },
-            )
-        }
-        Text(
-            text = tile.label,
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurface,
-            maxLines = 1,
-            textAlign = TextAlign.Center,
-            modifier = Modifier
-                .width(64.dp)
-                .basicMarquee(),
-        )
-    }
-}
-
-@Composable
-private fun TileOptionMenu(tile: TileAction, expanded: Boolean, onDismiss: () -> Unit) {
-    val options = tile.options
-    // The panel window never takes focus, so keep the menu from taking it from the game too.
-    DropdownMenu(
-        expanded = expanded && options.isNotEmpty(),
-        onDismissRequest = onDismiss,
-        properties = PopupProperties(focusable = false),
-        modifier = Modifier.heightIn(max = (LocalConfiguration.current.screenHeightDp - 64).dp),
-    ) {
-        options.forEach { option ->
-            DropdownMenuItem(
-                text = {
-                    Text(
-                        text = option.label,
-                        color = if (option.selected) MaterialTheme.colorScheme.primary
-                            else MaterialTheme.colorScheme.onSurface,
-                        fontWeight = if (option.selected) FontWeight.Bold else FontWeight.Normal,
-                    )
-                },
-                trailingIcon = if (option.selected) {
-                    {
-                        Icon(
-                            imageVector = Icons.Rounded.Check,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                        )
-                    }
-                } else null,
-                onClick = {
-                    onDismiss()
-                    tile.selectOption(option)
-                },
-            )
-        }
-    }
-}
-
-@Composable
-fun BrightnessSlider(interactor: BrightnessInteractor) {
-    val brightnessInfo by interactor.brightnessInfo.collectAsState()
-    val isAuto by interactor.isAuto.collectAsState()
-
-    var sliderPosition by remember { mutableFloatStateOf(0.5f) }
-    var userIsAdjusting by remember { mutableStateOf(false) }
-
-    val targetSliderPosition = remember(brightnessInfo) {
-        brightnessInfo?.let { info ->
-            val gamma = convertLinearToGammaFloat(
-                info.brightness,
-                info.brightnessMinimum,
-                info.brightnessMaximum
-            )
-            getPercentage(
-                gamma.toDouble(),
-                GAMMA_SPACE_MIN.toFloat(),
-                GAMMA_SPACE_MAX.toFloat()
-            ).toFloat()
-        } ?: 0.5f
-    }
-
-    LaunchedEffect(targetSliderPosition) {
-        if (!userIsAdjusting) {
-            sliderPosition = targetSliderPosition
-        }
-    }
-
-    LaunchedEffect(Unit) {
-        snapshotFlow { sliderPosition }
-            .distinctUntilChanged()
-            .collectLatest { value ->
-                if (userIsAdjusting) {
-                    interactor.onUserInteracted()
-                    interactor.setBrightness(value)
-                    delay(100)
-                }
-            }
-    }
-
-    Row {
-        Slider(
-            value = sliderPosition,
-            onValueChange = { newValue ->
-                userIsAdjusting = true
-                sliderPosition = newValue
-                interactor.onUserInteracted()
-                interactor.setBrightness(newValue)
-            },
-            onValueChangeFinished = {
-                userIsAdjusting = false
-            },
-            enabled = true,
-            valueRange = 0f..1f,
-            modifier = Modifier.weight(1f)
-        )
-
-        IconButton(
-            onClick = { interactor.toggleAutoMode() },
-            enabled = brightnessInfo != null,
-            modifier = Modifier.padding(start = 8.dp)
-        ) {
-            Icon(
-                painter =
-                    if (isAuto == true)
-                        painterResource(R.drawable.materialsymbols_ic_brightness_auto_rounded_filled)
-                    else
-                        painterResource(R.drawable.materialsymbols_ic_brightness_7_rounded_filled),
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(24.dp)
-            )
-        }
-    }
-}
-
-@Composable
-fun BatteryIndicator(
-    batteryLevel: Int,
-    modifier: Modifier = Modifier
-) {
-    val icon = when {
-        batteryLevel >= 90 -> painterResource(R.drawable.materialsymbols_ic_battery_android_full_rounded_filled)
-        batteryLevel >= 70 -> painterResource(R.drawable.materialsymbols_ic_battery_android_4_rounded_filled)
-        batteryLevel >= 50 -> painterResource(R.drawable.materialsymbols_ic_battery_android_3_rounded_filled)
-        batteryLevel >= 30 -> painterResource(R.drawable.materialsymbols_ic_battery_android_2_rounded_filled)
-        batteryLevel >= 10 -> painterResource(R.drawable.materialsymbols_ic_battery_android_1_rounded_filled)
-        else -> painterResource(R.drawable.materialsymbols_ic_battery_android_0_rounded_filled)
-    }
-
-    val batteryText = "$batteryLevel%"
-
-    InfoItem(
-        icon = icon,
-        value = batteryText
-    )
-}
-
-@Composable
-fun FpsGraph(
-    modifier: Modifier = Modifier,
-    interactor: FpsInteractor
-) {
-    val fpsHistory by interactor.fpsHistory.collectAsState(initial = emptyList())
-    val maxFps by interactor.dynamicMaxFps.collectAsState()
-    
-    val graphData = remember(fpsHistory, maxFps) {
-        if (fpsHistory.isNotEmpty()) {
-            val minFps = fpsHistory.minOrNull() ?: 0f
-            val avgFps = fpsHistory.average().toFloat()
-            val maxFpsSeen = fpsHistory.maxOrNull() ?: 0f
-            val clampedMaxFps = maxFps.takeIf { it > 0f } ?: 60f
-            val fpsColor = when {
-                avgFps >= clampedMaxFps * 0.9f -> Color(0xFF4CAF50)
-                avgFps >= clampedMaxFps * 0.75f -> Color(0xFFFFA000)
-                else -> Color(0xFFD32F2F)
-            }
-            Triple(Triple(minFps, avgFps, maxFpsSeen), clampedMaxFps, fpsColor)
-        } else {
-            Triple(Triple(0f, 0f, 0f), 60f, Color.Gray)
-        }
-    }
-    
-    val normalizedPoints = remember(fpsHistory, graphData.second) {
-        val clampedMaxFps = graphData.second
-        fpsHistory.map { fps -> (fps / clampedMaxFps).coerceIn(0f, 1f) }
-    }
-    
-    Box(
-        modifier = modifier
-            .height(50.dp)
-            .fillMaxWidth()
-    ) {
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            if (normalizedPoints.isNotEmpty() && normalizedPoints.size > 1) {
-                val width = size.width
-                val height = size.height
-                val stepX = width / (normalizedPoints.size - 1)
-                
-                val path = Path().apply {
-                    moveTo(0f, height)
-                    
-                    lineTo(0f, height - (normalizedPoints[0] * height))
-                    
-                    for (i in 1 until normalizedPoints.size) {
-                        val currentX = i * stepX
-                        val currentY = height - (normalizedPoints[i] * height)
-                        
-                        if (i == 1) {
-                            lineTo(currentX, currentY)
-                        } else {
-                            val prevX = (i - 1) * stepX
-                            val prevY = height - (normalizedPoints[i - 1] * height)
-                            val controlX = (prevX + currentX) / 2f
-                            val controlY = (prevY + currentY) / 2f
-                            
-                            quadraticBezierTo(controlX, controlY, currentX, currentY)
-                        }
-                    }
-                    
-                    lineTo(width, height)
+                val fill = Path().apply {
+                    addPath(path)
+                    lineTo(size.width, size.height)
+                    lineTo(0f, size.height)
                     close()
                 }
-                
-                val gradient = Brush.verticalGradient(
-                    colors = listOf(
-                        graphData.third.copy(alpha = 0.6f),
-                        graphData.third.copy(alpha = 0.1f)
-                    ),
-                    startY = 0f,
-                    endY = height
-                )
-                
-                drawPath(
-                    path = path,
-                    brush = gradient
-                )
-                
-                val linePath = Path().apply {
-                    moveTo(0f, height - (normalizedPoints[0] * height))
-                    for (i in 1 until normalizedPoints.size) {
-                        val currentX = i * stepX
-                        val currentY = height - (normalizedPoints[i] * height)
-                        if (i == 1) {
-                            lineTo(currentX, currentY)
-                        } else {
-                            val prevX = (i - 1) * stepX
-                            val prevY = height - (normalizedPoints[i - 1] * height)
-                            val controlX = (prevX + currentX) / 2f
-                            val controlY = (prevY + currentY) / 2f
-                            quadraticBezierTo(controlX, controlY, currentX, currentY)
+                drawPath(fill, Brush.verticalGradient(listOf(color.copy(alpha = 0.34f), Color.Transparent)))
+                drawPath(path, color, style = Stroke(2.5.dp.toPx()))
+            }
+        }
+    }
+}
+
+@Composable
+fun QuickStartAppSidebar(apps: List<AppInfo>, compact: Boolean = false,
+    onMessage: (String) -> Unit = {}, onLaunched: () -> Unit = {}) {
+    val context = LocalContext.current
+    Row(Modifier.fillMaxWidth().padding(top = 6.dp).height(56.dp)
+        .background(MaterialTheme.colorScheme.surfaceContainerHighest, RoundedCornerShape(28.dp))
+        .horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        if (!compact) Text(stringResource(R.string.dashboard_apps), Modifier.padding(horizontal = 8.dp),
+            style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        apps.forEach { app ->
+            Box(Modifier.size(52.dp).clip(CircleShape).clickable {
+                launchAppInFreeformMode(context, app.packageName,
+                    onFailure = { onMessage(context.getString(R.string.floating_window_unavailable)) }, onLaunched = onLaunched)
+            }, contentAlignment = Alignment.Center) {
+                Box(Modifier.size(40.dp).background(MaterialTheme.colorScheme.secondaryContainer, CircleShape), contentAlignment = Alignment.Center) {
+                    Image(rememberDrawablePainter(app.icon), app.name, Modifier.size(30.dp).clip(CircleShape))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun TileEditPanel(repository: TileRepository, apps: List<AppInfo>, mainCount: Int, columns: Int,
+    tablet: Boolean, compact: Boolean, onClose: () -> Unit, onMessage: (String) -> Unit, onEditApps: () -> Unit) {
+    val context = LocalContext.current
+    val drag = remember(repository, columns) { TileDragDropState(repository.tiles.toList(), columns) }
+    var gridOrigin by remember { mutableStateOf(Offset.Zero) }
+    var viewport by remember { mutableStateOf(Rect.Zero) }
+    val editorScroll = rememberScrollState()
+    val scope = rememberCoroutineScope()
+    val density = LocalDensity.current
+    val edge = with(density) { 32.dp.toPx() }
+    val step = with(density) { 12.dp.toPx() }
+    LaunchedEffect(repository.tiles.toList(), drag.dragInProgress) {
+        if (!drag.dragInProgress && drag.tileIds() != repository.tiles.map { it.id }) {
+            drag.replaceTiles(repository.tiles.toList())
+        }
+    }
+    fun save() = repository.updateTileSelection(drag.tileIds())
+    val px = if (compact) 12.dp else 16.dp
+    val viewConfiguration = LocalViewConfiguration.current
+    val removeConfiguration = remember(viewConfiguration) {
+        object : ViewConfiguration by viewConfiguration {
+            override val minimumTouchTargetSize = DpSize(32.dp, 32.dp)
+        }
+    }
+    Column(Modifier.fillMaxSize()) {
+        if (!tablet && !compact) SheetGrip()
+        Row(Modifier.fillMaxWidth().height(56.dp).padding(horizontal = px), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(stringResource(R.string.dashboard_edit), fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+                Text(stringResource(R.string.dashboard_first_tiles, mainCount), fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            TextButton(modifier = Modifier.semantics { contentDescription = context.getString(R.string.tile_reset_to_default) }, onClick = {
+                repository.resetToDefault()
+                drag.replaceTiles(repository.tiles.toList())
+                onMessage(context.getString(R.string.dashboard_reset))
+            }, contentPadding = PaddingValues(horizontal = 8.dp)) { Text(stringResource(R.string.dashboard_reset_short), fontSize = 12.sp) }
+            Button(onClick = { save(); onClose() }, contentPadding = PaddingValues(horizontal = 12.dp)) {
+                Text(stringResource(R.string.dashboard_done), fontSize = 12.sp)
+            }
+        }
+        Column(Modifier.weight(1f).onGloballyPositioned { viewport = it.boundsInRoot() }
+            .verticalScroll(editorScroll).padding(horizontal = px).padding(bottom = 16.dp)) {
+            Text(stringResource(R.string.dashboard_in_dashboard), style = MaterialTheme.typography.titleSmall)
+            Text(stringResource(R.string.dashboard_drag), style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Column(Modifier.fillMaxWidth().padding(top = 8.dp).onGloballyPositioned { gridOrigin = it.positionInRoot() }
+                .dragAndDropActiveGrid(contentOffset = { gridOrigin }, dragDropState = drag,
+                    onPointerMoved = { position ->
+                        val delta = when {
+                            !drag.dragInProgress -> 0f
+                            position.y < viewport.top + edge -> -step
+                            position.y > viewport.bottom - edge -> step
+                            else -> 0f
+                        }
+                        if (delta != 0f) scope.launch { editorScroll.scrollBy(delta) }
+                    }, onDrop = { repository.updateTileSelection(it) })) {
+                drag.tiles.chunked(columns).forEachIndexed { rowIndex, row ->
+                    if (rowIndex * columns == mainCount) MoreDivider()
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        row.forEachIndexed { colIndex, tile -> key(tile.id) {
+                            val index = rowIndex * columns + colIndex
+                            val title = if (tile.id == "screen_aspect_ratio") stringResource(R.string.tile_aspect_ratio) else tile.label
+                            val removeLabel = stringResource(R.string.dashboard_remove, title)
+                            Box(Modifier.weight(1f).height(if (tablet) 72.dp else 80.dp)
+                                .onGloballyPositioned { coords ->
+                                    val offset = coords.positionInRoot() - gridOrigin
+                                    drag.updateItemPosition(tile.id, index, IntOffset(offset.x.roundToInt(), offset.y.roundToInt()), coords.size)
+                                }.semantics { customActions = buildList {
+                                    if (index > 0) add(CustomAccessibilityAction(context.getString(R.string.dashboard_move_earlier)) {
+                                        drag.onStarted(tile); drag.onTargeting(index - 1); repository.updateTileSelection(drag.onDrop()); true
+                                    })
+                                    if (index < drag.tiles.lastIndex) add(CustomAccessibilityAction(context.getString(R.string.dashboard_move_later)) {
+                                        drag.onStarted(tile); drag.onTargeting(index + 1); repository.updateTileSelection(drag.onDrop()); true
+                                    })
+                                    add(CustomAccessibilityAction(removeLabel) { drag.removeTile(tile.id); save(); true })
+                                } }) {
+                                Box(Modifier.fillMaxSize().padding(top = 8.dp, end = 8.dp)
+                                    .clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.surfaceContainerHighest)
+                                    .dragAndDropTileSource(tile, drag), contentAlignment = Alignment.Center) {
+                                    if (tablet) Row(Modifier.padding(horizontal = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(Icons.Rounded.DragIndicator, stringResource(R.string.dashboard_drag), Modifier.size(18.dp),
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        Text(title, Modifier.weight(1f).padding(4.dp), fontSize = 12.sp,
+                                            lineHeight = 14.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                    } else Column(Modifier.padding(horizontal = 3.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Icon(Icons.Rounded.DragIndicator, stringResource(R.string.dashboard_drag), Modifier.size(20.dp),
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        Text(title, fontSize = 11.sp, lineHeight = 14.sp, maxLines = 2,
+                                            overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
+                                    }
+                                }
+                                CompositionLocalProvider(LocalViewConfiguration provides removeConfiguration) {
+                                    Box(Modifier.align(Alignment.TopEnd).offset(x = 7.dp, y = (-7).dp).size(32.dp).clip(CircleShape)
+                                        .clickable(onClickLabel = removeLabel) { drag.removeTile(tile.id); save() }
+                                        .semantics { contentDescription = removeLabel }, contentAlignment = Alignment.Center) {
+                                        Box(Modifier.size(22.dp).background(MaterialTheme.colorScheme.inverseSurface, CircleShape), contentAlignment = Alignment.Center) {
+                                            Icon(Icons.Rounded.Remove, null, Modifier.size(16.dp), MaterialTheme.colorScheme.inverseOnSurface)
+                                        }
+                                    }
+                                }
+                            }
+                        } }
+                        repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
+                    }
+                }
+                if (drag.tiles.size == mainCount) MoreDivider()
+                if (drag.tiles.isEmpty()) Text(stringResource(R.string.dashboard_empty), Modifier.padding(vertical = 16.dp))
+            }
+            Row(Modifier.fillMaxWidth().padding(top = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(stringResource(R.string.dashboard_quick_apps), style = MaterialTheme.typography.titleSmall)
+                    Text(stringResource(R.string.dashboard_floating), style = MaterialTheme.typography.bodySmall)
+                }
+                FilledTonalButton(onClick = onEditApps) { Text(stringResource(R.string.dashboard_edit_apps)) }
+            }
+            if (apps.isNotEmpty()) Row(Modifier.horizontalScroll(rememberScrollState()).padding(vertical = 8.dp)) {
+                apps.forEach { app -> Image(rememberDrawablePainter(app.icon), app.name, Modifier.padding(end = 6.dp).size(32.dp).clip(CircleShape)) }
+            }
+            Text(stringResource(R.string.dashboard_add), Modifier.padding(top = 20.dp, bottom = 4.dp), style = MaterialTheme.typography.titleSmall)
+            TileCategory.entries.forEach { category ->
+                val available = repository.allAvailableTiles.filter { it.category == category }
+                if (available.isNotEmpty()) {
+                    Text(stringResource(category.labelRes), Modifier.padding(top = 12.dp, bottom = 4.dp),
+                        style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        available.forEach { tile ->
+                            val added = drag.tileIds().contains(tile.id)
+                            val title = if (tile.id == "screen_aspect_ratio") stringResource(R.string.tile_aspect_ratio) else tile.label
+                            if (added) Surface(Modifier.padding(vertical = 4.dp).height(34.dp)
+                                .semantics(mergeDescendants = true) { contentDescription = context.getString(R.string.dashboard_already_added, title) },
+                                color = MaterialTheme.colorScheme.secondaryContainer, shape = RoundedCornerShape(10.dp)) {
+                                Row(Modifier.padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Icon(Icons.Rounded.Check, null, Modifier.size(16.dp))
+                                    Text(title, fontSize = 13.sp, maxLines = 1)
+                                }
+                            } else InputChip(selected = false, onClick = {
+                                drag.addTile(DragTileData(tile.id, tile.label, tile.icon)); save()
+                                onMessage(context.getString(if (drag.tiles.size <= mainCount) R.string.dashboard_added_main
+                                    else R.string.dashboard_added_more, title))
+                            }, label = { Text(title, maxLines = 1) },
+                                leadingIcon = { Icon(Icons.Rounded.Add, null, Modifier.size(16.dp)) })
                         }
                     }
                 }
-                
-                drawPath(
-                    path = linePath,
-                    color = graphData.third,
-                    style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
-                )
-            }
-        }
-        
-        Row(
-            modifier = Modifier
-                .align(Alignment.CenterStart)
-                .padding(start = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            val (minFps, avgFps, maxFpsSeen) = graphData.first
-            Text(
-                text = stringResource(R.string.fps_stats, minFps.toInt(), avgFps.toInt(), maxFpsSeen.toInt()),
-                color = graphData.third,
-                style = MaterialTheme.typography.bodySmall.copy(fontSize = 14.sp)
-            )
-        }
-    }
-}
-
-@Composable
-fun GameModeSelector(
-    selectedMode: GameMode,
-    onModeSelected: (GameMode) -> Unit
-) {
-    val modes = listOf(GameMode.None, GameMode.PowerSave, GameMode.Balanced, GameMode.Performance)
-    val haptic = LocalHapticFeedback.current
-
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        modes.forEach { mode ->
-            val isSelected = mode == selectedMode
-
-            val color = when (mode) {
-                GameMode.Performance -> Color(0xFFD32F2F)
-                GameMode.PowerSave -> Color(0xFF388E3C)
-                GameMode.Balanced -> Color(0xFFEF6C00)
-                GameMode.None -> MaterialTheme.colorScheme.onSurfaceVariant
-            }
-
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .height(48.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(color.copy(alpha = if (isSelected) 0.4f else 0.2f))
-                    .clickable {
-                        if (!isSelected) {
-                            onModeSelected(mode)
-                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                        }
-                    },
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = mode.icon,
-                    contentDescription = stringResource(mode.displayNameRes),
-                    tint = color.copy(alpha = if (isSelected) 1f else 0.4f),
-                    modifier = Modifier.size(24.dp)
-                )
             }
         }
     }
 }
 
 @Composable
-fun QuickStartAppSidebar(apps: List<AppInfo>) {
-    val scrollState = rememberScrollState()
-    val context = LocalContext.current
+private fun SheetGrip() {
+    Box(Modifier.fillMaxWidth().height(12.dp), contentAlignment = Alignment.Center) {
+        Box(Modifier.width(32.dp).height(4.dp).background(MaterialTheme.colorScheme.outlineVariant, CircleShape))
+    }
+}
 
-    Box(
-        modifier = Modifier.padding(end = 0.dp)
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .wrapContentHeight()
-                .background(
-                    color = MaterialTheme.colorScheme.surface,
-                    shape = RoundedCornerShape(12.dp)
-                )
-                .padding(8.dp)
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(scrollState),
-                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                apps.forEach { app ->
-                    QuickStartAppIcon(appInfo = app)
-                }
-            }
-        }
+@Composable
+private fun MoreDivider() {
+    Row(Modifier.fillMaxWidth().height(32.dp), verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        HorizontalDivider(Modifier.weight(1f))
+        Text(stringResource(R.string.dashboard_more_starts), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        HorizontalDivider(Modifier.weight(1f))
     }
 }
 
@@ -1319,29 +840,24 @@ fun QuickStartAppIcon(
     }
 }
 
-fun launchAppInFreeformMode(context: Context, packageName: String) {
+fun launchAppInFreeformMode(context: Context, packageName: String,
+    onFailure: (() -> Unit)? = null, onLaunched: (() -> Unit)? = null) {
+    fun failed() {
+        if (onFailure != null) onFailure()
+        else Toast.makeText(context, R.string.floating_window_unavailable, Toast.LENGTH_SHORT).show()
+    }
     try {
-        val packageManager = context.packageManager
-        val launchIntent = packageManager.getLaunchIntentForPackage(packageName)
-
-        if (launchIntent != null) {
-            val component = launchIntent.component
-            val userId = UserHandle.myUserId()
-            if (component == null || !context.canLaunchInFloatingWindow(component, userId)) {
-                Toast.makeText(context, R.string.floating_window_unavailable, Toast.LENGTH_SHORT).show()
-                return
-            }
-            val options = ActivityOptions.makeBasic().apply {
-                setLaunchFloatingWindow(true)
-            }
-            context.startActivityAsUser(
-                launchIntent,
-                options.toBundle(),
-                UserHandle.of(userId)
-            )
-        }
+        val intent = context.packageManager.getLaunchIntentForPackage(packageName)
+        if (intent == null) { onFailure?.invoke(); return }
+        val component = intent.component
+        val userId = UserHandle.myUserId()
+        if (component == null || !context.canLaunchInFloatingWindow(component, userId)) { failed(); return }
+        val options = ActivityOptions.makeBasic().apply { setLaunchFloatingWindow(true) }
+        context.startActivityAsUser(intent, options.toBundle(), UserHandle.of(userId))
+        onLaunched?.invoke()
     } catch (e: Exception) {
         Log.e(TAG, "Failed to launch in freeform", e)
+        onFailure?.invoke()
     }
 }
 

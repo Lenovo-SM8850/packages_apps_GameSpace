@@ -66,6 +66,7 @@ class TileDragDropState(initialTiles: List<TileAction>, val columns: Int = 2) {
     val tiles: List<DragTileData> get() = _tiles
 
     private val _itemPositions = mutableStateMapOf<String, ItemPosition>()
+    private var originalTiles = emptyList<DragTileData>()
 
     var draggedTile by mutableStateOf<DragTileData?>(null)
         private set
@@ -83,11 +84,13 @@ class TileDragDropState(initialTiles: List<TileAction>, val columns: Int = 2) {
 
     fun findItemAtOffset(relativeOffset: Offset): ItemPosition? {
         return _itemPositions.values.firstOrNull { item ->
-            IntRect(item.offset, item.size).toRect().contains(relativeOffset)
-        }
+            _tiles.any { it.id == item.id } && IntRect(item.offset, item.size).toRect().contains(relativeOffset)
+        }?.let { item -> item.copy(index = _tiles.indexOfFirst { it.id == item.id }) }
+            ?.takeIf { it.index >= 0 }
     }
 
     fun onStarted(tile: DragTileData, type: DragType = DragType.Move) {
+        originalTiles = _tiles.toList()
         draggedTile = tile
         dragType = type
     }
@@ -113,18 +116,33 @@ class TileDragDropState(initialTiles: List<TileAction>, val columns: Int = 2) {
 
     fun onDrop(): List<String> {
         val result = tileIds()
+        originalTiles = emptyList()
         draggedTile = null
         dragType = null
         return result
     }
 
     fun onCancelled() {
-        val dragged = draggedTile
-        if (dragged != null && dragType == DragType.Add) {
-            _tiles.removeAll { it.id == dragged.id }
+        if (draggedTile != null) {
+            _tiles.clear()
+            _tiles.addAll(originalTiles)
         }
+        originalTiles = emptyList()
         draggedTile = null
         dragType = null
+        trimItemPositions()
+    }
+
+    fun replaceTiles(tiles: List<TileAction>) {
+        onCancelled()
+        _tiles.clear()
+        _tiles.addAll(tiles.map { it.toDragData() })
+        trimItemPositions()
+    }
+
+    private fun trimItemPositions() {
+        val ids = _tiles.map { it.id }.toSet()
+        _itemPositions.keys.toList().filterNot { it in ids }.forEach { _itemPositions.remove(it) }
     }
 
     fun tileIds(): List<String> = _tiles.map { it.id }
@@ -137,6 +155,7 @@ class TileDragDropState(initialTiles: List<TileAction>, val columns: Int = 2) {
 
     fun removeTile(id: String): DragTileData? {
         val index = _tiles.indexOfFirst { it.id == id }
+        _itemPositions.remove(id)
         return if (index != -1) _tiles.removeAt(index) else null
     }
 }
@@ -151,6 +170,7 @@ private fun DragAndDropEvent.toOffset(): Offset {
 fun Modifier.dragAndDropActiveGrid(
     contentOffset: () -> Offset,
     dragDropState: TileDragDropState,
+    onPointerMoved: (Offset) -> Unit = {},
     onDrop: (List<String>) -> Unit,
 ): Modifier {
     val target = remember(dragDropState) {
@@ -159,6 +179,7 @@ fun Modifier.dragAndDropActiveGrid(
 
             override fun onMoved(event: DragAndDropEvent) {
                 val offset = event.toOffset()
+                onPointerMoved(offset)
                 val relativeOffset = offset - contentOffset()
                 val targetItem = dragDropState.findItemAtOffset(relativeOffset)
                 targetItem?.let { dragDropState.onTargeting(it.index) }
@@ -176,7 +197,7 @@ fun Modifier.dragAndDropActiveGrid(
 
             override fun onEnded(event: DragAndDropEvent) {
                 if (dragDropState.dragInProgress) {
-                    dragDropState.onDrop()
+                    dragDropState.onCancelled()
                 }
             }
         }

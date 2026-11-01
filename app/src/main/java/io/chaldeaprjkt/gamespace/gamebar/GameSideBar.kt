@@ -52,6 +52,10 @@ import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import io.github.miner7222.gamespace.gamebar.MediaVolumeController
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.*
@@ -84,6 +88,7 @@ class GameSidebar(
     private val tileRepository: TileRepository,
     private val platform: AxPlatformClient,
     private val mapperController: MapperController,
+    private val mediaVolume: MediaVolumeController,
 ) {
     /** Called when the pill, the panel or the mapper editor starts or stops covering the game. */
     var onUiBlockingChanged: ((Boolean) -> Unit)? = null
@@ -131,6 +136,7 @@ class GameSidebar(
     private var pillExpanded = false
     private val pillExpandedState = mutableStateOf(false)
     private val barTopState = mutableIntStateOf(0)
+    private var handleCenterOffsetPx = 0
     private val taskManager by lazy { ActivityTaskManager.getService() }
 
     private val refreshGameTask = Runnable { updateGameTaskVisibility() }
@@ -505,7 +511,7 @@ class GameSidebar(
                     setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
                     setContent {
                         MaterialExpressiveTheme(
-                            colorScheme = dynamicDarkColorScheme(context),
+                            colorScheme = if (isSystemInDarkTheme()) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context),
                             motionScheme = MotionScheme.expressive(),
                         ) {
                             PanelContent()
@@ -555,66 +561,67 @@ class GameSidebar(
         )
 
         val density = LocalDensity.current
-        val barTopPx = gameBarLayoutParam.y
-        val barTopDp = with(density) { barTopPx.toDp() }
-        val navBottomDp = with(density) {
-            context.resources.getDimensionPixelSize(
-                com.android.internal.R.dimen.navigation_bar_height
-            ).toDp()
+        val configuration = LocalConfiguration.current
+        val metrics = wm.maximumWindowMetrics
+        val insets = metrics.windowInsets.getInsetsIgnoringVisibility(
+            android.view.WindowInsets.Type.systemBars() or android.view.WindowInsets.Type.displayCutout())
+        val safeLeft = with(density) { insets.left.toDp() }
+        val safeTop = with(density) { insets.top.toDp() }
+        val safeWidth = with(density) { (metrics.bounds.width() - insets.left - insets.right).coerceAtLeast(0).toDp() }
+        val safeHeightDp = with(density) { (metrics.bounds.height() - insets.top - insets.bottom).coerceAtLeast(0).toDp() }
+        val tablet = configuration.smallestScreenWidthDp >= 600
+        val landscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+        val phonePortrait = !tablet && !landscape
+        val width = minOf(if (tablet) { if (landscape) 420.dp else 400.dp }
+            else if (landscape) 340.dp else safeWidth, (safeWidth - 24.dp).coerceAtLeast(0.dp))
+        var editingPanel by remember { mutableStateOf(false) }
+        val primaryRows = (minOf(8, tileRepository.tiles.size) + 3) / 4
+        val portraitContentHeight = 242.dp + 72.dp * primaryRows + 8.dp * (primaryRows - 1).coerceAtLeast(0) +
+            (if (tileRepository.tiles.size > 8) 55.dp else 0.dp) + (if (apps.isNotEmpty()) 62.dp else 0.dp) + 12.dp
+        val height = when {
+            phonePortrait && editingPanel -> (safeHeightDp - 72.dp).coerceAtLeast(0.dp)
+            phonePortrait -> minOf(portraitContentHeight, (safeHeightDp - 24.dp).coerceAtLeast(0.dp))
+            !tablet -> (safeHeightDp - 24.dp).coerceAtLeast(0.dp)
+            else -> minOf(640.dp, (safeHeightDp - 32.dp).coerceAtLeast(0.dp))
         }
-        val screenHeightDp = with(density) { safeHeight.toDp() }
-        val spaceBelow = (screenHeightDp - barTopDp - navBottomDp - 16.dp).coerceAtLeast(0.dp)
-        val spaceAbove = (barTopDp - navBottomDp - 16.dp).coerceAtLeast(0.dp)
-        val bottomAligned = spaceBelow < 240.dp && spaceAbove > spaceBelow
-        val panelMaxHeight = (if (bottomAligned) spaceAbove else spaceBelow).coerceIn(240.dp, 520.dp)
-        val alignment = when {
-            bottomAligned && circleOnLeft -> Alignment.BottomStart
-            bottomAligned && !circleOnLeft -> Alignment.BottomEnd
-            !bottomAligned && circleOnLeft -> Alignment.TopStart
-            else -> Alignment.TopEnd
-        }
+        // Full-height phone landscapes leave 12dp above/below; other edge panels use 16dp.
+        val margin = minOf(16.dp, ((safeHeightDp - height) / 2).coerceAtLeast(0.dp))
+        val handleLocation = IntArray(2).also { gameBarView.getLocationOnScreen(it) }
+        val anchorPx = if (pillExpanded) barTopState.intValue + handleCenterOffsetPx
+            else handleLocation[1] + gameBarView.height / 2
+        val anchor = with(density) { anchorPx.toDp() }
+        val top = if (phonePortrait) safeTop + safeHeightDp - height - 12.dp
+            else (anchor - height / 2).coerceIn(safeTop + margin,
+                (safeTop + safeHeightDp - height - margin).coerceAtLeast(safeTop + margin))
+        val left = if (phonePortrait || circleOnLeft) safeLeft + 12.dp
+            else safeLeft + safeWidth - width - 12.dp
         val transformOriginX = if (circleOnLeft) 0f else 1f
-        val transformOriginY = if (bottomAligned) 1f else 0f
-
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                ) { if (!dismissing) requestDismissPanel() },
-            contentAlignment = alignment,
-        ) {
-            val edgePadding = if (bottomAligned) navBottomDp + 8.dp else barTopDp
-            Box(
-                modifier = Modifier
-                    .padding(
-                        start = 12.dp,
-                        end = 12.dp,
-                        top = if (!bottomAligned) edgePadding else 0.dp,
-                        bottom = if (bottomAligned) edgePadding else 0.dp,
-                    )
-                    .graphicsLayer {
-                        translationX = slideOffset
-                        alpha = panelAlpha
-                        scaleX = panelScale
-                        scaleY = panelScale
-                        transformOrigin = TransformOrigin(transformOriginX, transformOriginY)
-                    }
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                    ) {}
-            ) {
-                GamePanelCard(
-                    interactor = brightnessInteractor,
-                    fpsInteractor = fpsInteractor,
-                    apps = apps,
-                    gameModeUtils = gameModeUtils,
-                    systemSettings = settings,
-                    tileRepository = tileRepository,
-                    maxHeight = panelMaxHeight,
-                )
+        val transformOriginY = if (height > 0.dp) ((anchor - top) / height).coerceIn(0f, 1f) else 0.5f
+        var swipe by remember { mutableFloatStateOf(0f) }
+        val threshold = with(density) { 48.dp.toPx() }
+        val packageName = gamePackage ?: return
+        Box(Modifier.fillMaxSize().clickable(
+            interactionSource = remember { MutableInteractionSource() }, indication = null,
+        ) { if (!dismissing) requestDismissPanel() }) {
+            Box(Modifier.offset(left.coerceAtLeast(0.dp), top.coerceAtLeast(0.dp))
+                .graphicsLayer {
+                    translationX = slideOffset
+                    alpha = panelAlpha
+                    scaleX = panelScale
+                    scaleY = panelScale
+                    transformOrigin = TransformOrigin(transformOriginX, transformOriginY)
+                }
+                .pointerInput(circleOnLeft) {
+                    detectHorizontalDragGestures(onDragStart = { swipe = 0f }, onDragEnd = {
+                        if ((circleOnLeft && swipe < -threshold) || (!circleOnLeft && swipe > threshold)) requestDismissPanel()
+                    }, onHorizontalDrag = { change, amount -> swipe += amount; change.consume() })
+                }
+                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {}) {
+                GamePanelCard(interactor = brightnessInteractor, fpsInteractor = fpsInteractor, apps = apps,
+                    gameModeUtils = gameModeUtils, systemSettings = settings, tileRepository = tileRepository,
+                    mediaVolume = mediaVolume, gamePackage = packageName,
+                    onDismiss = { forceRemovePanel() }, panelWidth = width, maxHeight = height,
+                    onEditingChanged = { editingPanel = it })
             }
         }
     }
@@ -627,6 +634,8 @@ class GameSidebar(
         notifyUiBlocking()
         if (expanded) {
             barTopState.intValue = gameBarLayoutParam.y
+            val location = IntArray(2).also { gameBarView.getLocationOnScreen(it) }
+            handleCenterOffsetPx = location[1] - gameBarLayoutParam.y + gameBarView.height / 2
             gameBarLayoutParam.gravity = Gravity.TOP or Gravity.START
             gameBarLayoutParam.x = 0
             gameBarLayoutParam.y = 0
@@ -764,6 +773,7 @@ class GameSidebar(
             WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
         PixelFormat.TRANSLUCENT
     ).apply {
+        setFitInsetsTypes(0)
         width = WindowManager.LayoutParams.MATCH_PARENT
         height = WindowManager.LayoutParams.MATCH_PARENT
         layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
