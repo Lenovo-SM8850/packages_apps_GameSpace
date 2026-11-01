@@ -1057,7 +1057,11 @@ class TileRepository @Inject constructor(
             readSavedDifference = { differsFromSaved(GameOption.TOUCH) },
             state = touchResponseState,
             available = { hasDeviceCapability("touch_response") },
-            setter = { gameSession.setOption(GameOption.TOUCH, if (it) 1 else 0) },
+            setter = {
+                gameSession.setOption(GameOption.TOUCH, if (it) 1 else 0)
+                SidebarVisibility.refresh(context)
+                refreshPlatformStates()
+            },
         ))
         add(CycleTile(
             id = "ringer",
