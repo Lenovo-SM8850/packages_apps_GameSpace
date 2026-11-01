@@ -170,6 +170,19 @@ class GameSession @Inject constructor(
         persistRecovery(orig)
     }
 
+    /** True while the session holds do not disturb that was off when it took ownership. */
+    fun dndChanged(): Boolean {
+        val orig = liveState ?: return false
+        return orig.ownsDnd && (orig.dndFilter == NotificationManager.INTERRUPTION_FILTER_ALL ||
+            orig.dndFilter == NotificationManager.INTERRUPTION_FILTER_UNKNOWN)
+    }
+
+    /** True while the session holds a ringer mode other than the one it replaced. */
+    fun ringerChanged(): Boolean {
+        val orig = liveState ?: return false
+        return orig.ownsRingerMode && orig.ringerMode != audioManager.ringerModeInternal
+    }
+
     fun releaseDndOwnership() {
         val orig = liveState ?: return
         if (!orig.ownsDnd) return

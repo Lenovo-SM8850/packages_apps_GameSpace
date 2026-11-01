@@ -62,7 +62,6 @@
 
     <!-- Bypass charging -->
     <string name="bypass_charge_enabled_title">Bypass charging</string>
-    <string name="bypass_charging_on">Bypass charging on</string>
     <string name="bypass_charge_enabled_summary">Enable bypass charging while playing games</string>
 
     <!-- Call overlay -->
@@ -255,5 +254,12 @@
     <string name="gamebar_fps_label">FPS</string>
     <string name="gamebar_temperature_label">Temp</string>
     <string name="gamebar_battery_label">Battery</string>
+    <string name="status_do_not_disturb">Do not disturb</string>
+    <string name="status_sidebar_hidden">Sidebar hidden</string>
+    <string name="status_high_touch_sampling">High touch sampling rate</string>
+    <string name="status_ringer_sound">Ringer on</string>
+    <string name="status_ringer_mute">Ringer muted</string>
+    <string name="status_memory_cleaned">Memory cleaned</string>
+    <string name="status_session_applied">Session options applied: %1$s</string>
     <string name="game_performance">Game Tuner</string>
 </resources>
