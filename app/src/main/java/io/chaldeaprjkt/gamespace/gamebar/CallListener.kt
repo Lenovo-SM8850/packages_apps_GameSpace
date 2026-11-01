@@ -65,6 +65,7 @@ import dagger.hilt.android.scopes.ServiceScoped
 import io.chaldeaprjkt.gamespace.R
 import io.chaldeaprjkt.gamespace.data.AppSettings
 import io.chaldeaprjkt.gamespace.utils.dp as extDp
+import io.github.miner7222.gamespace.library.GameOption
 import javax.inject.Inject
 import kotlinx.coroutines.delay
 
@@ -78,8 +79,8 @@ class CallListener @Inject constructor(
     private val telecomManager = context.getSystemService(TelecomManager::class.java)!!
     private val windowManager = context.getSystemService(WindowManager::class.java)!!
 
-    private val callsMode get() = appSettings.callsMode
-    private val callOverlayEnabled get() = appSettings.callOverlayEnabled
+    private val callsMode get() = appSettings.inGameOptions.current(GameOption.CALLS)
+    private val callOverlayEnabled get() = appSettings.inGameOptions.current(GameOption.CALL_OVERLAY) == 1
 
     var onIncomingCall: (() -> Unit)? = null
 
@@ -88,11 +89,20 @@ class CallListener @Inject constructor(
     private var ringerOverlay: ComposeView? = null
     private var isOverlayShowing = false
     private var gameVisible = false
+    private var callState = TelephonyManager.CALL_STATE_IDLE
+    private var incomingNumber = ""
+    private var appliedCallsMode = 0
+    private var appliedOverlay = false
+    private var audioRouted = false
 
     @Suppress("DEPRECATION")
     private val phoneStateListener = object : PhoneStateListener() {
         override fun onCallStateChanged(state: Int, incomingNumber: String?) {
             val number = incomingNumber.orEmpty()
+            callState = state
+            this@CallListener.incomingNumber = number
+            appliedCallsMode = callsMode
+            appliedOverlay = callOverlayEnabled
             when (state) {
                 TelephonyManager.CALL_STATE_RINGING -> handleIncomingCall(number)
                 TelephonyManager.CALL_STATE_OFFHOOK -> handleOffhookState()
@@ -106,7 +116,25 @@ class CallListener @Inject constructor(
         ringerOverlay?.visibility = if (visible) View.VISIBLE else View.INVISIBLE
     }
 
+    fun refreshInGameOptions() {
+        val mode = callsMode
+        val overlay = callOverlayEnabled
+        if (!overlay) dismissRingerOverlay(immediate = true)
+        if (callState == TelephonyManager.CALL_STATE_RINGING &&
+            (mode != appliedCallsMode || (mode == 0 && overlay != appliedOverlay))) {
+            handleIncomingCall(incomingNumber)
+        }
+        if (callState == TelephonyManager.CALL_STATE_OFFHOOK && mode != appliedCallsMode) {
+            if (mode == 1) handleOffhookState() else restoreCallAudio()
+        }
+        appliedCallsMode = mode
+        appliedOverlay = overlay
+    }
+
     fun init() {
+        callState = TelephonyManager.CALL_STATE_IDLE
+        appliedCallsMode = callsMode
+        appliedOverlay = callOverlayEnabled
         previousAudioMode = audioManager.mode
         @Suppress("DEPRECATION")
         telephonyManager.listen(
@@ -116,6 +144,7 @@ class CallListener @Inject constructor(
     }
 
     fun destroy() {
+        restoreCallAudio()
         @Suppress("DEPRECATION")
         telephonyManager.listen(
             phoneStateListener,
@@ -159,6 +188,7 @@ class CallListener @Inject constructor(
 
         if (callsMode == 0 || callsMode == 2) return
 
+        audioRouted = true
         audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
         if (isHeadsetPluggedIn()) {
             audioManager.isSpeakerphoneOn = false
@@ -171,9 +201,12 @@ class CallListener @Inject constructor(
 
     private fun handleIdleState() {
         dismissRingerOverlay()
+        restoreCallAudio()
+    }
 
-        if (callsMode == 0 || callsMode == 2) return
-
+    private fun restoreCallAudio() {
+        if (!audioRouted) return
+        audioRouted = false
         audioManager.mode = previousAudioMode
         AudioSystem.setForceUse(AudioSystem.FOR_COMMUNICATION, AudioSystem.FORCE_NONE)
     }

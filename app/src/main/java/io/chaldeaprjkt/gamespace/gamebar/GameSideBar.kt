@@ -59,6 +59,7 @@ import com.android.axion.compose.lifecycle.repeatWhenAttached
 import com.android.axion.platform.AxPlatformClient
 import io.chaldeaprjkt.gamespace.BuildFlags
 import io.chaldeaprjkt.gamespace.R
+import io.github.miner7222.gamespace.library.GameOption
 import io.chaldeaprjkt.gamespace.data.AppSettings
 import io.chaldeaprjkt.gamespace.data.SystemSettings
 import io.chaldeaprjkt.gamespace.gamebar.brightness.*
@@ -265,7 +266,9 @@ class GameSidebar(
                                 onShowPanel = { handler.post { showPanel() } },
                                 onMapControls = { handler.post { enterMapperEdit() } },
                                 onToggleLock = {
-                                    setGestureLock(!isLockedState.value)
+                                    val enabled = !isLockedState.value
+                                    io.github.miner7222.gamespace.library.SessionOptions.choose(context, GameOption.GESTURES, if (enabled) 1 else 0)
+                                    setGestureLock(enabled)
                                     scheduleIdle()
                                 },
                                 onToggleFps = {
@@ -334,7 +337,10 @@ class GameSidebar(
         mapperController.setGameVisible(visible)
     }
 
+    private var sessionUserId = context.userId
+
     fun onGameStart(packageName: String) {
+        sessionUserId = context.userId
         shouldClose = false
         barReady = false
         screenshotInProgress = false
@@ -390,13 +396,17 @@ class GameSidebar(
         collapseVerticalPill()
     }
 
+    fun refreshInGameOptions() {
+        if (gamePackage != null) setGestureLock(appSettings.inGameOptions.current(GameOption.GESTURES) == 1)
+    }
+
     fun setGestureLock(value: Boolean) {
         isLockedState.value = value
         Settings.Secure.putIntForUser(
             context.contentResolver,
             "ax_gaming_gesture_lock",
             if (value) 1 else 0,
-            UserHandle.USER_CURRENT
+            sessionUserId
         )
     }
 
@@ -675,7 +685,7 @@ class GameSidebar(
         runCatching { wm.updateViewLayout(gameBarView, gameBarLayoutParam) }
         tileRepository.setFpsInfoEnabled(appSettings.showFps)
         updateFpsTracking()
-        setGestureLock(appSettings.lockGesture)
+        setGestureLock(appSettings.inGameOptions.current(GameOption.GESTURES) == 1)
         scheduleIdle()
     }
 
