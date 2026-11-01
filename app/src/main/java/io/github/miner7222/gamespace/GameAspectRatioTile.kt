@@ -59,6 +59,8 @@ class GameAspectRatioTile @Inject constructor(
     val currentMode: String? get() = mode.value
     /** Called after the availability or stored mode may have changed; may run on any thread. */
     var onChanged: (() -> Unit)? = null
+    /** The dashboard owns feedback while its picker is open; other callers keep the toast. */
+    var onFailureMessage: ((String) -> Unit)? = null
 
     @Composable
     override fun observeEnabled(): State<Boolean> = rememberUpdatedState(isEnabled)
@@ -201,7 +203,8 @@ class GameAspectRatioTile @Inject constructor(
     }
 
     private fun showFailure() {
-        Toast.makeText(context, R.string.aspect_ratio_change_failed, Toast.LENGTH_SHORT).show()
+        val message = context.getString(R.string.aspect_ratio_change_failed)
+        onFailureMessage?.invoke(message) ?: Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
     }
 
     companion object {

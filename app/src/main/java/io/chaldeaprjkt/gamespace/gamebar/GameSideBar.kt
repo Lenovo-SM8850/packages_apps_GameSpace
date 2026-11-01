@@ -234,7 +234,13 @@ class GameSidebar(
             when (feature) {
                 AxPlatformClient.FEATURE_SCREENSHOT -> {
                     screenshotInProgress = true
-                    forceRemovePanel()
+                    // Keep the panel composition and its result collector attached during capture.
+                    panelView?.let { view ->
+                        view.alpha = 0f
+                        panelLayoutParam.alpha = 0f
+                        panelLayoutParam.flags = panelLayoutParam.flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+                        runCatching { wm.updateViewLayout(view, panelLayoutParam) }
+                    }
                     updateGameBarVisibility()
                 }
                 AxPlatformClient.FEATURE_SCREEN_RECORD -> {
@@ -244,6 +250,12 @@ class GameSidebar(
         }
         tileRepository.onScreenshotComplete = {
             screenshotInProgress = false
+            panelView?.let { view ->
+                panelLayoutParam.flags = panelLayoutParam.flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE.inv()
+                view.alpha = 1f
+                panelLayoutParam.alpha = 1f
+                runCatching { wm.updateViewLayout(view, panelLayoutParam) }
+            }
             updateGameBarVisibility()
         }
         gameBarView = ComposeView(context).apply {
@@ -432,7 +444,7 @@ class GameSidebar(
 
     private fun showPanel() {
         updateGameTaskVisibility()
-        if (!gameVisible || shouldClose || gameTaskHidden || panelShowing) return
+        if (!gameVisible || shouldClose || gameTaskHidden || panelShowing || screenshotInProgress) return
         panelShowing = true
         notifyUiBlocking()
         panelDismissing.value = false
@@ -443,6 +455,8 @@ class GameSidebar(
         fpsInteractor.start()
         brightnessInteractor.start()
 
+        panelLayoutParam.flags = panelLayoutParam.flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE.inv()
+        panelLayoutParam.alpha = 1f
         val pv = createPanelView()
         panelView = pv
 
