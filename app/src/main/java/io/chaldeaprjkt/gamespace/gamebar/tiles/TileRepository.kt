@@ -53,6 +53,8 @@ import com.android.axion.platform.AxPlatformClient
 import com.android.internal.util.ScreenshotHelper
 import io.chaldeaprjkt.gamespace.R
 import io.github.miner7222.gamespace.GameAspectRatioTile
+import io.github.miner7222.gamespace.gamebar.RecordingPhase
+import io.github.miner7222.gamespace.gamebar.RecordingStateController
 import io.github.miner7222.gamespace.library.GameOption
 import io.github.miner7222.gamespace.library.SidebarVisibility
 import io.github.miner7222.gamespace.library.SessionOptions
@@ -212,6 +214,7 @@ class TileRepository @Inject constructor(
     private val gameSession: GameSession,
     private val aspectRatioTile: GameAspectRatioTile,
 ) {
+    private val recording = RecordingStateController()
     private lateinit var platform: AxPlatformClient
     private var listening = false
 
@@ -220,6 +223,14 @@ class TileRepository @Inject constructor(
     var onBeforePlatformAction: ((String) -> Unit)? = null
     var onScreenshotComplete: (() -> Unit)? = null
     var onScreenOff: (() -> Unit)? = null
+    val recordingState = recording.state
+
+    fun stopRecording() {
+        if (listening && recordingState.value.phase == RecordingPhase.ACTIVE) {
+            platform.setEnabled(AxPlatformClient.FEATURE_SCREEN_RECORD, false)
+        }
+    }
+
 
     private val platformListener = object : AxPlatformClient.Listener() {
         override fun onStateChanged(key: String, state: Bundle) {
@@ -408,6 +419,7 @@ class TileRepository @Inject constructor(
     }
 
     private fun updatePlatformTile(tile: PlatformTile, state: Bundle) {
+        if (tile.id == AxPlatformClient.FEATURE_SCREEN_RECORD) recording.update(state)
         tile.availableState.value = tile.id in supportedFeatures &&
             state.getBoolean("available", true) &&
             (!state.containsKey("tileState") ||
