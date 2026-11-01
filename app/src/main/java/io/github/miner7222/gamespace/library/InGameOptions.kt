@@ -129,7 +129,7 @@ class InGameOptions(private val context: Context) {
         Settings.Secure.putStringForUser(resolver, OVERRIDES, map.toString(), userId)
     }
 
-    fun availableOptions(): List<GameOption> = GameOption.entries.filter { it != GameOption.SIDEBAR && it != GameOption.TOUCH }.filter {
+    fun availableOptions(): List<GameOption> = GameOption.entries.filter { it != GameOption.TOUCH }.filter {
         when (it) {
             GameOption.HAPTICS -> context.getSystemService(Vibrator::class.java)?.hasVibrator() == true
             GameOption.TOUCH -> SidebarVisibility.isHighTouchSupported(context)

@@ -81,6 +81,12 @@
             android:defaultValue="true" />
 
         <SwitchPreferenceCompat
+            android:key="gamespace_hide_sidebar"
+            android:title="@string/library_hide_sidebar_title"
+            android:summary="@string/library_hide_sidebar_summary"
+            android:defaultValue="true" />
+
+        <SwitchPreferenceCompat
             android:key="gamespace_auto_brightness_disabled"
             android:title="@string/auto_brightness_disabled_title"
             android:summary="@string/auto_brightness_disabled_summary"
