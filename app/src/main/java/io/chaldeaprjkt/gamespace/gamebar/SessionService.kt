@@ -60,6 +60,7 @@ import io.chaldeaprjkt.gamespace.utils.GameModeUtils
 import io.chaldeaprjkt.gamespace.utils.ScreenUtils
 import io.github.miner7222.gamespace.GameAspectRatioGesture
 import io.github.miner7222.gamespace.GameAspectRatioTile
+import io.github.miner7222.gamespace.gamebar.MediaVolumeController
 import io.github.miner7222.gamespace.library.GameOption
 import io.github.miner7222.gamespace.library.SessionOptions
 import io.github.miner7222.gamespace.library.SidebarVisibility
@@ -77,6 +78,7 @@ class SessionService : Hilt_SessionService() {
     @Inject lateinit var brightnessInteractor: BrightnessInteractor
     @Inject lateinit var fpsInteractor: FpsInteractor
     @Inject lateinit var tileRepository: TileRepository
+    @Inject lateinit var mediaVolume: MediaVolumeController
     @Inject lateinit var aspectRatioTile: GameAspectRatioTile
     @Inject lateinit var gson: Gson
 
@@ -163,6 +165,7 @@ class SessionService : Hilt_SessionService() {
         gameModeUtils.bind(gameManager)
 
         tileRepository.init(platform)
+        mediaVolume.start()
         brightnessInteractor.onToggleAutoMode = { session.setAutoBrightness(it) }
 
         val windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
@@ -327,6 +330,7 @@ class SessionService : Hilt_SessionService() {
         } catch (e: RuntimeException) {
             releaseWifiLock()
             Log.w(TAG, "Cannot hold the low-latency Wi-Fi lock", e)
+        } finally {
         }
     }
 
@@ -338,6 +342,7 @@ class SessionService : Hilt_SessionService() {
             if (lock?.isHeld == true) lock.release()
         } catch (e: RuntimeException) {
             Log.w(TAG, "Cannot release the low-latency Wi-Fi lock", e)
+        } finally {
         }
     }
 
@@ -421,6 +426,7 @@ class SessionService : Hilt_SessionService() {
         tileRepository.onScreenOff = null
         callListener.onIncomingCall = null
         tileRepository.dispose()
+        mediaVolume.dispose()
         gameModeUtils.unbind()
         danmakuService.destroy()
         super.onDestroy()
