@@ -16,6 +16,7 @@ import android.os.Vibrator
 import android.provider.Settings
 import androidx.preference.PreferenceManager
 import io.chaldeaprjkt.gamespace.R
+import io.chaldeaprjkt.gamespace.data.AppSettings
 import org.json.JSONObject
 
 enum class GameOption(val key: String, val title: Int, val summary: Int, val default: Int,
@@ -146,7 +147,8 @@ class InGameOptions(private val context: Context) {
             override fun onChange(selfChange: Boolean) { onChange() }
         }
         val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
-            if (key == null || key == BYPASS_DEFAULT || GameOption.entries.any { it.key == key }) {
+            if (key == null || key == BYPASS_DEFAULT || key == AppSettings.KEY_WIFI_LOW_LATENCY ||
+                GameOption.entries.any { it.key == key }) {
                 handler.post { onChange() }
             }
         }

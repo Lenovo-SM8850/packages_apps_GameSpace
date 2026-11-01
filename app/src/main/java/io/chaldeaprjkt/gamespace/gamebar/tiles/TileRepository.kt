@@ -45,6 +45,7 @@ import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.preference.PreferenceManager
@@ -54,6 +55,7 @@ import io.chaldeaprjkt.gamespace.R
 import io.github.miner7222.gamespace.GameAspectRatioTile
 import io.github.miner7222.gamespace.library.GameOption
 import io.github.miner7222.gamespace.library.SidebarVisibility
+import io.github.miner7222.gamespace.library.SessionOptions
 import io.chaldeaprjkt.gamespace.data.AppSettings
 import io.chaldeaprjkt.gamespace.data.GameSession
 import io.chaldeaprjkt.gamespace.data.SystemSettings
@@ -92,7 +94,6 @@ interface TileAction {
     val actionResult: TileActionResult? get() = null
     val sessionOption: GameOption? get() = null
     val isSessionTile: Boolean get() = sessionOption != null
-    // A2 supplies the observed saved-value comparison, including Wi-Fi's separate setting.
     val differsFromSaved: Boolean get() = false
     /** Non-empty when tapping the tile opens a picker after [toggle] ran. */
     val options: List<TileOption> get() = emptyList()
@@ -111,7 +112,9 @@ class ToggleableTile(
     override val sessionOption: GameOption? = null,
     override val isSessionTile: Boolean = sessionOption != null,
     private val available: () -> Boolean = { true },
+    private val readSavedDifference: () -> Boolean = { false },
 ) : TileAction {
+    override val differsFromSaved: Boolean get() = readSavedDifference()
     override val kind = TileKind.TOGGLE
     override val isAvailable: Boolean get() = available()
     override val isEnabled: Boolean get() = state.value
@@ -147,7 +150,9 @@ class CycleTile(
     override val sessionOption: GameOption,
     private val readValue: () -> String,
     private val cycle: () -> Unit,
+    private val readSavedDifference: () -> Boolean = { false },
 ) : TileAction {
+    override val differsFromSaved: Boolean get() = readSavedDifference()
     override val kind = TileKind.CYCLE
     override val isEnabled = false
     override val valueLine: String get() = readValue()
@@ -166,7 +171,9 @@ class PlatformTile(
     private val usePlatformLabel: Boolean = true,
     private val readActive: (() -> Boolean)? = null,
     private val toggleAction: (() -> Unit)? = null,
+    private val readSavedDifference: () -> Boolean = { false },
 ) : TileAction {
+    override val differsFromSaved: Boolean get() = readSavedDifference()
     val activeState = mutableStateOf(false)
     val labelState = mutableStateOf("")
     val availableState = mutableStateOf(false)
@@ -230,6 +237,20 @@ class TileRepository @Inject constructor(
                 }
             }
         }
+    }
+
+    private val sessionRevision = mutableIntStateOf(0)
+    private var optionsObservation: AutoCloseable? = null
+
+    private fun differsFromSaved(option: GameOption): Boolean {
+        // Reading the revision makes this getter observable to every Compose consumer.
+        sessionRevision.intValue
+        return SessionOptions.differsFromSaved(context, option)
+    }
+
+    private fun wifiDiffersFromSaved(): Boolean {
+        sessionRevision.intValue
+        return SessionOptions.wifiDiffersFromSaved(context, appSettings.savedWifiLowLatency)
     }
 
     private val _tileOrder = mutableStateListOf<String>()
@@ -315,6 +336,9 @@ class TileRepository @Inject constructor(
         // Seed availability before choosing defaults; the platform may already be connected.
         supportedFeatures = platform.supportedFeatures.toSet()
         platformTiles.forEach { updatePlatformTile(it, platform.getState(it.id)) }
+        optionsObservation?.close()
+        optionsObservation = appSettings.inGameOptions.observe { sessionRevision.intValue++ }
+        sessionRevision.intValue++
 
         preferredTileOrder.clear()
         preferredTileOrder.addAll(loadTileOrder())
@@ -478,6 +502,8 @@ class TileRepository @Inject constructor(
         platform.removeListener(platformListener)
         context.contentResolver.unregisterContentObserver(settingsObserver)
         preferences.unregisterOnSharedPreferenceChangeListener(preferenceListener)
+        optionsObservation?.close()
+        optionsObservation = null
         stateHandler.removeCallbacks(hardwareStateRefresh)
         onBeforePlatformAction = null
         onScreenshotComplete = null
@@ -648,6 +674,7 @@ class TileRepository @Inject constructor(
                 else -> TileCategory.CONNECTIVITY
             },
             sessionOption = if (feature == AxPlatformClient.FEATURE_ZEN) GameOption.DND else null,
+            readSavedDifference = { feature == AxPlatformClient.FEATURE_ZEN && differsFromSaved(GameOption.DND) },
             usePlatformLabel = feature != AxPlatformClient.FEATURE_MOBILE_DATA &&
                 feature != AxPlatformClient.FEATURE_CAFFEINE &&
                 feature != AxPlatformClient.FEATURE_ZEN &&
@@ -869,6 +896,7 @@ class TileRepository @Inject constructor(
                 category = TileCategory.SOUND_NOTIFICATIONS,
                 available = { hasDeviceCapability("notification") },
                 sessionOption = GameOption.DANMAKU,
+                readSavedDifference = { differsFromSaved(GameOption.DANMAKU) },
                 label = context.getString(R.string.tile_danmaku),
                 icon = R.drawable.materialsymbols_ic_notifications_rounded_filled,
                 state = notificationState,
@@ -882,6 +910,7 @@ class TileRepository @Inject constructor(
                 category = TileCategory.GAME_TOOLS,
                 available = { hasDeviceCapability("bypass_charge_enabled") },
                 sessionOption = GameOption.BYPASS,
+                readSavedDifference = { differsFromSaved(GameOption.BYPASS) },
                 label = context.getString(R.string.bypass_charge_enabled_title),
                 icon = R.drawable.materialsymbols_ic_battery_charging_full_rounded_filled,
                 state = bypassChargeState,
@@ -895,6 +924,7 @@ class TileRepository @Inject constructor(
             icon = R.drawable.materialsymbols_ic_lock_rounded_filled,
             category = TileCategory.GAME_TOOLS,
             sessionOption = GameOption.GESTURES,
+            readSavedDifference = { differsFromSaved(GameOption.GESTURES) },
             state = gestureState,
             setter = { gameSession.setOption(GameOption.GESTURES, if (it) 1 else 0) },
         ))
@@ -904,6 +934,7 @@ class TileRepository @Inject constructor(
             icon = R.drawable.materialsymbols_ic_touch_app_rounded_filled,
             category = TileCategory.GAME_TOOLS,
             sessionOption = GameOption.TOUCH,
+            readSavedDifference = { differsFromSaved(GameOption.TOUCH) },
             state = touchResponseState,
             available = { hasDeviceCapability("touch_response") },
             setter = { gameSession.setOption(GameOption.TOUCH, if (it) 1 else 0) },
@@ -914,6 +945,7 @@ class TileRepository @Inject constructor(
             icon = R.drawable.materialsymbols_ic_notifications_active_rounded_filled,
             category = TileCategory.SOUND_NOTIFICATIONS,
             sessionOption = GameOption.RINGER,
+            readSavedDifference = { differsFromSaved(GameOption.RINGER) },
             readValue = {
                 context.getString(when (ringerState.value) {
                     AudioManager.RINGER_MODE_SILENT -> R.string.tile_ringer_mute
@@ -938,6 +970,7 @@ class TileRepository @Inject constructor(
             icon = R.drawable.materialsymbols_ic_wifi_rounded_filled,
             category = TileCategory.CONNECTIVITY,
             isSessionTile = true,
+            readSavedDifference = { wifiDiffersFromSaved() },
             state = wifiLowLatencyState,
             available = { hasDeviceCapability("wifi_low_latency") },
             setter = { appSettings.setSessionWifiLowLatency(it) },
@@ -951,6 +984,7 @@ class TileRepository @Inject constructor(
                 category = TileCategory.GAME_TOOLS,
                 available = { hasDeviceCapability("stay_awake") },
                 sessionOption = GameOption.AWAKE,
+                readSavedDifference = { differsFromSaved(GameOption.AWAKE) },
                 label = context.getString(R.string.tile_stay_awake),
                 icon = R.drawable.materialsymbols_ic_bedtime_rounded_filled,
                 state = systemSettings.stayAwakeState,
