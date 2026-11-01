@@ -134,6 +134,9 @@ class AppSettings @Inject constructor(private val context: Context) {
         get() = db.getInt(KEY_ICON_IDLE_ALPHA, 25)
         set(value) = db.edit().putInt(KEY_ICON_IDLE_ALPHA, value).apply()
 
+    val showStatusAtGameStart: Boolean
+        get() = inGameOptions.current(GameOption.START_STATUS) == 1
+
     val savedWifiLowLatency: Boolean get() = db.getBoolean(KEY_WIFI_LOW_LATENCY, true)
 
     val wifiLowLatency: Boolean

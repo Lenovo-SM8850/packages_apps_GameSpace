@@ -199,5 +199,6 @@
     <string name="tile_ringer_vibrate">Vibrate</string>
     <string name="tile_ringer_mute">Mute</string>
     <string name="tile_reset_to_default">Reset to default</string>
+    <string name="show_status_at_game_start_title">Show status at game start</string>
     <string name="game_performance">Game Tuner</string>
 </resources>
