@@ -38,13 +38,14 @@ import android.os.WorkSource
 import android.content.res.Configuration
 import android.database.ContentObserver
 import android.provider.Settings
+import android.media.AudioManager
+import android.os.BatteryManager
 import android.os.Binder
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.util.Log
 import android.view.WindowManager
-import android.widget.Toast
 import com.android.axion.platform.AxPlatformClient
 import dagger.hilt.android.AndroidEntryPoint
 import com.google.gson.Gson
@@ -60,6 +61,9 @@ import io.chaldeaprjkt.gamespace.utils.GameModeUtils
 import io.chaldeaprjkt.gamespace.utils.ScreenUtils
 import io.github.miner7222.gamespace.GameAspectRatioGesture
 import io.github.miner7222.gamespace.GameAspectRatioTile
+import io.github.miner7222.gamespace.gamebar.SessionStartStatus
+import io.github.miner7222.gamespace.gamebar.SessionStatusChip
+import io.github.miner7222.gamespace.gamebar.SessionStatusOverlay
 import io.github.miner7222.gamespace.gamebar.MediaVolumeController
 import io.github.miner7222.gamespace.library.GameOption
 import io.github.miner7222.gamespace.library.SessionOptions
@@ -87,6 +91,7 @@ class SessionService : Hilt_SessionService() {
     private val sessionBinder = Binder()
     private var bypassChargeActive = false
     private lateinit var gameManager: GameManager
+    private lateinit var startStatus: SessionStatusOverlay
     private lateinit var sidebar: GameSidebar
     private lateinit var aspectRatioGesture: GameAspectRatioGesture
     private lateinit var screenOffSession: ScreenOffSessionController
@@ -125,7 +130,12 @@ class SessionService : Hilt_SessionService() {
 
     private val wifiStateReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
-            if (intent.action == Intent.ACTION_SCREEN_OFF) releaseWifiLock() else updateWifiLock()
+            when (intent.action) {
+                Intent.ACTION_SCREEN_OFF -> { startStatus.cancel(); releaseWifiLock() }
+                Intent.ACTION_USER_SWITCHED, Intent.ACTION_USER_BACKGROUND -> startStatus.cancel()
+                Intent.ACTION_BATTERY_CHANGED, AudioManager.INTERNAL_RINGER_MODE_CHANGED_ACTION -> publishSessionStatus()
+                else -> updateWifiLock()
+            }
         }
     }
 
@@ -136,6 +146,7 @@ class SessionService : Hilt_SessionService() {
     private val bypassObserver = object : ContentObserver(Handler(Looper.getMainLooper())) {
         override fun onChange(selfChange: Boolean) {
             session.rememberBypassChargeEnabled()
+            publishSessionStatus()
         }
     }
 
@@ -147,7 +158,12 @@ class SessionService : Hilt_SessionService() {
                 dndEnabledByUs = false
                 session.releaseDndOwnership()
             }
+            publishSessionStatus()
         }
+    }
+
+    private val statusObserver = object : ContentObserver(mainHandler) {
+        override fun onChange(selfChange: Boolean) { publishSessionStatus() }
     }
 
     @SuppressLint("WrongConstant")
@@ -198,9 +214,13 @@ class SessionService : Hilt_SessionService() {
             mediaVolume = mediaVolume,
         )
         sidebar.onCreate()
+        startStatus = SessionStatusOverlay(this, windowManager) { sidebar.openDashboard() }
         aspectRatioGesture = GameAspectRatioGesture(this, windowManager, mainHandler,
             aspectRatioTile)
-        sidebar.onUiBlockingChanged = { aspectRatioGesture.setUiBlocked(it) }
+        sidebar.onUiBlockingChanged = {
+            aspectRatioGesture.setUiBlocked(it)
+            if (it) startStatus.cancel()
+        }
         screenOffSession = ScreenOffSessionController(this)
         screenOffSession.onNotice = { notice ->
             tileRepository.reportActionMessage("screen_off", notice)
@@ -220,7 +240,14 @@ class SessionService : Hilt_SessionService() {
         registerReceiver(wifiStateReceiver, IntentFilter(WifiManager.WIFI_STATE_CHANGED_ACTION).apply {
             addAction(Intent.ACTION_SCREEN_OFF)
             addAction(Intent.ACTION_SCREEN_ON)
+            addAction(Intent.ACTION_USER_SWITCHED)
+            addAction(Intent.ACTION_USER_BACKGROUND)
+            addAction(Intent.ACTION_BATTERY_CHANGED)
+            addAction(AudioManager.INTERNAL_RINGER_MODE_CHANGED_ACTION)
         }, null, mainHandler, RECEIVER_EXPORTED)
+        listOf(SidebarVisibility.HIGH_TOUCH, SidebarVisibility.HIDDEN, "ax_gaming_gesture_lock").forEach { key ->
+            contentResolver.registerContentObserver(Settings.Secure.getUriFor(key), false, statusObserver, userId)
+        }
         optionsObservation = appSettings.inGameOptions.observe { refreshInGameOptions() }
     }
 
@@ -229,12 +256,10 @@ class SessionService : Hilt_SessionService() {
             val packageName = intent.getStringExtra(EXTRA_PACKAGE_NAME)
             if (packageName != null) {
                 startGameSession(packageName)
+                // Framework acknowledgement reuses ACTION_START; it updates, never rearms, the pill.
+                bypassChargeActive = intent.getBooleanExtra("bypass_charge_active", false)
+                publishSessionStatus()
                 setGameUiVisible(intent.getBooleanExtra(EXTRA_GAME_VISIBLE, true))
-                val bypassActive = intent.getBooleanExtra("bypass_charge_active", false)
-                if (bypassActive && !bypassChargeActive) {
-                    Toast.makeText(this, R.string.bypass_charging_on, Toast.LENGTH_SHORT).show()
-                }
-                bypassChargeActive = bypassActive
             } else {
                 Log.e(TAG, "No package name provided, stopping")
                 stopSelf()
@@ -255,12 +280,15 @@ class SessionService : Hilt_SessionService() {
         aspectRatioGesture.setGameVisible(visible)
         danmakuService.setGameVisible(visible)
         callListener.setGameVisible(visible)
+        publishSessionStatus()
+        startStatus.setGameVisible(visible)
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
         sidebar.onConfigurationChanged(newConfig)
         aspectRatioGesture.onConfigurationChanged()
+        startStatus.onConfigurationChanged()
     }
 
     private fun startGameSession(packageName: String) {
@@ -276,6 +304,7 @@ class SessionService : Hilt_SessionService() {
         Log.i(TAG, "Starting game session for $packageName")
         sessionUserId = userId
         currentPackage = packageName
+        bypassChargeActive = false
         
         session.unregister()
         session.register(packageName)
@@ -291,9 +320,13 @@ class SessionService : Hilt_SessionService() {
         callListener.init()
         refreshInGameOptions()
         updateWifiLock()
+        // All synchronous session options and startup cleanup have completed before arming.
+        startStatus.beginSession(appSettings.showStatusAtGameStart)
+        publishSessionStatus()
     }
 
     private fun stopGameSession() {
+        startStatus.cancel()
         mainHandler.removeCallbacks(screenOffPanelCollapse)
         Log.i(TAG, "Stopping game session")
         SidebarVisibility.setGame(this, null)
@@ -359,6 +392,7 @@ class SessionService : Hilt_SessionService() {
     private fun publishWifiLockState() {
         tileRepository.setWifiLowLatencyActive(
             currentPackage != null && wifiPackage == currentPackage && wifiLock?.isHeld == true)
+        publishSessionStatus()
     }
 
     private fun refreshInGameOptions() {
@@ -372,6 +406,44 @@ class SessionService : Hilt_SessionService() {
         callListener.refreshInGameOptions()
         danmakuService.refreshInGameOptions()
         tileRepository.refreshPlatformStates()
+        publishSessionStatus()
+    }
+
+    private fun publishSessionStatus() {
+        if (currentPackage == null || !::startStatus.isInitialized) return
+        if (!appSettings.showStatusAtGameStart) {
+            startStatus.cancel()
+            return
+        }
+        val options = appSettings.inGameOptions
+        fun secureOn(key: String) = Settings.Secure.getIntForUser(contentResolver, key, 0, sessionUserId) == 1
+        val plugged = (registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+            ?.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0) ?: 0) != 0
+        val filter = getSystemService(NotificationManager::class.java).currentInterruptionFilter
+        val ringer = getSystemService(AudioManager::class.java).ringerModeInternal
+        val requestedRinger = options.current(GameOption.RINGER)
+        val chips = buildList {
+            if (options.current(GameOption.DND) == 1 && filter != NotificationManager.INTERRUPTION_FILTER_ALL &&
+                filter != NotificationManager.INTERRUPTION_FILTER_UNKNOWN) add(SessionStatusChip.DND)
+            // An enabled preference alone does not confirm framework charging control.
+            if (bypassChargeActive && settings.bypassChargeEnabled) {
+                add(if (plugged) SessionStatusChip.BYPASS_CHARGING else SessionStatusChip.BYPASS_READY)
+            }
+            if (secureOn(SidebarVisibility.HIGH_TOUCH)) add(SessionStatusChip.TOUCH)
+            if (tileRepository.wifiLowLatencyActive.value) add(SessionStatusChip.WIFI)
+            if (secureOn(SidebarVisibility.HIDDEN)) add(SessionStatusChip.SIDEBAR_HIDDEN)
+            if (secureOn("ax_gaming_gesture_lock")) add(SessionStatusChip.GESTURES)
+            // Follow system (3) is neutral; explicit choices count only after they are applied.
+            if (requestedRinger != 3 && requestedRinger == ringer) {
+                when (ringer) {
+                    AudioManager.RINGER_MODE_NORMAL -> add(SessionStatusChip.RINGER_SOUND)
+                    AudioManager.RINGER_MODE_VIBRATE -> add(SessionStatusChip.RINGER_VIBRATE)
+                    AudioManager.RINGER_MODE_SILENT -> add(SessionStatusChip.RINGER_MUTE)
+                }
+            }
+        }
+        startStatus.update(SessionStartStatus(gameModeUtils.activeGame?.mode ?: GameManager.GAME_MODE_STANDARD,
+            chips, tileRepository.startupMemoryCleanup.value?.ok == true))
     }
 
     private fun applyAutoDnd() {
@@ -434,6 +506,7 @@ class SessionService : Hilt_SessionService() {
         unregisterReceiver(wifiStateReceiver)
         wifiNetworks.clear()
         contentResolver.unregisterContentObserver(bypassObserver)
+        contentResolver.unregisterContentObserver(statusObserver)
         stopGameSession()
         aspectRatioGesture.release()
         unregisterReceiver(dndReceiver)

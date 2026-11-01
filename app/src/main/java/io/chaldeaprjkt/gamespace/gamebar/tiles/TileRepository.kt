@@ -40,7 +40,6 @@ import android.os.UserManager
 import android.provider.Settings
 import android.telephony.TelephonyManager
 import android.view.WindowManager
-import android.widget.Toast
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.State
@@ -459,7 +458,6 @@ class TileRepository @Inject constructor(
         if (appSettings.autoBoostMemory) {
             val result = clearBackgroundProcesses()
             mutableStartupCleanup.value = result
-            showMemoryCleanupToast(result)
         }
         refreshPlatformStates()
     }
@@ -712,11 +710,6 @@ class TileRepository @Inject constructor(
         result.count > 0 -> R.string.game_memory_cleanup_ran
         else -> R.string.game_memory_nothing_to_boost
     })
-
-    // Startup feedback remains until the session status overlay replaces it.
-    private fun showMemoryCleanupToast(result: MemoryCleanupResult) {
-        Toast.makeText(context, memoryCleanupMessage(result), Toast.LENGTH_SHORT).show()
-    }
 
     fun updateTileSelection(selectedIds: List<String>) {
         pendingDefaultOrder = false

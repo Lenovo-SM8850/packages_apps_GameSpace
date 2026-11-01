@@ -256,5 +256,10 @@
     <string name="gamebar_fps_label">FPS</string>
     <string name="gamebar_temperature_label">Temp</string>
     <string name="gamebar_battery_label">Battery</string>
+    <string name="status_do_not_disturb">Do not disturb</string>
+    <string name="status_bypass_ready">Bypass ready</string>
+    <string name="status_sidebar_hidden">Sidebar hidden</string>
+    <string name="status_memory_cleaned">Memory cleaned</string>
+    <string name="status_session_applied">Session options applied: %1$s. Opens the dashboard.</string>
     <string name="game_performance">Game performance</string>
 </resources>
