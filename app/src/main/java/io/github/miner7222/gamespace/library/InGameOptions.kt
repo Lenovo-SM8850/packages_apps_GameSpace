@@ -41,7 +41,7 @@ enum class GameOption(val key: String, val title: Int, val summary: Int, val def
     TOUCH("gamespace_high_touch_polling_enabled", R.string.library_high_touch_title,
         R.string.library_high_touch_summary, 1),
     SIDEBAR("gamespace_hide_sidebar", R.string.library_hide_sidebar_title,
-        R.string.library_hide_sidebar_summary, 1),
+        0, 1),
     BYPASS("bypass_charge_enabled", R.string.bypass_charge_enabled_title,
         R.string.library_bypass_summary, 0);
 
@@ -129,7 +129,7 @@ class InGameOptions(private val context: Context) {
         Settings.Secure.putStringForUser(resolver, OVERRIDES, map.toString(), userId)
     }
 
-    fun availableOptions(): List<GameOption> = GameOption.entries.filter { it != GameOption.SIDEBAR && it != GameOption.TOUCH }.filter {
+    fun availableOptions(): List<GameOption> = GameOption.entries.filter { it != GameOption.TOUCH }.filter {
         when (it) {
             GameOption.HAPTICS -> context.getSystemService(Vibrator::class.java)?.hasVibrator() == true
             GameOption.TOUCH -> SidebarVisibility.isHighTouchSupported(context)

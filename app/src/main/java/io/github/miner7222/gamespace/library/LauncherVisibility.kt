@@ -47,6 +47,7 @@ class LibraryInitializer : ContentProvider() {
 
     override fun onCreate(): Boolean {
         val ctx = context ?: return false
+        SidebarVisibility.setGame(ctx, null)
         SessionRecovery.recoverIfIdle(ctx)
         observer = object : ContentObserver(Handler(android.os.Looper.getMainLooper())) {
             override fun onChange(selfChange: Boolean, uris: Collection<Uri>, flags: Int, userId: Int) {

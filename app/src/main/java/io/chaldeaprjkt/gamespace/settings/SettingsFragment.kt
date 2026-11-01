@@ -54,6 +54,15 @@ class SettingsFragment : Hilt_SettingsFragment(),
         requireContext().entryPointOf<ServiceViewEntryPoint>().appSettings()
     }
 
+    private var sidebarOptionsObservation: AutoCloseable? = null
+
+    private fun updateSidebarPreference() {
+        findPreference<Preference>("gamespace_high_touch_polling_enabled")?.isVisible =
+            io.github.miner7222.gamespace.library.SidebarVisibility.isHighTouchSupported(requireContext())
+        findPreference<Preference>("gamespace_hide_sidebar")?.isVisible =
+            io.github.miner7222.gamespace.library.SidebarVisibility.isAvailable(requireContext())
+    }
+
     private val wifiStateReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             updateWifiPreference()
@@ -67,11 +76,14 @@ class SettingsFragment : Hilt_SettingsFragment(),
 
     override fun onStart() {
         super.onStart()
+        sidebarOptionsObservation = appSettings.inGameOptions.observe { updateSidebarPreference() }
         requireContext().registerReceiver(wifiStateReceiver,
             IntentFilter(WifiManager.WIFI_STATE_CHANGED_ACTION), Context.RECEIVER_EXPORTED)
     }
 
     override fun onStop() {
+        sidebarOptionsObservation?.close()
+        sidebarOptionsObservation = null
         requireContext().unregisterReceiver(wifiStateReceiver)
         super.onStop()
     }
@@ -88,6 +100,7 @@ class SettingsFragment : Hilt_SettingsFragment(),
 
     private fun updatePreferences() {
         updateWifiPreference()
+        updateSidebarPreference()
         val isBypassSupported =
             Build.MANUFACTURER.equals("Google", ignoreCase = true) ||
             SystemProperties.getBoolean("persist.sys.battery_bypass_supported", false)
@@ -140,6 +153,7 @@ class SettingsFragment : Hilt_SettingsFragment(),
     override fun onResume() {
         super.onResume()
         updateWifiPreference()
+        updateSidebarPreference()
         findPreference<androidx.preference.ListPreference>("gamespace_default_game_mode")?.value =
             systemSettings.libraryDefaultMode.toString()
         findPreference<SwitchPreferenceCompat>("bypass_charge_enabled")?.isChecked =
