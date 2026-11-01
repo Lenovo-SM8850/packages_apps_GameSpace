@@ -454,6 +454,8 @@ class GameSidebar(
         danmakuService.updateConfiguration(newConfig)
     }
 
+    fun openDashboard() { showPanel() }
+
     private fun showPanel(initialGraphExpanded: Boolean = false) {
         updateGameTaskVisibility()
         if (!gameVisible || shouldClose || gameTaskHidden || panelShowing || screenshotInProgress) return
