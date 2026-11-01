@@ -10,6 +10,8 @@
     <string name="settings_title">Game Space</string>
     <string name="app_selector_label">Pick your game</string>
     <string name="in_game_preferences_title">In-game options</string>
+    <string name="wifi_low_latency_title">Low-latency Wi-Fi</string>
+    <string name="wifi_low_latency_summary">Lowers Wi-Fi latency while a game is running</string>
     <string name="game_list_title">Library</string>
     <string name="app_search_title">Search</string>
     <string name="add_game">Add game</string>

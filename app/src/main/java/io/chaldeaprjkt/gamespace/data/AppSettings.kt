@@ -17,16 +17,17 @@
  */
 package io.chaldeaprjkt.gamespace.data
 
-import android.content.SharedPreferences
-import io.github.miner7222.gamespace.library.InGameOptions
-import io.github.miner7222.gamespace.library.GameOption
 import android.app.Service
 import android.content.Context
+import android.content.SharedPreferences
+import android.net.wifi.WifiManager
 import android.provider.Settings
 import android.view.WindowManager
 import androidx.preference.PreferenceManager
 import io.chaldeaprjkt.gamespace.utils.dp
 import io.chaldeaprjkt.gamespace.utils.statusbarHeight
+import io.github.miner7222.gamespace.library.InGameOptions
+import io.github.miner7222.gamespace.library.GameOption
 import javax.inject.Inject
 
 class AppSettings @Inject constructor(private val context: Context) {
@@ -119,6 +120,20 @@ class AppSettings @Inject constructor(private val context: Context) {
         get() = db.getInt(KEY_ICON_IDLE_ALPHA, 25)
         set(value) = db.edit().putInt(KEY_ICON_IDLE_ALPHA, value).apply()
 
+    val wifiLowLatency: Boolean
+        get() = io.github.miner7222.gamespace.library.SessionOptions.wifi(context,
+            db.getBoolean(KEY_WIFI_LOW_LATENCY, true))
+
+    fun setSessionWifiLowLatency(enabled: Boolean) =
+        io.github.miner7222.gamespace.library.SessionOptions.chooseWifi(context, enabled)
+
+    val wifiLowLatencySupported: Boolean
+        get() = try {
+            context.getSystemService(WifiManager::class.java)?.isLowLatencyModeSupported == true
+        } catch (_: RuntimeException) {
+            false
+        }
+
     fun registerPreferenceListener(listener: SharedPreferences.OnSharedPreferenceChangeListener) =
         db.registerOnSharedPreferenceChangeListener(listener)
 
@@ -161,6 +176,7 @@ class AppSettings @Inject constructor(private val context: Context) {
         const val KEY_CALL_OVERLAY_ENABLED = "call_overlay_enabled"
         const val KEY_ICON_IDLE_ALPHA = "gamespace_icon_idle_alpha"
         const val KEY_AUTO_DND = "gamespace_auto_dnd"
+        const val KEY_WIFI_LOW_LATENCY = "gamespace_wifi_low_latency"
         const val KEY_PULSE_BASS_DISABLE = "gamespace_pulse_bass_haptics_disabled"
     }
 }

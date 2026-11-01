@@ -92,7 +92,37 @@ class SessionService : Hilt_SessionService() {
     private lateinit var platform: AxPlatformClient
 
     private val mainHandler = Handler(Looper.getMainLooper())
+    private val wifiManager by lazy { applicationContext.getSystemService(WifiManager::class.java) }
+    private val connectivity by lazy { getSystemService(ConnectivityManager::class.java) }
+    private val wifiNetworks = mutableSetOf<Network>()
+    private var wifiLock: WifiManager.WifiLock? = null
+    private var wifiPackage: String? = null
+    private var wifiMonitoring = false
     private var optionsObservation: AutoCloseable? = null
+
+    private val wifiPreferenceListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+        if (key == AppSettings.KEY_WIFI_LOW_LATENCY) updateWifiLock()
+    }
+
+    private val wifiNetworkCallback = object : ConnectivityManager.NetworkCallback() {
+        override fun onAvailable(network: Network) {
+            if (!wifiMonitoring) return
+            wifiNetworks.add(network)
+            updateWifiLock()
+        }
+
+        override fun onLost(network: Network) {
+            if (!wifiMonitoring) return
+            wifiNetworks.remove(network)
+            updateWifiLock()
+        }
+    }
+
+    private val wifiStateReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            if (intent.action == Intent.ACTION_SCREEN_OFF) releaseWifiLock() else updateWifiLock()
+        }
+    }
 
     private var dndEnabledByUs = false
     private var lastDndRequest: Boolean? = null
@@ -170,6 +200,16 @@ class SessionService : Hilt_SessionService() {
         }
         callListener.onIncomingCall = { screenOffSession.end() }
 
+        wifiMonitoring = true
+        appSettings.registerPreferenceListener(wifiPreferenceListener)
+        connectivity.registerNetworkCallback(
+            NetworkRequest.Builder().clearCapabilities()
+                .addTransportType(NetworkCapabilities.TRANSPORT_WIFI).build(),
+            wifiNetworkCallback, mainHandler)
+        registerReceiver(wifiStateReceiver, IntentFilter(WifiManager.WIFI_STATE_CHANGED_ACTION).apply {
+            addAction(Intent.ACTION_SCREEN_OFF)
+            addAction(Intent.ACTION_SCREEN_ON)
+        }, null, mainHandler, RECEIVER_EXPORTED)
         optionsObservation = appSettings.inGameOptions.observe { refreshInGameOptions() }
     }
 
@@ -238,10 +278,12 @@ class SessionService : Hilt_SessionService() {
 
         callListener.init()
         refreshInGameOptions()
+        updateWifiLock()
     }
 
     private fun stopGameSession() {
         Log.i(TAG, "Stopping game session")
+        releaseWifiLock()
 
         setGameUiVisible(false)
         tileRepository.onGameStop()
@@ -257,10 +299,50 @@ class SessionService : Hilt_SessionService() {
         bypassChargeActive = false
     }
 
+    private fun updateWifiLock() {
+        val packageName = currentPackage
+        try {
+            val wifi = wifiManager
+            if (!wifiMonitoring || packageName == null || !appSettings.wifiLowLatency ||
+                !appSettings.wifiLowLatencySupported || wifi?.isWifiEnabled != true ||
+                !getSystemService(android.os.PowerManager::class.java).isInteractive || wifiNetworks.isEmpty()) {
+                releaseWifiLock()
+                return
+            }
+            if (wifiPackage == packageName && wifiLock?.isHeld == true) return
+            releaseWifiLock()
+            val uid = packageManager.getPackageUid(packageName, PackageManager.PackageInfoFlags.of(0))
+            val lock = wifi.createWifiLock(WifiManager.WIFI_MODE_FULL_LOW_LATENCY, TAG)
+            lock.setReferenceCounted(false)
+            lock.setWorkSource(WorkSource(uid))
+            wifiLock = lock
+            lock.acquire()
+            wifiPackage = packageName
+        } catch (e: PackageManager.NameNotFoundException) {
+            releaseWifiLock()
+            Log.w(TAG, "No such game: $packageName", e)
+        } catch (e: RuntimeException) {
+            releaseWifiLock()
+            Log.w(TAG, "Cannot hold the low-latency Wi-Fi lock", e)
+        }
+    }
+
+    private fun releaseWifiLock() {
+        val lock = wifiLock
+        wifiLock = null
+        wifiPackage = null
+        try {
+            if (lock?.isHeld == true) lock.release()
+        } catch (e: RuntimeException) {
+            Log.w(TAG, "Cannot release the low-latency Wi-Fi lock", e)
+        }
+    }
+
     private fun refreshInGameOptions() {
         if (currentPackage == null) return
         session.applyOptions()
         currentPackage?.let { applyGameModeConfig(it) }
+        updateWifiLock()
         applyAutoDnd()
         sidebar.refreshInGameOptions()
         callListener.refreshInGameOptions()
@@ -320,6 +402,12 @@ class SessionService : Hilt_SessionService() {
         Log.d(TAG, "SessionService destroyed")
         optionsObservation?.close()
         optionsObservation = null
+        wifiMonitoring = false
+        releaseWifiLock()
+        appSettings.unregisterPreferenceListener(wifiPreferenceListener)
+        connectivity.unregisterNetworkCallback(wifiNetworkCallback)
+        unregisterReceiver(wifiStateReceiver)
+        wifiNetworks.clear()
         contentResolver.unregisterContentObserver(bypassObserver)
         stopGameSession()
         aspectRatioGesture.release()

@@ -15,6 +15,10 @@
  */
 package io.chaldeaprjkt.gamespace.settings
 
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.IntentFilter
+import android.net.wifi.WifiManager
 import io.chaldeaprjkt.gamespace.data.AppSettings
 import android.content.Intent
 import android.os.Build
@@ -50,6 +54,28 @@ class SettingsFragment : Hilt_SettingsFragment(),
         requireContext().entryPointOf<ServiceViewEntryPoint>().appSettings()
     }
 
+    private val wifiStateReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            updateWifiPreference()
+        }
+    }
+
+    private fun updateWifiPreference() {
+        findPreference<Preference>(AppSettings.KEY_WIFI_LOW_LATENCY)?.isVisible =
+            appSettings.wifiLowLatencySupported
+    }
+
+    override fun onStart() {
+        super.onStart()
+        requireContext().registerReceiver(wifiStateReceiver,
+            IntentFilter(WifiManager.WIFI_STATE_CHANGED_ACTION), Context.RECEIVER_EXPORTED)
+    }
+
+    override fun onStop() {
+        requireContext().unregisterReceiver(wifiStateReceiver)
+        super.onStop()
+    }
+
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
         setPreferencesFromResource(R.xml.root_preferences, rootKey)
         updatePreferences()
@@ -61,6 +87,7 @@ class SettingsFragment : Hilt_SettingsFragment(),
     }
 
     private fun updatePreferences() {
+        updateWifiPreference()
         val isBypassSupported =
             Build.MANUFACTURER.equals("Google", ignoreCase = true) ||
             SystemProperties.getBoolean("persist.sys.battery_bypass_supported", false)
@@ -112,6 +139,7 @@ class SettingsFragment : Hilt_SettingsFragment(),
 
     override fun onResume() {
         super.onResume()
+        updateWifiPreference()
         findPreference<androidx.preference.ListPreference>("gamespace_default_game_mode")?.value =
             systemSettings.libraryDefaultMode.toString()
         findPreference<SwitchPreferenceCompat>("bypass_charge_enabled")?.isChecked =
