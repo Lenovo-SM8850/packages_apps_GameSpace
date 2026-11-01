@@ -38,6 +38,15 @@
         android:key="game_optimization"
         android:title="@string/game_optimization_title">
 
+        <ListPreference
+            android:key="gamespace_default_game_mode"
+            android:title="@string/library_default_mode"
+            android:summary="%s"
+            android:entries="@array/per_app_preferred_mode_entries"
+            android:entryValues="@array/per_app_preferred_mode_values"
+            android:defaultValue="1"
+            android:persistent="false" />
+
         <SwitchPreferenceCompat
             android:key="game_memory_management"
             android:title="@string/game_memory_management_title"

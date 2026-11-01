@@ -16,6 +16,8 @@
 package io.chaldeaprjkt.gamespace.settings
 
 import android.content.Intent
+import io.chaldeaprjkt.gamespace.utils.di.ServiceViewEntryPoint
+import io.chaldeaprjkt.gamespace.utils.entryPointOf
 import android.os.Build
 import android.os.Bundle
 import android.os.SystemProperties
@@ -38,6 +40,10 @@ import io.chaldeaprjkt.gamespace.preferences.appselector.AppSelectorActivity
 @AndroidEntryPoint(SettingsBasePreferenceFragment::class)
 class SettingsFragment : Hilt_SettingsFragment(),
     QuickStartAppPreferenceDialogFragment.QuickStartAppListener {
+
+    private val systemSettings by lazy {
+        requireContext().entryPointOf<ServiceViewEntryPoint>().systemSettings()
+    }
 
     private var apps: AppListPreferences? = null
 
@@ -99,7 +105,14 @@ class SettingsFragment : Hilt_SettingsFragment(),
                 true
             }
 
-    }
+            findPreference<androidx.preference.ListPreference>("gamespace_default_game_mode")?.apply {
+            value = systemSettings.libraryDefaultMode.toString()
+            setOnPreferenceChangeListener { _, selected ->
+                systemSettings.libraryDefaultMode = (selected as String).toInt()
+                true
+            }
+        }
+}
 
     override fun onResume() {
         super.onResume()
