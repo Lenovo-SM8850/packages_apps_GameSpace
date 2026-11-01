@@ -1168,4 +1168,8 @@ class TileRepository @Inject constructor(
             )
         )
     }
+
+    fun reportActionMessage(id: String, message: String) {
+        publishResult(id, TileActionResult(message, successful = true))
+    }
 }

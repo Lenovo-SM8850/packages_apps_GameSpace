@@ -156,4 +156,6 @@ class ScreenOffSessionController(private val context: Context) {
     companion object {
         private const val TAG = "ScreenOffSession"
     }
+
+    var onNotice: ((String) -> Unit)? = null
 }
