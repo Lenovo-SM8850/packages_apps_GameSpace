@@ -20,9 +20,21 @@
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
-    <com.android.settingslib.widget.IllustrationPreference
-        android:key="game_settings_illustration_video"
-        app:lottie_rawRes="@raw/game_settings_illustration" />
+    <Preference
+        android:key="library_open"
+        android:title="@string/library_open"
+        android:persistent="false" />
+
+    <PreferenceCategory
+        android:key="library_preferences"
+        android:title="@string/game_list_title">
+        <SwitchPreferenceCompat
+            android:key="gamespace_auto_game_detect"
+            android:title="@string/auto_game_detect_title"
+            android:summary="@string/auto_game_detect_summary"
+            android:defaultValue="true"
+            android:persistent="false" />
+    </PreferenceCategory>
 
     <PreferenceCategory
         android:key="game_optimization"
@@ -48,6 +60,12 @@
     <PreferenceCategory
         android:key="in_game_preferences"
         android:title="@string/in_game_preferences_title">
+
+        <Preference
+            android:key="library_options_note"
+            android:summary="@string/library_options_note"
+            android:selectable="false"
+            android:persistent="false" />
 
         <SwitchPreferenceCompat
             android:key="gamespace_auto_brightness_disabled"
@@ -139,9 +157,5 @@
             android:summary="@string/quick_start_apps_summary" />
 
     </PreferenceCategory>
-
-    <io.chaldeaprjkt.gamespace.preferences.AppListPreferences
-        android:key="gamespace_game_list"
-        android:title="@string/game_list_title" />
 
 </PreferenceScreen>

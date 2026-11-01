@@ -4,6 +4,31 @@
     SPDX-License-Identifier: Apache-2.0
 -->
 <resources>
+    <string name="library_open">Open library</string>
+    <string name="library_continue">Continue playing</string>
+    <string name="library_recent">Recently played</string>
+    <string name="library_sort_name">Name</string>
+    <string name="library_sort">Sort</string>
+    <string name="library_play">Play</string>
+    <string name="library_launch">Launch</string>
+    <string name="library_open_game_settings">Open game settings</string>
+    <string name="library_game_settings">Game settings</string>
+    <string name="library_hold_hint">Touch &amp; hold a game to change its settings</string>
+    <string name="library_last_played">Last played %1$s</string>
+    <string name="library_played">Played %1$s</string>
+    <string name="library_never_played">Not played yet</string>
+    <string name="library_empty_title">No games yet</string>
+    <string name="library_empty_auto">Installed games appear here automatically.</string>
+    <string name="library_empty_manual">Add a game to start your library.</string>
+    <string name="library_mode_performance_summary">Prioritizes frame rate. May run warmer and use more battery.</string>
+    <string name="library_app_info">App info</string>
+    <string name="library_remove">Remove from library</string>
+    <string name="library_removed">%1$s removed from library</string>
+    <string name="library_undo">Undo</string>
+    <plurals name="library_game_count">
+        <item quantity="one">%d game</item>
+        <item quantity="other">%d games</item>
+    </plurals>
     <string name="library_options_defaults">Same as defaults</string>
     <string name="library_option_changed">Changed for this game</string>
     <string name="library_reset_defaults">Reset to defaults</string>
