@@ -34,11 +34,14 @@ object SidebarVisibility {
     fun refresh(context: Context) {
         if (activePackage == null) {
             publish(context, HIDDEN, false)
+            publish(context, HIGH_TOUCH, false)
             return
         }
         val options = InGameOptions(context)
         publish(context, HIDDEN, activePackage != null && isAvailable(context) &&
             options.current(GameOption.SIDEBAR) == 1)
+        publish(context, HIGH_TOUCH, activePackage != null && isHighTouchSupported(context) &&
+            options.current(GameOption.TOUCH) == 1)
     }
 
     private fun publish(context: Context, key: String, enabled: Boolean) {
