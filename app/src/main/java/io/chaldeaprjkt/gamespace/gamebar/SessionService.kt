@@ -149,6 +149,7 @@ class SessionService : Hilt_SessionService() {
     override fun onCreate() {
         super.onCreate()
         Log.d(TAG, "SessionService created")
+        SidebarVisibility.setGame(this, null)
         io.github.miner7222.gamespace.library.SessionRecovery.recoverIfIdle(this)
         contentResolver.registerContentObserver(
             Settings.System.getUriFor("bypass_charge_enabled"), false, bypassObserver)
@@ -268,6 +269,7 @@ class SessionService : Hilt_SessionService() {
         
         session.unregister()
         session.register(packageName)
+        SidebarVisibility.setGame(this, packageName)
         
         applyGameModeConfig(packageName)
         applyAutoDnd()
@@ -283,6 +285,7 @@ class SessionService : Hilt_SessionService() {
 
     private fun stopGameSession() {
         Log.i(TAG, "Stopping game session")
+        SidebarVisibility.setGame(this, null)
         releaseWifiLock()
 
         setGameUiVisible(false)
@@ -339,6 +342,7 @@ class SessionService : Hilt_SessionService() {
     }
 
     private fun refreshInGameOptions() {
+        SidebarVisibility.refresh(this)
         if (currentPackage == null) return
         session.applyOptions()
         currentPackage?.let { applyGameModeConfig(it) }
@@ -400,6 +404,7 @@ class SessionService : Hilt_SessionService() {
 
     override fun onDestroy() {
         Log.d(TAG, "SessionService destroyed")
+        SidebarVisibility.setGame(this, null)
         optionsObservation?.close()
         optionsObservation = null
         wifiMonitoring = false
