@@ -261,6 +261,10 @@ class TileRepository @Inject constructor(
         }
     }
 
+    fun reportActionMessage(id: String, message: String) {
+        publishResult(id, TileActionResult(message, successful = true))
+    }
+
     private fun publishResult(id: String, result: TileActionResult) {
         latestResults[id] = result
         mutableActionResults.tryEmit(TileActionCompletion(id, result))
@@ -709,7 +713,7 @@ class TileRepository @Inject constructor(
         else -> R.string.game_memory_nothing_to_boost
     })
 
-    // A4/A6 replace the existing manual/startup toast presentation, respectively.
+    // Startup feedback remains until the session status overlay replaces it.
     private fun showMemoryCleanupToast(result: MemoryCleanupResult) {
         Toast.makeText(context, memoryCleanupMessage(result), Toast.LENGTH_SHORT).show()
     }
@@ -1148,6 +1152,7 @@ class TileRepository @Inject constructor(
                 label = context.getString(R.string.tile_screen_off),
                 icon = R.drawable.materialsymbols_ic_screen_off_rounded_filled,
                 description = context.getString(R.string.tile_screen_off_description),
+                readResult = { latestResults["screen_off"] },
                 action = { onScreenOff?.invoke() },
             )
         )
@@ -1163,13 +1168,8 @@ class TileRepository @Inject constructor(
                 action = {
                     val result = clearBackgroundProcesses()
                     publishResult("boost_memory", TileActionResult(memoryCleanupMessage(result), result.ok, result))
-                    showMemoryCleanupToast(result)
                 }
             )
         )
-    }
-
-    fun reportActionMessage(id: String, message: String) {
-        publishResult(id, TileActionResult(message, successful = true))
     }
 }

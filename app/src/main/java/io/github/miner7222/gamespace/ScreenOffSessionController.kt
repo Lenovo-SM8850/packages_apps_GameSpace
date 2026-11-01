@@ -102,6 +102,8 @@ class ScreenOffSessionController(private val context: Context) {
         }
     }
 
+    var onNotice: ((String) -> Unit)? = null
+
     fun request() {
         if (pending || blanked || gamePackage == null || !canEnter()) return
         val task = runCatching { taskManager.focusedRootTaskInfo }.getOrNull() ?: return
@@ -110,7 +112,8 @@ class ScreenOffSessionController(private val context: Context) {
         gameTaskId = task.taskId
         gameUserId = task.userId
         pending = true
-        Toast.makeText(context, R.string.screen_off_notice, Toast.LENGTH_SHORT).show()
+        val notice = context.getString(R.string.screen_off_notice)
+        onNotice?.invoke(notice) ?: Toast.makeText(context, notice, Toast.LENGTH_SHORT).show()
         handler.postDelayed(enter, 1000)
         handler.postDelayed(checkSession, 250)
     }
@@ -156,6 +159,4 @@ class ScreenOffSessionController(private val context: Context) {
     companion object {
         private const val TAG = "ScreenOffSession"
     }
-
-    var onNotice: ((String) -> Unit)? = null
 }
