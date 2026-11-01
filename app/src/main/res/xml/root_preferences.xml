@@ -75,6 +75,12 @@
             android:persistent="false" />
 
         <SwitchPreferenceCompat
+            android:key="gamespace_show_status_at_game_start"
+            android:title="@string/show_status_at_game_start_title"
+            android:summary="@string/show_status_at_game_start_summary"
+            android:defaultValue="true" />
+
+        <SwitchPreferenceCompat
             android:key="gamespace_wifi_low_latency"
             android:title="@string/wifi_low_latency_title"
             android:summary="@string/wifi_low_latency_summary"
