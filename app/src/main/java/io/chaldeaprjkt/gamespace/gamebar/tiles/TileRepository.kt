@@ -241,9 +241,12 @@ class TileRepository @Inject constructor(
     var onBeforePlatformAction: ((String) -> Unit)? = null
     var onScreenshotComplete: (() -> Unit)? = null
     var onScreenOff: (() -> Unit)? = null
+    private var lifecycleGeneration = 0
     private val latestResults = mutableStateMapOf<String, TileActionResult>()
     private val mutableActionResults = MutableSharedFlow<TileActionCompletion>(extraBufferCapacity = 16)
     val actionResults = mutableActionResults.asSharedFlow()
+    private val mutableScreenshotSuccess = MutableStateFlow<Boolean?>(null)
+    val screenshotSuccess = mutableScreenshotSuccess.asStateFlow()
     private val mutableStartupCleanup = MutableStateFlow<MemoryCleanupResult?>(null)
     val startupMemoryCleanup = mutableStartupCleanup.asStateFlow()
     private val mutableWifiLowLatencyActive = MutableStateFlow(false)
@@ -263,6 +266,15 @@ class TileRepository @Inject constructor(
         mutableActionResults.tryEmit(TileActionCompletion(id, result))
     }
 
+    private fun finishScreenshot(generation: Int, successful: Boolean) {
+        if (!listening || generation != lifecycleGeneration) return
+        mutableScreenshotSuccess.value = successful
+        publishResult(AxPlatformClient.FEATURE_SCREENSHOT, TileActionResult(
+            context.getString(if (successful) R.string.game_screenshot_saved
+                else R.string.game_screenshot_failed), successful))
+        // The sidebar must be restored on failure as well as success.
+        onScreenshotComplete?.invoke()
+    }
 
     private val platformListener = object : AxPlatformClient.Listener() {
         override fun onStateChanged(key: String, state: Bundle) {
@@ -391,7 +403,10 @@ class TileRepository @Inject constructor(
     fun init(platform: AxPlatformClient) {
         this.platform = platform
         listening = true
+        lifecycleGeneration++
+        recording.start()
         latestResults.clear()
+        mutableScreenshotSuccess.value = null
         mutableStartupCleanup.value = null
         mutableWifiLowLatencyActive.value = false
         context.registerReceiver(ringerReceiver,
@@ -573,6 +588,8 @@ class TileRepository @Inject constructor(
 
     fun dispose() {
         listening = false
+        lifecycleGeneration++
+        recording.dispose()
         context.unregisterReceiver(ringerReceiver)
         mutableStartupCleanup.value = null
         mutableWifiLowLatencyActive.value = false
@@ -806,13 +823,19 @@ class TileRepository @Inject constructor(
                         }
                     }
                     AxPlatformClient.FEATURE_SCREENSHOT -> {
+                        val generation = lifecycleGeneration
+                        mutableScreenshotSuccess.value = null
                         stateHandler.postDelayed({
-                            if (!listening) return@postDelayed
-                            screenshotHelper.takeScreenshot(
-                                WindowManager.TAKE_SCREENSHOT_FULLSCREEN,
-                                WindowManager.ScreenshotSource.SCREENSHOT_OTHER,
-                                stateHandler
-                            ) { onScreenshotComplete?.invoke() }
+                            if (!listening || generation != lifecycleGeneration) return@postDelayed
+                            try {
+                                screenshotHelper.takeScreenshot(
+                                    WindowManager.TAKE_SCREENSHOT_FULLSCREEN,
+                                    WindowManager.ScreenshotSource.SCREENSHOT_OTHER,
+                                    stateHandler
+                                ) { uri -> finishScreenshot(generation, uri != null) }
+                            } catch (_: RuntimeException) {
+                                finishScreenshot(generation, false)
+                            }
                         }, 500)
                     }
                     AxPlatformClient.FEATURE_AUTO_SYNC -> {

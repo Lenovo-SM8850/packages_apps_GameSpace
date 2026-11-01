@@ -202,5 +202,7 @@
     <string name="show_status_at_game_start_title">Show status at game start</string>
     <string name="game_memory_cleanup_ran">Background cleanup ran</string>
     <string name="game_memory_cleanup_failed">Couldn\'t clean background apps</string>
+    <string name="game_screenshot_saved">Screenshot saved</string>
+    <string name="game_screenshot_failed">Couldn\'t save screenshot</string>
     <string name="game_performance">Game Tuner</string>
 </resources>
