@@ -48,6 +48,7 @@ import androidx.compose.foundation.shape.*
 import androidx.compose.material3.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.ElectricBolt
 import androidx.compose.material.icons.filled.EnergySavingsLeaf
 import androidx.compose.material.icons.filled.SportsEsports
@@ -105,6 +106,7 @@ fun GamePanelCard(
     maxHeight: Dp = Dp.Unspecified,
 ) {
 
+    val context = androidx.compose.ui.platform.LocalContext.current
     val panelWidth = 300.dp
 
     val initialMode = remember {
@@ -135,7 +137,7 @@ fun GamePanelCard(
             selectedMode = selectedMode,
             onModeChange = { mode ->
                 selectedMode = mode
-                gameModeUtils.setActiveGameMode(systemSettings, mode.toSystemGameMode())
+                io.github.miner7222.gamespace.library.SessionOptions.chooseMode(context, mode.toSystemGameMode())
             },
             interactor = interactor,
             fpsInteractor = fpsInteractor,

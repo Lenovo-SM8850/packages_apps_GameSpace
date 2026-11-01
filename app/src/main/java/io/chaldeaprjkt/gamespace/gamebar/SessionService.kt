@@ -27,6 +27,14 @@ import android.content.BroadcastReceiver
 import android.content.IntentFilter
 import android.content.Context
 import android.content.Intent
+import android.content.SharedPreferences
+import android.content.pm.PackageManager
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
+import android.net.NetworkRequest
+import android.net.wifi.WifiManager
+import android.os.WorkSource
 import android.content.res.Configuration
 import android.database.ContentObserver
 import android.provider.Settings
@@ -52,6 +60,9 @@ import io.chaldeaprjkt.gamespace.utils.GameModeUtils
 import io.chaldeaprjkt.gamespace.utils.ScreenUtils
 import io.github.miner7222.gamespace.GameAspectRatioGesture
 import io.github.miner7222.gamespace.GameAspectRatioTile
+import io.github.miner7222.gamespace.library.GameOption
+import io.github.miner7222.gamespace.library.SessionOptions
+import io.github.miner7222.gamespace.library.SidebarVisibility
 import javax.inject.Inject
 
 @AndroidEntryPoint(Service::class)
@@ -70,6 +81,7 @@ class SessionService : Hilt_SessionService() {
     @Inject lateinit var gson: Gson
 
     private var currentPackage: String? = null
+    private var sessionUserId = android.os.UserHandle.myUserId()
     private val sessionBinder = Binder()
     private var bypassChargeActive = false
     private lateinit var gameManager: GameManager
@@ -79,8 +91,12 @@ class SessionService : Hilt_SessionService() {
     private lateinit var mapperController: MapperController
     private lateinit var platform: AxPlatformClient
 
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private var optionsObservation: AutoCloseable? = null
+
     private var dndEnabledByUs = false
-    private var previousDndFilter = NotificationManager.INTERRUPTION_FILTER_ALL
+    private var lastDndRequest: Boolean? = null
+    private var dndPanelOwns = false
 
     private val bypassObserver = object : ContentObserver(Handler(Looper.getMainLooper())) {
         override fun onChange(selfChange: Boolean) {
@@ -91,9 +107,10 @@ class SessionService : Hilt_SessionService() {
     private val dndReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             val nm = getSystemService(NotificationManager::class.java)
-            if (dndEnabledByUs && nm.currentInterruptionFilter !=
+            if (dndEnabledByUs && !dndPanelOwns && nm.currentInterruptionFilter !=
                 NotificationManager.INTERRUPTION_FILTER_PRIORITY) {
                 dndEnabledByUs = false
+                session.releaseDndOwnership()
             }
         }
     }
@@ -102,6 +119,7 @@ class SessionService : Hilt_SessionService() {
     override fun onCreate() {
         super.onCreate()
         Log.d(TAG, "SessionService created")
+        io.github.miner7222.gamespace.library.SessionRecovery.recoverIfIdle(this)
         contentResolver.registerContentObserver(
             Settings.System.getUriFor("bypass_charge_enabled"), false, bypassObserver)
         registerReceiver(dndReceiver, IntentFilter(
@@ -114,6 +132,7 @@ class SessionService : Hilt_SessionService() {
         gameModeUtils.bind(gameManager)
 
         tileRepository.init(platform)
+        brightnessInteractor.onToggleAutoMode = { session.setAutoBrightness(it) }
 
         val windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
         val mainHandler = Handler(Looper.getMainLooper())
@@ -150,6 +169,8 @@ class SessionService : Hilt_SessionService() {
             screenOffSession.request()
         }
         callListener.onIncomingCall = { screenOffSession.end() }
+
+        optionsObservation = appSettings.inGameOptions.observe { refreshInGameOptions() }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -202,13 +223,13 @@ class SessionService : Hilt_SessionService() {
         }
         
         Log.i(TAG, "Starting game session for $packageName")
+        sessionUserId = userId
         currentPackage = packageName
         
         session.unregister()
         session.register(packageName)
         
         applyGameModeConfig(packageName)
-        
         applyAutoDnd()
 
         tileRepository.onGameStart(packageName)
@@ -216,6 +237,7 @@ class SessionService : Hilt_SessionService() {
         screenOffSession.onGameStart(packageName)
 
         callListener.init()
+        refreshInGameOptions()
     }
 
     private fun stopGameSession() {
@@ -225,56 +247,84 @@ class SessionService : Hilt_SessionService() {
         tileRepository.onGameStop()
         screenOffSession.onGameStop()
         sidebar.onGameLeave()
-        session.unregister()
-        callListener.destroy()
         restoreAutoDnd()
+        session.unregister()
+        currentPackage?.let { applyGameModeConfig(it) }
+        gameModeUtils.activeGame = null
+        callListener.destroy()
 
         currentPackage = null
         bypassChargeActive = false
     }
 
+    private fun refreshInGameOptions() {
+        if (currentPackage == null) return
+        session.applyOptions()
+        currentPackage?.let { applyGameModeConfig(it) }
+        applyAutoDnd()
+        sidebar.refreshInGameOptions()
+        callListener.refreshInGameOptions()
+        danmakuService.refreshInGameOptions()
+        tileRepository.refreshPlatformStates()
+    }
+
     private fun applyAutoDnd() {
-        if (!appSettings.autoDnd) return
+        val requested = (appSettings.inGameOptions.current(GameOption.DND) == 1)
+        if (SessionOptions.hasChoice(this, GameOption.DND)) {
+            if (dndPanelOwns && lastDndRequest == requested) return
+            session.captureDndOwnership()
+            dndPanelOwns = true
+            lastDndRequest = requested
+            val nm = getSystemService(NotificationManager::class.java)
+            val filter = if (requested) NotificationManager.INTERRUPTION_FILTER_PRIORITY
+                else NotificationManager.INTERRUPTION_FILTER_ALL
+            if (nm.currentInterruptionFilter != filter) nm.setInterruptionFilter(filter)
+            return
+        }
+        if (lastDndRequest == requested) return
+        if (!requested) {
+            restoreAutoDnd()
+            lastDndRequest = false
+            return
+        }
+        lastDndRequest = true
+        if (dndEnabledByUs) return
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         val currentFilter = nm.currentInterruptionFilter
         if (currentFilter == NotificationManager.INTERRUPTION_FILTER_ALL ||
             currentFilter == NotificationManager.INTERRUPTION_FILTER_UNKNOWN) {
-            previousDndFilter = currentFilter
+            session.captureDndOwnership()
             nm.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_PRIORITY)
             dndEnabledByUs = true
         }
     }
 
     private fun restoreAutoDnd() {
-        if (!dndEnabledByUs) return
+        lastDndRequest = null
+        dndPanelOwns = false
         dndEnabledByUs = false
-        val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        if (nm.currentInterruptionFilter == NotificationManager.INTERRUPTION_FILTER_PRIORITY) {
-            nm.setInterruptionFilter(previousDndFilter)
-        }
+        session.restoreDnd()
     }
 
     private fun applyGameModeConfig(app: String) {
-        val userGame = settings.userGames.firstOrNull { it.packageName == app }
-        val preferred = userGame?.mode ?: GameModeUtils.defaultPreferredMode
-        
-        gameModeUtils.activeGame = userGame
-        
-        val currentMode = gameManager.getGameMode(app)
-        // Restore the saved choice even when the framework has reset an unavailable mode.
-        if (currentMode != GameManager.GAME_MODE_UNSUPPORTED &&
-            preferred in GameManager.GAME_MODE_STANDARD..GameManager.GAME_MODE_BATTERY &&
-            currentMode != preferred) {
-            gameManager.setGameMode(app, preferred)
+        GameModeUtils.withModeLock {
+            val userGame = settings.userGames.firstOrNull { it.packageName == app }
+            val preferred = SessionOptions.mode(this) ?: userGame?.mode ?: settings.libraryDefaultMode
+            gameModeUtils.activeGame = io.chaldeaprjkt.gamespace.data.UserGame(app, preferred)
+            // Always reconcile the real service state; a cached choice can outlive an external change.
+            gameModeUtils.applyRuntimeModeForUser(app, preferred, sessionUserId)
         }
     }
 
     override fun onDestroy() {
         Log.d(TAG, "SessionService destroyed")
+        optionsObservation?.close()
+        optionsObservation = null
         contentResolver.unregisterContentObserver(bypassObserver)
         stopGameSession()
         aspectRatioGesture.release()
         unregisterReceiver(dndReceiver)
+        brightnessInteractor.onToggleAutoMode = null
         tileRepository.onScreenOff = null
         callListener.onIncomingCall = null
         tileRepository.dispose()
