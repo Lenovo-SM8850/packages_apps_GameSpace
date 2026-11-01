@@ -94,6 +94,11 @@ fun LibraryScreen(state: LibraryState, library: LibraryViewModel,
             TopAppBar(title = { Text(stringResource(R.string.settings_title), fontSize = 22.sp) },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
                 actions = {
+                    resolveTuning(context)?.let { tuning ->
+                        IconButton(onClick = { context.startActivity(tuning) }) {
+                            Icon(Icons.Rounded.Speed, stringResource(R.string.game_performance))
+                        }
+                    }
                     IconButton(onClick = onSettings) {
                         Icon(Icons.Rounded.Settings, stringResource(R.string.tile_settings))
                     }

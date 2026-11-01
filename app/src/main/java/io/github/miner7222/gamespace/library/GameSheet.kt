@@ -289,7 +289,7 @@ private fun SheetRow(title: String, summary: String?, icon: ImageVector, shape: 
     }
 }
 
-private fun resolveTuning(context: Context, packageName: String): Intent? {
+internal fun resolveTuning(context: Context, packageName: String? = null): Intent? {
     val intent = Intent("io.github.miner7222.gametuning.action.GAME_TUNING")
         .putExtra("package_name", packageName)
     val resolved = context.packageManager.resolveActivity(intent,
