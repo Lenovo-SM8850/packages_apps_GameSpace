@@ -94,6 +94,9 @@ class SessionService : Hilt_SessionService() {
     private lateinit var platform: AxPlatformClient
 
     private val mainHandler = Handler(Looper.getMainLooper())
+    private val screenOffPanelCollapse = Runnable {
+        if (currentPackage != null) sidebar.collapseForScreenOff()
+    }
     private val wifiManager by lazy { applicationContext.getSystemService(WifiManager::class.java) }
     private val connectivity by lazy { getSystemService(ConnectivityManager::class.java) }
     private val wifiNetworks = mutableSetOf<Network>()
@@ -192,16 +195,20 @@ class SessionService : Hilt_SessionService() {
             tileRepository = tileRepository,
             platform = platform,
             mapperController = mapperController,
+            mediaVolume = mediaVolume,
         )
         sidebar.onCreate()
         aspectRatioGesture = GameAspectRatioGesture(this, windowManager, mainHandler,
             aspectRatioTile)
         sidebar.onUiBlockingChanged = { aspectRatioGesture.setUiBlocked(it) }
         screenOffSession = ScreenOffSessionController(this)
-        tileRepository.onScreenOff = {
-            sidebar.collapseForScreenOff()
-            screenOffSession.request()
+        screenOffSession.onNotice = { notice ->
+            tileRepository.reportActionMessage("screen_off", notice)
+            mainHandler.removeCallbacks(screenOffPanelCollapse)
+            // Let the panel announce the accepted request before the one-second screen-off delay.
+            mainHandler.postDelayed(screenOffPanelCollapse, 800)
         }
+        tileRepository.onScreenOff = { screenOffSession.request() }
         callListener.onIncomingCall = { screenOffSession.end() }
 
         wifiMonitoring = true
@@ -287,6 +294,7 @@ class SessionService : Hilt_SessionService() {
     }
 
     private fun stopGameSession() {
+        mainHandler.removeCallbacks(screenOffPanelCollapse)
         Log.i(TAG, "Stopping game session")
         SidebarVisibility.setGame(this, null)
         releaseWifiLock()
@@ -431,6 +439,7 @@ class SessionService : Hilt_SessionService() {
         unregisterReceiver(dndReceiver)
         brightnessInteractor.onToggleAutoMode = null
         tileRepository.onScreenOff = null
+        screenOffSession.onNotice = null
         callListener.onIncomingCall = null
         tileRepository.dispose()
         mediaVolume.dispose()

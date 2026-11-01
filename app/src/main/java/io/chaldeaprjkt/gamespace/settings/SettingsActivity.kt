@@ -26,6 +26,9 @@ import dagger.hilt.android.AndroidEntryPoint
 
 @AndroidEntryPoint(CollapsingToolbarBaseActivity::class)
 class SettingsActivity : Hilt_SettingsActivity() {
+    companion object {
+        const val EXTRA_EDIT_QUICK_APPS = "edit_quick_start_apps"
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -42,12 +45,22 @@ class SettingsActivity : Hilt_SettingsActivity() {
             layoutParams = params
         }
         if (savedInstanceState == null) {
+            val fragment = SettingsFragment()
             supportFragmentManager
                 .beginTransaction()
                 .replace(
                     com.android.settingslib.collapsingtoolbar.R.id.content_frame,
-                    SettingsFragment()
+                    fragment
                 )
+                .runOnCommit {
+                    if (intent.getBooleanExtra(EXTRA_EDIT_QUICK_APPS, false)) fragment.view?.post {
+                        fragment.findPreference<androidx.preference.Preference>(
+                            io.chaldeaprjkt.gamespace.data.AppSettings.KEY_QUICK_START_APPS)?.let { preference ->
+                            fragment.scrollToPreference(preference)
+                            fragment.onDisplayPreferenceDialog(preference)
+                        }
+                    }
+                }
                 .commit()
         }
     }
