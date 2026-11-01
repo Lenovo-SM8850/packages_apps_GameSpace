@@ -10,6 +10,8 @@ import android.content.IntentFilter
 import android.media.AudioManager
 import android.os.Handler
 import android.os.Looper
+import android.os.UserHandle
+import com.android.settingslib.media.MediaOutputConstants
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -72,6 +74,17 @@ class MediaVolumeController @Inject constructor(@ApplicationContext private val 
             refresh()
             false
         }
+    }
+
+    /** Sends a system-routing request; the overlay caller closes its panel before this call. */
+    fun openOutputSwitcher(): Boolean = try {
+        val user = UserHandle.of(context.userId)
+        context.sendBroadcastAsUser(Intent(MediaOutputConstants.ACTION_LAUNCH_SYSTEM_MEDIA_OUTPUT_DIALOG)
+            .setPackage(MediaOutputConstants.SYSTEMUI_PACKAGE_NAME)
+            .putExtra(MediaOutputConstants.EXTRA_USER_HANDLE, user), user)
+        true
+    } catch (_: RuntimeException) {
+        false
     }
 
     fun dispose() {
