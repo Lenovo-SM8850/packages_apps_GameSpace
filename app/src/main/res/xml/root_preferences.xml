@@ -75,6 +75,12 @@
             android:persistent="false" />
 
         <SwitchPreferenceCompat
+            android:key="gamespace_wifi_low_latency"
+            android:title="@string/wifi_low_latency_title"
+            android:summary="@string/wifi_low_latency_summary"
+            android:defaultValue="true" />
+
+        <SwitchPreferenceCompat
             android:key="gamespace_auto_brightness_disabled"
             android:title="@string/auto_brightness_disabled_title"
             android:summary="@string/auto_brightness_disabled_summary"
