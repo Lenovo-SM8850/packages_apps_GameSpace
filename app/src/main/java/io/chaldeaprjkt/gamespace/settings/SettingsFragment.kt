@@ -15,27 +15,35 @@
  */
 package io.chaldeaprjkt.gamespace.settings
 
+import androidx.activity.result.contract.ActivityResultContracts
+import io.chaldeaprjkt.gamespace.preferences.AppListPreferences
+import io.chaldeaprjkt.gamespace.preferences.appselector.AppSelectorActivity
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.IntentFilter
+import android.net.wifi.WifiManager
+import io.chaldeaprjkt.gamespace.data.AppSettings
 import android.content.Intent
-import io.chaldeaprjkt.gamespace.utils.di.ServiceViewEntryPoint
-import io.chaldeaprjkt.gamespace.utils.entryPointOf
 import android.os.Build
 import android.os.Bundle
 import android.os.SystemProperties
 import android.os.Vibrator
 import android.view.View
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.preference.Preference
 import androidx.preference.PreferenceCategory
+import androidx.preference.SwitchPreferenceCompat
 
 import com.android.settingslib.widget.SettingsBasePreferenceFragment
 
 import dagger.hilt.android.AndroidEntryPoint
 
 import io.chaldeaprjkt.gamespace.R
-import io.chaldeaprjkt.gamespace.preferences.AppListPreferences
+import io.github.miner7222.gamespace.library.HideGamesPreference
+import io.github.miner7222.gamespace.library.LibraryActivity
+import io.chaldeaprjkt.gamespace.utils.di.ServiceViewEntryPoint
+import io.chaldeaprjkt.gamespace.utils.entryPointOf
 import io.chaldeaprjkt.gamespace.preferences.QuickStartAppPreference
 import io.chaldeaprjkt.gamespace.preferences.QuickStartAppPreferenceDialogFragment
-import io.chaldeaprjkt.gamespace.preferences.appselector.AppSelectorActivity
 
 @AndroidEntryPoint(SettingsBasePreferenceFragment::class)
 class SettingsFragment : Hilt_SettingsFragment(),
@@ -45,21 +53,17 @@ class SettingsFragment : Hilt_SettingsFragment(),
         requireContext().entryPointOf<ServiceViewEntryPoint>().systemSettings()
     }
 
-    private var apps: AppListPreferences? = null
+    private val appSettings by lazy {
+        requireContext().entryPointOf<ServiceViewEntryPoint>().appSettings()
+    }
 
-    private val selectorResult =
-        registerForActivityResult(
-            ActivityResultContracts.StartActivityForResult()
-        ) {
-            apps?.useSelectorResult(it)
-        }
+    override fun onStart() {
+        super.onStart()
+    }
 
-    private val perAppResult =
-        registerForActivityResult(
-            ActivityResultContracts.StartActivityForResult()
-        ) {
-            apps?.usePerAppResult(it)
-        }
+    override fun onStop() {
+        super.onStop()
+    }
 
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
         setPreferencesFromResource(R.xml.root_preferences, rootKey)
@@ -90,33 +94,49 @@ class SettingsFragment : Hilt_SettingsFragment(),
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
-        apps = findPreference("gamespace_game_list")
-        apps?.onRegisteredAppClick { pkg ->
-            perAppResult.launch(
-                Intent(context, PerAppSettingsActivity::class.java).apply {
-                    putExtra(PerAppSettingsActivity.EXTRA_PACKAGE, pkg)
-                }
-            )
-        }
-
-        findPreference<Preference>(AppListPreferences.KEY_ADD_GAME)
-            ?.setOnPreferenceClickListener {
-                selectorResult.launch(Intent(context, AppSelectorActivity::class.java))
+        findPreference<SwitchPreferenceCompat>("gamespace_auto_game_detect")?.apply {
+            isChecked = systemSettings.autoGameDetect
+            setOnPreferenceChangeListener { _, value ->
+                systemSettings.autoGameDetect = value as Boolean
                 true
             }
-
-            findPreference<androidx.preference.ListPreference>("gamespace_default_game_mode")?.apply {
+        }
+        findPreference<androidx.preference.ListPreference>("gamespace_default_game_mode")?.apply {
             value = systemSettings.libraryDefaultMode.toString()
             setOnPreferenceChangeListener { _, selected ->
                 systemSettings.libraryDefaultMode = (selected as String).toInt()
                 true
             }
         }
-}
+        findPreference<SwitchPreferenceCompat>("bypass_charge_enabled")?.apply {
+            isChecked = appSettings.inGameOptions.global(io.github.miner7222.gamespace.library.GameOption.BYPASS) == 1
+            setOnPreferenceChangeListener { _, value ->
+                appSettings.inGameOptions.setBypassDefault(value as Boolean)
+                true
+            }
+        }
+        findPreference<Preference>("library_open")?.apply {
+            isVisible = activity?.intent?.hasExtra("referer") == true
+            setOnPreferenceClickListener {
+                startActivity(Intent(context, LibraryActivity::class.java))
+                true
+            }
+        }
+
+    }
 
     override fun onResume() {
         super.onResume()
-        apps?.updateAppList()
+        findPreference<androidx.preference.ListPreference>("gamespace_default_game_mode")?.value =
+            systemSettings.libraryDefaultMode.toString()
+        findPreference<SwitchPreferenceCompat>("bypass_charge_enabled")?.isChecked =
+            appSettings.inGameOptions.global(io.github.miner7222.gamespace.library.GameOption.BYPASS) == 1
+        findPreference<SwitchPreferenceCompat>("gamespace_auto_game_detect")?.isChecked =
+            systemSettings.autoGameDetect
+        findPreference<HideGamesPreference>("gamespace_hide_games")?.refresh()
+        val count = systemSettings.userGames.size
+        findPreference<Preference>("library_open")?.summary = resources.getQuantityString(
+            R.plurals.library_game_count, count, count)
     }
 
     override fun onDisplayPreferenceDialog(preference: Preference) {
