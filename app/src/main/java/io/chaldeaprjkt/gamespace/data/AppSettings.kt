@@ -134,9 +134,10 @@ class AppSettings @Inject constructor(private val context: Context) {
         get() = db.getInt(KEY_ICON_IDLE_ALPHA, 25)
         set(value) = db.edit().putInt(KEY_ICON_IDLE_ALPHA, value).apply()
 
+    val savedWifiLowLatency: Boolean get() = db.getBoolean(KEY_WIFI_LOW_LATENCY, true)
+
     val wifiLowLatency: Boolean
-        get() = io.github.miner7222.gamespace.library.SessionOptions.wifi(context,
-            db.getBoolean(KEY_WIFI_LOW_LATENCY, true))
+        get() = io.github.miner7222.gamespace.library.SessionOptions.wifi(context, savedWifiLowLatency)
 
     fun setSessionWifiLowLatency(enabled: Boolean) =
         io.github.miner7222.gamespace.library.SessionOptions.chooseWifi(context, enabled)

@@ -48,6 +48,23 @@ object SessionOptions {
     fun hasChoice(context: Context, option: GameOption): Boolean =
         states[context.userId]?.choices?.containsKey(option) == true
 
+    /** Compare values, not whether the panel has ever made a choice. */
+    fun differsFromSaved(context: Context, option: GameOption): Boolean {
+        val state = states[context.userId] ?: return false
+        val saved = InGameOptions(context).effective(state.packageName, option)
+        return (state.choices[option] ?: saved) != saved
+    }
+
+    fun wifiDiffersFromSaved(context: Context, saved: Boolean): Boolean {
+        val state = states[context.userId] ?: return false
+        return (state.wifi ?: saved) != saved
+    }
+
+    fun modeDiffersFromSaved(context: Context): Boolean {
+        val state = states[context.userId] ?: return false
+        return (state.mode ?: state.savedMode) != state.savedMode
+    }
+
     fun autoBrightness(context: Context): Boolean? = states[context.userId]?.autoBrightness
     fun chooseAutoBrightness(context: Context, enabled: Boolean): Boolean {
         val state = states[context.userId] ?: return false
@@ -72,6 +89,7 @@ object SessionOptions {
         require(mode in 0..3)
         states[context.userId]?.takeIf { it.packageName == packageName }?.savedMode = mode
         ModePreferences.saveRecoveryMode(context, packageName, mode)
+        notify(context)
     }
 
     fun mode(context: Context): Int? = states[context.userId]?.mode
