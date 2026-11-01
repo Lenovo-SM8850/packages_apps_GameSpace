@@ -331,6 +331,7 @@ class SessionService : Hilt_SessionService() {
             releaseWifiLock()
             Log.w(TAG, "Cannot hold the low-latency Wi-Fi lock", e)
         } finally {
+            publishWifiLockState()
         }
     }
 
@@ -343,7 +344,13 @@ class SessionService : Hilt_SessionService() {
         } catch (e: RuntimeException) {
             Log.w(TAG, "Cannot release the low-latency Wi-Fi lock", e)
         } finally {
+            publishWifiLockState()
         }
+    }
+
+    private fun publishWifiLockState() {
+        tileRepository.setWifiLowLatencyActive(
+            currentPackage != null && wifiPackage == currentPackage && wifiLock?.isHeld == true)
     }
 
     private fun refreshInGameOptions() {

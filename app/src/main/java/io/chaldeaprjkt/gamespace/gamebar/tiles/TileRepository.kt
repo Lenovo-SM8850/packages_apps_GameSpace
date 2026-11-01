@@ -56,6 +56,8 @@ import io.chaldeaprjkt.gamespace.R
 import io.github.miner7222.gamespace.GameAspectRatioTile
 import io.github.miner7222.gamespace.gamebar.RecordingPhase
 import io.github.miner7222.gamespace.gamebar.RecordingStateController
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import io.github.miner7222.gamespace.library.GameOption
 import io.github.miner7222.gamespace.library.SidebarVisibility
 import io.github.miner7222.gamespace.library.SessionOptions
@@ -224,7 +226,11 @@ class TileRepository @Inject constructor(
     var onBeforePlatformAction: ((String) -> Unit)? = null
     var onScreenshotComplete: (() -> Unit)? = null
     var onScreenOff: (() -> Unit)? = null
+    private val mutableWifiLowLatencyActive = MutableStateFlow(false)
+    val wifiLowLatencyActive = mutableWifiLowLatencyActive.asStateFlow()
     val recordingState = recording.state
+
+    fun setWifiLowLatencyActive(active: Boolean) { mutableWifiLowLatencyActive.value = active }
 
     fun stopRecording() {
         if (listening && recordingState.value.phase == RecordingPhase.ACTIVE) {
@@ -360,6 +366,7 @@ class TileRepository @Inject constructor(
     fun init(platform: AxPlatformClient) {
         this.platform = platform
         listening = true
+        mutableWifiLowLatencyActive.value = false
         context.registerReceiver(ringerReceiver,
             IntentFilter(AudioManager.INTERNAL_RINGER_MODE_CHANGED_ACTION).apply {
                 addAction(AudioManager.RINGER_MODE_CHANGED_ACTION)
@@ -534,6 +541,7 @@ class TileRepository @Inject constructor(
     fun dispose() {
         listening = false
         context.unregisterReceiver(ringerReceiver)
+        mutableWifiLowLatencyActive.value = false
         platform.removeListener(platformListener)
         context.contentResolver.unregisterContentObserver(settingsObserver)
         preferences.unregisterOnSharedPreferenceChangeListener(preferenceListener)
@@ -1015,7 +1023,10 @@ class TileRepository @Inject constructor(
             readSavedDifference = { wifiDiffersFromSaved() },
             state = wifiLowLatencyState,
             available = { hasDeviceCapability("wifi_low_latency") },
-            setter = { appSettings.setSessionWifiLowLatency(it) },
+            setter = {
+                appSettings.setSessionWifiLowLatency(it)
+                refreshPlatformStates()
+            },
         ))
 
         add(aspectRatioTile)
