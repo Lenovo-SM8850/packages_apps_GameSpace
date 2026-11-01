@@ -184,4 +184,5 @@
     <string name="aspect_ratio_change_failed">Couldn\'t change aspect ratio.</string>
     <string name="aspect_ratio_swipe_down_again">Swipe down again to move the game to the bottom</string>
     <string name="aspect_ratio_swipe_up_again">Swipe up again to move the game back to the center</string>
+    <string name="game_performance">Game Tuner</string>
 </resources>
