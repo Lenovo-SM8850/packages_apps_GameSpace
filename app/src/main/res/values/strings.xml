@@ -42,6 +42,8 @@
     <string name="per_app_performance_title">Performance preset</string>
     <string name="per_app_performance_summary">Speeds, heat and benchmark records for this game</string>
     <string name="per_app_performance_active" translatable="false">%1$s · %2$s</string>
+    <string name="per_app_keep_aspect_ratio_title">Keep aspect ratio in split screen</string>
+    <string name="per_app_keep_aspect_ratio_summary">Show the game at its own aspect ratio in split screen, with bars around it.</string>
     <string name="per_app_unregister">Remove %1$s from library</string>
 
     <!-- Ringer Mode -->
