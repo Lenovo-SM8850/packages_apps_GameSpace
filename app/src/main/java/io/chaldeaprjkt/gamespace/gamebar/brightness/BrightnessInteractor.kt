@@ -42,10 +42,10 @@ class BrightnessInteractor @Inject constructor(
         }
     }
 
+    var onToggleAutoMode: ((Boolean) -> Unit)? = null
+
     fun toggleAutoMode() {
-        repository.isAuto.value?.let { current ->
-            repository.setAutoMode(!current)
-        }
+        repository.isAuto.value?.let { current -> onToggleAutoMode?.invoke(!current) }
     }
 
     fun refresh() = repository.refresh()

@@ -22,12 +22,18 @@ import androidx.annotation.Keep
 @Keep
 data class SessionState(
     var packageName: String,
+    var preferredMode: Int? = null,
+    var userId: Int? = null,
+    var dndFilter: Int? = null,
+    var ownsDnd: Boolean = false,
     var autoBrightness: Boolean? = null,
     var statusbarBrightness: Boolean? = null,
     var headsup: Boolean? = null,
     var threeScreenshot: Int = 0,
     var ringerMode: Int = AudioManager.RINGER_MODE_NORMAL,
     var pulseBassHaptics: Int = 0,
+    var ownsHeadsup: Boolean = false,
+    var appliedRingerMode: Int = 3,
     var ownsBrightness: Boolean = false,
     var ownsThreeScreenshot: Boolean = false,
     var ownsRingerMode: Boolean = false,

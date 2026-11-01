@@ -17,6 +17,9 @@
  */
 package io.chaldeaprjkt.gamespace.data
 
+import android.content.SharedPreferences
+import io.github.miner7222.gamespace.library.InGameOptions
+import io.github.miner7222.gamespace.library.GameOption
 import android.app.Service
 import android.content.Context
 import android.provider.Settings
@@ -31,13 +34,13 @@ class AppSettings @Inject constructor(private val context: Context) {
     private val db by lazy { PreferenceManager.getDefaultSharedPreferences(context) }
     private val wm by lazy { context.getSystemService(Service.WINDOW_SERVICE) as WindowManager }
 
+    val inGameOptions by lazy { InGameOptions(context) }
+
     fun isBypassChargeEnabled(packageName: String): Boolean =
-        packageName in db.getStringSet(KEY_BYPASS_CHARGE_GAMES, emptySet()).orEmpty()
+        inGameOptions.enabled(packageName, GameOption.BYPASS)
 
     fun setBypassChargeEnabled(packageName: String, enabled: Boolean) {
-        val games = db.getStringSet(KEY_BYPASS_CHARGE_GAMES, emptySet()).orEmpty().toMutableSet()
-        if (enabled) games.add(packageName) else games.remove(packageName)
-        db.edit().putStringSet(KEY_BYPASS_CHARGE_GAMES, games).apply()
+        inGameOptions.set(packageName, GameOption.BYPASS, if (enabled) 1 else 0)
     }
 
     var x
@@ -115,6 +118,12 @@ class AppSettings @Inject constructor(private val context: Context) {
     var iconIdleAlpha: Int
         get() = db.getInt(KEY_ICON_IDLE_ALPHA, 25)
         set(value) = db.edit().putInt(KEY_ICON_IDLE_ALPHA, value).apply()
+
+    fun registerPreferenceListener(listener: SharedPreferences.OnSharedPreferenceChangeListener) =
+        db.registerOnSharedPreferenceChangeListener(listener)
+
+    fun unregisterPreferenceListener(listener: SharedPreferences.OnSharedPreferenceChangeListener) =
+        db.unregisterOnSharedPreferenceChangeListener(listener)
 
     var autoDnd: Boolean
         get() = db.getBoolean(KEY_AUTO_DND, false)

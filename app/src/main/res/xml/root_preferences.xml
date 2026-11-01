@@ -104,7 +104,8 @@
             android:summary="@string/lock_gesture_summary"
             android:defaultValue="false" />
 
-        <com.crdroid.settings.preferences.SystemSettingSwitchPreference
+        <SwitchPreferenceCompat
+            android:persistent="false"
             android:key="bypass_charge_enabled"
             android:title="@string/bypass_charge_enabled_title"
             android:summary="@string/bypass_charge_enabled_summary"
