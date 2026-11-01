@@ -16,7 +16,6 @@
  */
 package io.chaldeaprjkt.gamespace.data
 
-import android.os.UserHandle
 import android.annotation.SuppressLint
 import android.content.Context
 import android.os.PowerManager
