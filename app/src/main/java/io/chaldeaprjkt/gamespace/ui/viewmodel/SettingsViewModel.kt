@@ -173,7 +173,7 @@ class SettingsViewModel @Inject constructor(
     fun registerGame(packageName: String) {
         val games = systemSettings.userGames.toMutableList()
         if (!games.any { it.packageName == packageName }) {
-            games.add(UserGame(packageName))
+            games.add(UserGame(packageName, systemSettings.libraryDefaultMode))
             systemSettings.userGames = games
         }
         loadRegisteredGames()

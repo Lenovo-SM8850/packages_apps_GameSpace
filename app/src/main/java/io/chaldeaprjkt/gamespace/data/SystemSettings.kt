@@ -143,12 +143,12 @@ class SystemSettings @Inject constructor(
         get() =
             Settings.System.getIntForUser(
                 resolver, "gamespace_auto_game_detect", 1,
-                UserHandle.USER_CURRENT
+                userId
             ) == 1
         set(value) {
             Settings.System.putIntForUser(
                 resolver, "gamespace_auto_game_detect",
-                if (value) 1 else 0, UserHandle.USER_CURRENT
+                if (value) 1 else 0, userId
             )
         }
 
@@ -165,5 +165,15 @@ class SystemSettings @Inject constructor(
             )
         }
 
+    var libraryDefaultMode: Int
+        get() = io.github.miner7222.gamespace.library.ModePreferences.defaultMode(libraryContext)
+        set(value) {
+            require(value in 0..3)
+            Settings.Secure.putIntForUser(resolver,
+                io.github.miner7222.gamespace.library.ModePreferences.DEFAULT, value, userId)
+        }
+
     private fun Boolean.toInt() = if (this) 1 else 0
+
+    private val libraryContext = context
 }
