@@ -124,6 +124,7 @@ fun GamePanelCard(
     var graphExpanded by remember { mutableStateOf(initialGraphExpanded) }
     var moreExpanded by remember { mutableStateOf(false) }
     var dialogTile by remember { mutableStateOf<TileAction?>(null) }
+    val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val store = remember(context) { InGameOptions(context) }
     var revision by remember { mutableIntStateOf(0) }
@@ -139,11 +140,27 @@ fun GamePanelCard(
         onDismiss()
         context.startActivity(LibraryActivity.gameSettingsIntent(context, gamePackage, target))
     }
-    val message: (String) -> Unit = { text ->
-        Toast.makeText(context, text, Toast.LENGTH_SHORT).show()
+    val message: (String) -> Unit = { text -> scope.launch {
+        snackbar.currentSnackbarData?.dismiss()
+        snackbar.showSnackbar(text)
+    } }
+    val aspect = tileRepository.catalogue.filterIsInstance<GameAspectRatioTile>().firstOrNull()
+    DisposableEffect(aspect) {
+        val listener: (String) -> Unit = { message(it) }
+        aspect?.onFailureMessage = listener
+        onDispose { aspect?.let { if (it.onFailureMessage === listener) it.onFailureMessage = null } }
     }
     val noneMessage = stringResource(R.string.dashboard_modes_off)
-    val noneAction = { message(noneMessage) }
+    val settingsLabel = stringResource(R.string.tile_settings)
+    val noneAction = { scope.launch {
+        snackbar.currentSnackbarData?.dismiss()
+        if (snackbar.showSnackbar(noneMessage, settingsLabel, duration = SnackbarDuration.Long) == SnackbarResult.ActionPerformed) {
+            openSettings(GameSettingsDestination.MODE)
+        }
+    }; Unit }
+    LaunchedEffect(tileRepository) {
+        tileRepository.actionResults.collect { completion -> message(completion.result.message) }
+    }
     val activateTile: (TileAction) -> Unit = { tile ->
         val wasEnabled = tile.isEnabled
         if (tile.id == "screen_record" && tileRepository.recordingState.value.phase == RecordingPhase.ACTIVE) {
@@ -213,6 +230,7 @@ fun GamePanelCard(
                     }
                 }
                 dialogTile?.let { tile -> DashboardOptionSheet(tile, onDismiss = { dialogTile = null }) }
+                SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).padding(8.dp))
             }
         }
     }
