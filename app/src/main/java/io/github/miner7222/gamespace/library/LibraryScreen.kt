@@ -100,7 +100,7 @@ fun LibraryScreen(state: LibraryState, library: LibraryViewModel,
                 })
         }, snackbarHost = { SnackbarHost(snackbar) }) { insets ->
         BoxWithConstraints(Modifier.fillMaxSize().padding(insets).padding(16.dp)) {
-            val expanded = maxWidth >= 840.dp
+            val expanded = LocalConfiguration.current.screenWidthDp >= 840
             val recent = remember(state.games) { state.games.filter { it.lastPlayed > 0 }.sortedByDescending { it.lastPlayed } }
             if (state.loading) {
                 CircularProgressIndicator(Modifier.align(Alignment.Center))
@@ -122,7 +122,7 @@ fun LibraryScreen(state: LibraryState, library: LibraryViewModel,
                                             horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                                             GameIcon(game, 40.dp)
                                             Column(Modifier.weight(1f)) {
-                                                Text(game.label, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                                Text(game.label, maxLines = 2, overflow = TextOverflow.Ellipsis)
                                                 Text(playedText(game.lastPlayed), style = MaterialTheme.typography.bodyMedium,
                                                     color = MaterialTheme.colorScheme.onSurfaceVariant)
                                             }
@@ -136,7 +136,7 @@ fun LibraryScreen(state: LibraryState, library: LibraryViewModel,
                     LibraryFolder(state, library, onAdd, openSettings, selectedPackage, Modifier.weight(1f).fillMaxHeight())
                 }
             } else {
-                Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                Column(Modifier.widthIn(max = 640.dp).fillMaxSize().align(Alignment.TopCenter), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     recent.firstOrNull()?.let { ContinuePlaying(it, false, library.repository::launch) }
                     LibraryFolder(state, library, onAdd, openSettings, selectedPackage, Modifier.weight(1f).fillMaxWidth())
                 }
@@ -178,7 +178,7 @@ private fun ContinuePlaying(game: LibraryGame, expanded: Boolean, launch: (Strin
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                     GameIcon(game, 66.dp)
                     Column(Modifier.weight(1f)) {
-                        Text(game.label, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(game.label, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
                         if (expanded) {
                             Text(playedText(game.lastPlayed), color = scheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
                             Text(modeLabel(game.mode), color = scheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
@@ -318,7 +318,7 @@ private fun GameTile(game: LibraryGame, selected: Boolean, labelGap: Dp, onLaunc
         }), horizontalAlignment = Alignment.CenterHorizontally) {
         GameIcon(game, 66.dp, Modifier.scale(scale), if (corner < 32.5.dp) RoundedCornerShape(corner) else null)
         Spacer(Modifier.height(labelGap))
-        Text(game.label, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(game.label, fontSize = 14.sp, minLines = 2, maxLines = 2, textAlign = TextAlign.Center, overflow = TextOverflow.Ellipsis)
     }
 }
 
@@ -339,8 +339,8 @@ internal fun GameIcon(game: LibraryGame, size: Dp, modifier: Modifier = Modifier
 }
 
 internal fun groupedShape(index: Int, count: Int) = RoundedCornerShape(
-    topStart = if (index == 0) 20.dp else 4.dp, topEnd = if (index == 0) 20.dp else 4.dp,
-    bottomStart = if (index == count - 1) 20.dp else 4.dp, bottomEnd = if (index == count - 1) 20.dp else 4.dp)
+    topStart = if (index == 0) 28.dp else 8.dp, topEnd = if (index == 0) 28.dp else 8.dp,
+    bottomStart = if (index == count - 1) 28.dp else 8.dp, bottomEnd = if (index == count - 1) 28.dp else 8.dp)
 
 @Composable
 internal fun modeLabel(mode: Int): String = stringResource(when (mode) {
