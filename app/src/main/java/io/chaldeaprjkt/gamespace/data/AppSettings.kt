@@ -89,7 +89,21 @@ class AppSettings @Inject constructor(private val context: Context) {
         get() = db.getString(KEY_TILE_ORDER, null)?.split(",")?.filter { it.isNotBlank() } ?: emptyList()
         set(value) = db.edit().putString(KEY_TILE_ORDER, value.joinToString(",")).apply()
 
-    // Preserve selections while a capability (for example a work profile) is absent.
+    // A missing key and an explicitly empty selection have different migration semantics.
+    val savedTileOrder: List<String>?
+        get() = db.getString(KEY_TILE_ORDER, null)?.split(",")?.filter { it.isNotBlank() }
+
+    val tileOrderVersion: Int get() = db.getInt(KEY_TILE_ORDER_VERSION, 0)
+
+    fun saveTileConfiguration(order: List<String>, snapshot: List<String>, version: Int) {
+        db.edit()
+            .putString(KEY_PREFERRED_TILE_ORDER, order.joinToString(","))
+            .putString(KEY_DEFAULT_TILE_SNAPSHOT, snapshot.joinToString(","))
+            .putInt(KEY_TILE_ORDER_VERSION, version)
+            .apply()
+    }
+
+    // Preserve selections while a capability is temporarily absent.
     var preferredTileOrder: List<String>?
         get() = db.getString(KEY_PREFERRED_TILE_ORDER, null)
             ?.split(",")?.filter { it.isNotBlank() }
@@ -167,6 +181,7 @@ class AppSettings @Inject constructor(private val context: Context) {
         const val KEY_RINGER_MODE = "gamespace_ringer_mode"
         const val KEY_LOCK_GESTURE = "gamespace_lock_gesture"
         const val KEY_MENU_OPACITY = "gamespace_menu_opacity"
+        const val KEY_TILE_ORDER_VERSION = "tile_order_version"
         const val KEY_TILE_ORDER = "tile_order"
         const val KEY_PREFERRED_TILE_ORDER = "preferred_tile_order"
         const val KEY_DEFAULT_TILE_SNAPSHOT = "default_tile_snapshot"

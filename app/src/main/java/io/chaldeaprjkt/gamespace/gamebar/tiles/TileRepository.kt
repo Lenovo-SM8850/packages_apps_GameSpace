@@ -197,21 +197,6 @@ class PlatformTile(
     }
 }
 
-private fun resolveTileOrder(
-    savedOrder: List<String>?,
-    defaultSnapshot: List<String>?,
-    currentDefault: List<String>,
-): Pair<List<String>, List<String>> {
-    if (savedOrder == null) return currentDefault to currentDefault
-    // An explicitly empty selection always means the user removed every tile.
-    if (savedOrder.isEmpty()) return savedOrder to (defaultSnapshot ?: currentDefault)
-    // Move legacy nonempty panels to the current default once.
-    if (defaultSnapshot == null || savedOrder == defaultSnapshot) {
-        return currentDefault to currentDefault
-    }
-    return savedOrder to defaultSnapshot
-}
-
 @Singleton
 class TileRepository @Inject constructor(
     private val context: Context,
@@ -250,6 +235,7 @@ class TileRepository @Inject constructor(
     private val _tileOrder = mutableStateListOf<String>()
     private val preferredTileOrder = mutableListOf<String>()
     private var supportedFeatures = emptySet<String>()
+    private var pendingDefaultOrder = false
     private val _availableTiles = mutableStateListOf<TileAction>()
     private val haloState = mutableStateOf(false)
     private val haloEnabledSetting = "halo_reactive_enabled"
@@ -384,6 +370,15 @@ class TileRepository @Inject constructor(
         touchResponseState.value = appSettings.inGameOptions.current(GameOption.TOUCH) == 1
         wifiLowLatencyState.value = appSettings.wifiLowLatency
         ringerState.value = context.getSystemService(AudioManager::class.java).ringerModeInternal
+        if (pendingDefaultOrder && supportedFeatures.isNotEmpty()) {
+            // Binding is asynchronous. Complete a fresh/reset default once states arrive,
+            // without reselecting a saved custom list or following later availability changes.
+            pendingDefaultOrder = false
+            val order = defaultTileOrder()
+            appSettings.saveTileConfiguration(order, order, TILE_ORDER_VERSION)
+            preferredTileOrder.clear()
+            preferredTileOrder.addAll(order)
+        }
         rebuildAvailableTiles()
         scheduleHardwareRefresh()
     }
@@ -505,47 +500,56 @@ class TileRepository @Inject constructor(
         }
     }
 
-    // Rarely used in a game session: left out of a new panel, still available in the editor
-    private val TILES_OFF_BY_DEFAULT = setOf(
-        AxPlatformClient.FEATURE_AUTO_SYNC,
-        AxPlatformClient.FEATURE_COLOR_INVERSION,
-        AxPlatformClient.FEATURE_COLOR_CORRECTION,
-        AxPlatformClient.FEATURE_CAMERA_PRIVACY,
-        AxPlatformClient.FEATURE_MIC_PRIVACY,
-        AxPlatformClient.FEATURE_READING_MODE,
-        AxPlatformClient.FEATURE_CAFFEINE,
-        "stay_awake",
-        AxPlatformClient.FEATURE_DREAM,
-        AxPlatformClient.FEATURE_CAST,
-        AxPlatformClient.FEATURE_PROFILES,
-    )
+    private fun defaultTileOrder(): List<String> {
+        val availableIds = defaultTiles.filter { tile ->
+            if (tile is PlatformTile && supportedFeatures.isEmpty()) hasDeviceCapability(tile.id)
+            else tile.isAvailable
+        }.map { it.id }.toSet()
+        return DEFAULT_MAIN_ORDER.filter { it in availableIds }.take(defaultMainTileCount) + DEFAULT_MORE_ORDER
+    }
 
     private fun loadTileOrder(): List<String> {
-        val catalogIds = defaultTiles.map { it.id }
-        val currentDefault = catalogIds.filterNot { it in TILES_OFF_BY_DEFAULT }
-        val savedOrder = appSettings.preferredTileOrder ?: appSettings.tileOrder.takeIf { it.isNotEmpty() }
-        val (selection, snapshot) = resolveTileOrder(
-            savedOrder, appSettings.defaultTileSnapshot, currentDefault
+        val currentDefault = defaultTileOrder()
+        val savedOrder = appSettings.preferredTileOrder ?: appSettings.savedTileOrder
+        val snapshot = appSettings.defaultTileSnapshot
+        val needsMigration = appSettings.tileOrderVersion < TILE_ORDER_VERSION
+        // Only a matching snapshot proves that an old panel was untouched. No snapshot
+        // means unknown history: preserve that user's selection, including an empty list.
+        val useDefault = savedOrder == null ||
+            (needsMigration && savedOrder.isNotEmpty() && snapshot != null && savedOrder == snapshot)
+        pendingDefaultOrder = useDefault && supportedFeatures.isEmpty()
+        val selection = if (useDefault) currentDefault else savedOrder.orEmpty()
+        // Filter the catalogue, not availability: unplugging a device or hiding a
+        // capability must never remove a user's selection from its saved position.
+        val catalogIds = defaultTiles.map { it.id }.toSet()
+        val order = selection.filter { it in catalogIds }.distinct()
+        val newSnapshot = if (useDefault) currentDefault
+            else (snapshot ?: currentDefault).filter { it in catalogIds }.distinct()
+        appSettings.saveTileConfiguration(order, newSnapshot, TILE_ORDER_VERSION)
+        return order
+    }
+
+    fun resetToDefault() {
+        pendingDefaultOrder = supportedFeatures.isEmpty()
+        val order = defaultTileOrder()
+        appSettings.saveTileConfiguration(order, order, TILE_ORDER_VERSION)
+        preferredTileOrder.clear()
+        preferredTileOrder.addAll(order)
+        rebuildAvailableTiles()
+    }
+
+    companion object {
+        private const val TILE_ORDER_VERSION = 1
+        private val DEFAULT_MAIN_ORDER = listOf(
+            AxPlatformClient.FEATURE_SCREENSHOT, AxPlatformClient.FEATURE_SCREEN_RECORD,
+            "fps_info", AxPlatformClient.FEATURE_ZEN, "gesture_lock", "bypass_charge_enabled",
+            "touch_response", "screen_off", "ringer", "notification", "screen_aspect_ratio",
+            "boost_memory",
         )
-        // Add the new control to existing nonempty panels once, preserving later deselection.
-        val order = if (!preferences.getBoolean("bypass_tile_added", false)) {
-            preferences.edit().putBoolean("bypass_tile_added", true).apply()
-            if (selection.isNotEmpty()) selection + "bypass_charge_enabled" else selection
-        } else selection
-        val haloOrder = if (!preferences.getBoolean("halo_tile_added", false)) {
-            preferences.edit().putBoolean("halo_tile_added", true).apply()
-            if (order.isNotEmpty()) order + "halo" else order
-        } else order
-        val aspectOrder = if (!preferences.getBoolean("aspect_ratio_tile_added", false)) {
-            preferences.edit().putBoolean("aspect_ratio_tile_added", true).apply()
-            if (haloOrder.isNotEmpty()) haloOrder + aspectRatioTile.id else haloOrder
-        } else haloOrder
-        val filteredOrder = aspectOrder.filter { it in catalogIds }.distinct()
-        if (appSettings.preferredTileOrder != filteredOrder) {
-            appSettings.preferredTileOrder = filteredOrder
-        }
-        if (appSettings.defaultTileSnapshot != snapshot) appSettings.defaultTileSnapshot = snapshot
-        return filteredOrder
+        private val DEFAULT_MORE_ORDER = listOf(
+            AxPlatformClient.FEATURE_WIFI, AxPlatformClient.FEATURE_BLUETOOTH,
+            AxPlatformClient.FEATURE_NIGHT_LIGHT, AxPlatformClient.FEATURE_MIC_PRIVACY,
+        )
     }
 
     private fun clearBackgroundProcesses() {
@@ -572,6 +576,7 @@ class TileRepository @Inject constructor(
     }
 
     fun updateTileSelection(selectedIds: List<String>) {
+        pendingDefaultOrder = false
         val selected = selectedIds.filter { id -> _availableTiles.any { it.id == id } }
             .distinct().toMutableList()
         // Keep absent selections in their former slots, even when the visible order is edited.
