@@ -15,9 +15,6 @@
  */
 package io.chaldeaprjkt.gamespace.settings
 
-import androidx.activity.result.contract.ActivityResultContracts
-import io.chaldeaprjkt.gamespace.preferences.AppListPreferences
-import io.chaldeaprjkt.gamespace.preferences.appselector.AppSelectorActivity
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.IntentFilter
