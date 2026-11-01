@@ -319,6 +319,7 @@ fun HeaderInfoBar(
         GameMode.Performance -> Color(0xFFD32F2F)
         GameMode.PowerSave -> Color(0xFF388E3C)
         GameMode.Balanced -> Color(0xFFEF6C00)
+        GameMode.None -> MaterialTheme.colorScheme.onSurfaceVariant
     }
 
     Column(
@@ -1165,7 +1166,7 @@ fun GameModeSelector(
     selectedMode: GameMode,
     onModeSelected: (GameMode) -> Unit
 ) {
-    val modes = GameMode.values()
+    val modes = listOf(GameMode.None, GameMode.PowerSave, GameMode.Balanced, GameMode.Performance)
     val haptic = LocalHapticFeedback.current
 
     Row(
@@ -1182,6 +1183,7 @@ fun GameModeSelector(
                 GameMode.Performance -> Color(0xFFD32F2F)
                 GameMode.PowerSave -> Color(0xFF388E3C)
                 GameMode.Balanced -> Color(0xFFEF6C00)
+                GameMode.None -> MaterialTheme.colorScheme.onSurfaceVariant
             }
 
             Box(
@@ -1444,18 +1446,21 @@ private fun getPercentage(value: Double, min: Float, max: Float): Double {
 }
 
 enum class GameMode(@StringRes val displayNameRes: Int, val icon: ImageVector) {
+    None(R.string.game_mode_none, Icons.Filled.Block),
     Balanced(R.string.game_mode_balanced, Icons.Filled.SportsEsports),
     PowerSave(R.string.game_mode_battery, Icons.Filled.EnergySavingsLeaf),
     Performance(R.string.game_mode_performance, Icons.Filled.ElectricBolt)
 }
 
 fun GameMode.toSystemGameMode(): Int = when (this) {
+    GameMode.None -> GameManager.GAME_MODE_UNSUPPORTED
     GameMode.Balanced -> GameManager.GAME_MODE_STANDARD
     GameMode.PowerSave -> GameManager.GAME_MODE_BATTERY
     GameMode.Performance -> GameManager.GAME_MODE_PERFORMANCE
 }
 
 fun fromSystemGameMode(value: Int): GameMode = when (value) {
+    GameManager.GAME_MODE_UNSUPPORTED -> GameMode.None
     GameManager.GAME_MODE_PERFORMANCE -> GameMode.Performance
     GameManager.GAME_MODE_BATTERY -> GameMode.PowerSave
     else -> GameMode.Balanced

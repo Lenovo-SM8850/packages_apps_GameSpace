@@ -24,6 +24,7 @@ internal class GameInterventionUpdater(
 ) {
     private val handler = Handler(HandlerThread(TAG).apply { start() }.looper)
     private val update = Runnable { updateUsers() }
+    private val appliedModes = mutableMapOf<Pair<Int, String>, Int>()
 
     fun start() {
         context.contentResolver.registerContentObserver(
@@ -76,17 +77,20 @@ internal class GameInterventionUpdater(
         if (retry) handler.postDelayed(update, RETRY_DELAY_MS)
     }
 
-    private fun updateUser(userId: Int): Boolean {
+    private fun updateUser(userId: Int): Boolean = GameModeUtils.withModeLock { updateUserLocked(userId) }
+
+    private fun updateUserLocked(userId: Int): Boolean {
         val userContext = context.createContextAsUser(UserHandle.of(userId), 0)
         // Only the system-user process owns these files; namespace markers by target user.
         val prefs = context.createDeviceProtectedStorageContext()
             .getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val versionKey = "u$userId:$VERSION_KEY"
         val packagePrefix = "u$userId:$PACKAGE_PREFIX"
-        val packages = Settings.System.getStringForUser(
+        val modes = Settings.System.getStringForUser(
             context.contentResolver, GAME_LIST, userId
         ).orEmpty().split(';').filter { it.isNotEmpty() }
-            .map { it.substringBefore('=') }.toSet()
+            .associate { it.substringBefore('=') to (it.substringAfter('=', "1").toIntOrNull() ?: 1) }
+        val packages = modes.keys
         val versionChanged = prefs.getInt(versionKey, 0) != CONFIG_VERSION
         val editor = prefs.edit()
         var complete = true
@@ -100,16 +104,20 @@ internal class GameInterventionUpdater(
             }
             // A reinstall can clear GameManager's overrides without changing the game list.
             val stamp = "${info.firstInstallTime}:${info.lastUpdateTime}"
-            if (!versionChanged && prefs.getString(packagePrefix + packageName, null) == stamp) {
+            val mode = modes.getValue(packageName)
+            if (!versionChanged && prefs.getString(packagePrefix + packageName, null) == stamp &&
+                appliedModes[userId to packageName] == mode) {
                 continue
             }
             if (gameModeUtils.setInterventionForUser(
-                    packageName, GameConfig.ModeBuilder.build(), userId)) {
+                    packageName, if (mode == 0) null else GameConfig.ModeBuilder.build(), userId)) {
+                appliedModes[userId to packageName] = mode
                 editor.putString(packagePrefix + packageName, stamp)
             } else {
                 complete = false
             }
         }
+        appliedModes.keys.removeAll { it.first == userId && it.second !in packages }
         // Forget removed registrations so adding the same installed package applies defaults again.
         prefs.all.keys.filter { it.startsWith(packagePrefix) }
             .filter { it.removePrefix(packagePrefix) !in packages }
@@ -123,7 +131,7 @@ internal class GameInterventionUpdater(
         private const val GAME_LIST = "gamespace_game_list"
         private const val PREFS = "game_interventions"
         private const val VERSION_KEY = "config_version"
-        private const val CONFIG_VERSION = 1
+        private const val CONFIG_VERSION = 2
         private const val PACKAGE_PREFIX = "package:"
         private const val RETRY_DELAY_MS = 30_000L
     }
