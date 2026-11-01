@@ -16,6 +16,9 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusable
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
@@ -33,8 +36,11 @@ import io.github.miner7222.gamespace.GameSplitAspectRatio
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
@@ -60,8 +66,11 @@ data class GameSheetExtraRow(val key: String, val content: @Composable (Shape) -
 @Composable
 internal fun GameSheet(game: LibraryGame, expanded: Boolean, state: LibraryState,
     library: LibraryViewModel, model: PerAppSettingsViewModel, resumeGeneration: Int,
-    onDismiss: () -> Unit, onRemove: () -> Unit, extraRows: List<GameSheetExtraRow> = emptyList()) {
-    var optionsOpen by rememberSaveable(game.packageName) { mutableStateOf(false) }
+    onDismiss: () -> Unit, onRemove: () -> Unit, extraRows: List<GameSheetExtraRow> = emptyList(),
+    initialDestination: GameSettingsDestination? = null) {
+    var optionsOpen by rememberSaveable(game.packageName) {
+        mutableStateOf(initialDestination == GameSettingsDestination.IN_GAME_OPTIONS)
+    }
     if (optionsOpen) {
         GameOptionsScreen(game, expanded) { optionsOpen = false }
         return
@@ -69,7 +78,9 @@ internal fun GameSheet(game: LibraryGame, expanded: Boolean, state: LibraryState
     LaunchedEffect(game.packageName, resumeGeneration) { model.loadGame(game.packageName) }
     val content: @Composable () -> Unit = {
         if (model.packageName == game.packageName) {
-            GameSheetContent(game, state, library, model, resumeGeneration, onRemove, extraRows, { optionsOpen = true })
+            GameSheetContent(game, state, library, model, resumeGeneration, onRemove, extraRows,
+                focusMode = initialDestination == GameSettingsDestination.MODE,
+                onOptions = { optionsOpen = true })
         }
     }
     if (expanded) {
@@ -106,7 +117,16 @@ internal fun GameSheet(game: LibraryGame, expanded: Boolean, state: LibraryState
 @Composable
 private fun GameSheetContent(game: LibraryGame, state: LibraryState, library: LibraryViewModel,
     model: PerAppSettingsViewModel, resumeGeneration: Int, onRemove: () -> Unit,
-    extraRows: List<GameSheetExtraRow>, onOptions: () -> Unit) {
+    extraRows: List<GameSheetExtraRow>, focusMode: Boolean, onOptions: () -> Unit) {
+    val modeFocus = remember { FocusRequester() }
+    val modePosition = remember { BringIntoViewRequester() }
+    var modePlaced by remember(game.packageName) { mutableStateOf(false) }
+    LaunchedEffect(game.packageName, focusMode, modePlaced) {
+        if (focusMode && modePlaced) {
+            modePosition.bringIntoView()
+            modeFocus.requestFocus()
+        }
+    }
     val context = LocalContext.current
     val options = remember(context) { InGameOptions(context) }
     val snapshot = rememberGameOptions(options, game.packageName)
@@ -143,7 +163,11 @@ private fun GameSheetContent(game: LibraryGame, state: LibraryState, library: Li
         }
         Text(stringResource(R.string.per_app_mode_title), color = MaterialTheme.colorScheme.primary,
             style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 8.dp))
-        PreferredModeGroup(model) { mode -> model.updatePreferredMode(mode); library.refresh() }
+        PreferredModeGroup(model, Modifier.bringIntoViewRequester(modePosition)
+            .onGloballyPositioned { modePlaced = true }.focusRequester(modeFocus).focusable()) { mode ->
+            model.updatePreferredMode(mode)
+            library.refresh()
+        }
         Text(stringResource(when (model.preferredMode) {
             0 -> R.string.game_mode_none_summary
             2 -> R.string.library_mode_performance_summary
@@ -199,7 +223,7 @@ private fun GameSheetContent(game: LibraryGame, state: LibraryState, library: Li
 }
 
 @Composable
-private fun PreferredModeGroup(model: PerAppSettingsViewModel, onModeChanged: (Int) -> Unit) {
+private fun PreferredModeGroup(model: PerAppSettingsViewModel, modifier: Modifier = Modifier, onModeChanged: (Int) -> Unit) {
     val options = model.gameModeOptions.sortedBy { listOf(0, 3, 1, 2).indexOf(it.mode) }
     val labels = options.map { stringResource(it.labelRes) }
     val weights = options.map {
@@ -216,7 +240,7 @@ private fun PreferredModeGroup(model: PerAppSettingsViewModel, onModeChanged: (I
         }
     }
     ButtonGroup(overflowIndicator = { ButtonGroupDefaults.OverflowIndicator(it) },
-        modifier = Modifier.fillMaxWidth().height(56.dp).selectableGroup(),
+        modifier = modifier.fillMaxWidth().height(56.dp).selectableGroup(),
         horizontalArrangement = Arrangement.spacedBy(2.dp)) {
         options.forEachIndexed { index, option ->
             customItem(buttonGroupContent = {

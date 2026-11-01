@@ -64,13 +64,29 @@ import kotlinx.coroutines.launch
 @Composable
 fun LibraryScreen(state: LibraryState, library: LibraryViewModel,
     gameSettings: PerAppSettingsViewModel, resumeGeneration: Int,
-    onAdd: () -> Unit, onSettings: () -> Unit) {
+    onAdd: () -> Unit, onSettings: () -> Unit,
+    settingsRequest: GameSettingsRequest? = null, onSettingsRequestHandled: () -> Unit = {}) {
     var selectedPackage by rememberSaveable { mutableStateOf<String?>(null) }
+    var initialDestination by rememberSaveable { mutableStateOf<String?>(null) }
+    var destinationGeneration by rememberSaveable { mutableIntStateOf(0) }
+    LaunchedEffect(settingsRequest, state.loading, state.games) {
+        val request = settingsRequest ?: return@LaunchedEffect
+        if (state.loading) return@LaunchedEffect
+        if (state.games.any { it.packageName == request.packageName }) {
+            initialDestination = request.destination.name
+            selectedPackage = request.packageName
+            destinationGeneration++
+            library.dismissHint()
+        }
+        onSettingsRequestHandled()
+    }
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val openSettings: (LibraryGame) -> Unit = {
         library.dismissHint()
+        initialDestination = null
+        destinationGeneration++
         selectedPackage = it.packageName
     }
     Scaffold(containerColor = MaterialTheme.colorScheme.surfaceContainer,
@@ -126,22 +142,25 @@ fun LibraryScreen(state: LibraryState, library: LibraryViewModel,
                 }
             }
             state.games.firstOrNull { it.packageName == selectedPackage }?.let { game ->
-                GameSheet(game, expanded, state, library, gameSettings, resumeGeneration,
-                    onDismiss = { selectedPackage = null },
-                    onRemove = {
-                        val removed = library.repository.unregister(game.packageName)
-                        selectedPackage = null
-                        library.refresh()
-                        if (removed != null) scope.launch {
-                            snackbar.currentSnackbarData?.dismiss()
-                            val result = snackbar.showSnackbar(context.getString(R.string.library_removed, game.label),
-                                context.getString(R.string.library_undo), duration = SnackbarDuration.Long)
-                            if (result == SnackbarResult.ActionPerformed) {
-                                library.repository.restore(removed)
-                                library.refresh()
+                key(game.packageName, destinationGeneration) {
+                    GameSheet(game, expanded, state, library, gameSettings, resumeGeneration,
+                        initialDestination = GameSettingsDestination.entries.firstOrNull { it.name == initialDestination },
+                        onDismiss = { selectedPackage = null },
+                        onRemove = {
+                            val removed = library.repository.unregister(game.packageName)
+                            selectedPackage = null
+                            library.refresh()
+                            if (removed != null) scope.launch {
+                                snackbar.currentSnackbarData?.dismiss()
+                                val result = snackbar.showSnackbar(context.getString(R.string.library_removed, game.label),
+                                    context.getString(R.string.library_undo), duration = SnackbarDuration.Long)
+                                if (result == SnackbarResult.ActionPerformed) {
+                                    library.repository.restore(removed)
+                                    library.refresh()
+                                }
                             }
-                        }
-                    })
+                        })
+                }
             }
         }
     }
