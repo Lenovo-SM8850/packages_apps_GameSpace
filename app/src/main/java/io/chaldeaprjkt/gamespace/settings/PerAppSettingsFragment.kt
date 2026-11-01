@@ -16,7 +16,6 @@
 package io.chaldeaprjkt.gamespace.settings
 
 import android.app.Activity
-import android.app.GameManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
@@ -138,33 +137,29 @@ class PerAppSettingsFragment : Hilt_PerAppSettingsFragment(),
         val ctx = context ?: return
         val pkg = viewModel.packageName
         if (pkg.isEmpty()) return
+        val mode = viewModel.preferredMode
         viewLifecycleOwner.lifecycleScope.launch {
-            val active = withContext(Dispatchers.IO) { queryActivePreset(ctx, pkg) }
+            val active = withContext(Dispatchers.IO) { queryActivePreset(ctx, pkg, mode) }
             pref.summary = active ?: ctx.getString(R.string.per_app_performance_summary)
         }
     }
 
-    private fun queryActivePreset(ctx: Context, pkg: String): String? = try {
-        val mode = ctx.getSystemService(GameManager::class.java)?.getGameMode(pkg)
-        if (mode == null) {
-            null
-        } else {
-            val uri = Uri.Builder()
-                .scheme("content")
-                .authority(PRESETS_AUTHORITY)
-                .appendPath("active")
-                .appendQueryParameter("package", pkg)
-                .appendQueryParameter("mode", mode.toString())
-                .build()
-            ctx.contentResolver.query(uri, null, null, null, null)?.use {
-                if (it.moveToFirst()) {
-                    val modeLabel = it.getString(it.getColumnIndexOrThrow("mode_label"))
-                    val presetLabel = it.getString(it.getColumnIndexOrThrow("preset_label"))
-                    if (modeLabel.isNullOrEmpty() || presetLabel.isNullOrEmpty()) null
-                    else ctx.getString(R.string.per_app_performance_active, modeLabel, presetLabel)
-                } else {
-                    null
-                }
+    private fun queryActivePreset(ctx: Context, pkg: String, mode: Int): String? = try {
+        val uri = Uri.Builder()
+            .scheme("content")
+            .authority(PRESETS_AUTHORITY)
+            .appendPath("active")
+            .appendQueryParameter("package", pkg)
+            .appendQueryParameter("mode", mode.toString())
+            .build()
+        ctx.contentResolver.query(uri, null, null, null, null)?.use {
+            if (it.moveToFirst()) {
+                val modeLabel = it.getString(it.getColumnIndexOrThrow("mode_label"))
+                val presetLabel = it.getString(it.getColumnIndexOrThrow("preset_label"))
+                if (modeLabel.isNullOrEmpty() || presetLabel.isNullOrEmpty()) null
+                else ctx.getString(R.string.per_app_performance_active, modeLabel, presetLabel)
+            } else {
+                null
             }
         }
     } catch (e: Exception) {
@@ -176,6 +171,7 @@ class PerAppSettingsFragment : Hilt_PerAppSettingsFragment(),
             PREF_PREFERRED_MODE -> {
                 val newMode = (newValue as String).toIntOrNull() ?: 1
                 viewModel.updatePreferredMode(newMode)
+                refreshPerformanceSummary()
                 true
             }
             PREF_ANGLE_DRIVER -> {
