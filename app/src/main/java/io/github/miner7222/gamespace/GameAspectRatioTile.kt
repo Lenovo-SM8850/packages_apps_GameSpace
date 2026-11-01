@@ -17,6 +17,8 @@ import androidx.compose.runtime.rememberUpdatedState
 import dagger.hilt.android.qualifiers.ApplicationContext
 import io.chaldeaprjkt.gamespace.R
 import io.chaldeaprjkt.gamespace.gamebar.tiles.TileAction
+import io.chaldeaprjkt.gamespace.gamebar.tiles.TileCategory
+import io.chaldeaprjkt.gamespace.gamebar.tiles.TileKind
 import io.chaldeaprjkt.gamespace.gamebar.tiles.TileOption
 import org.json.JSONException
 import org.json.JSONObject
@@ -34,6 +36,9 @@ class GameAspectRatioTile @Inject constructor(
     // The framework applies ratios from any writer, so follow the setting while a game runs.
     private var ratioObserver: ContentObserver? = null
 
+    override val kind = TileKind.DIALOG
+    override val category = TileCategory.GAME_TOOLS
+    override val valueLine: String get() = modeName(mode.value)
     override val id = "screen_aspect_ratio"
     override val icon = R.drawable.materialsymbols_ic_aspect_ratio_rounded_filled
     // Names the selected ratio, or the tile itself while the game uses the full screen.
@@ -49,7 +54,7 @@ class GameAspectRatioTile @Inject constructor(
                 it.removePrefix(BOTTOM_PREFIX) else it }
             return PICKER_MODES.map { TileOption(it ?: FULLSCREEN_ID, modeName(it), it == selected) }
         }
-    val isAvailable: Boolean get() = available
+    override val isAvailable: Boolean get() = available
     /** The stored encoding for the current game, or null for full screen. */
     val currentMode: String? get() = mode.value
     /** Called after the availability or stored mode may have changed; may run on any thread. */
