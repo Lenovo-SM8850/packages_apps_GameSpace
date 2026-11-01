@@ -94,13 +94,13 @@
     <string name="fps_stats">min %1$d | avg %2$d | max %3$d</string>
 
     <!-- Tile Labels -->
-    <string name="tile_danmaku">Danmaku</string>
-    <string name="tile_stay_awake">Keep screen on while gaming</string>
+    <string name="tile_danmaku">Bullet notifications</string>
+    <string name="tile_stay_awake">Stay awake</string>
     <string name="tile_wifi">Wi-Fi</string>
-    <string name="tile_dnd">DND</string>
-    <string name="tile_fps_info">FPS Info</string>
-    <string name="tile_auto_rotate">Auto Rotate</string>
-    <string name="tile_boost_memory">Boost Memory</string>
+    <string name="tile_dnd">Do not disturb</string>
+    <string name="tile_fps_info">FPS counter</string>
+    <string name="tile_auto_rotate">Auto-rotate</string>
+    <string name="tile_boost_memory">Memory boost</string>
     <string name="tile_settings">Settings</string>
     <string name="tile_airplane_mode">Airplane Mode</string>
     <string name="tile_bluetooth">Bluetooth</string>
@@ -119,10 +119,10 @@
     <string name="tile_color_correction">Color Correction</string>
     <string name="tile_reduce_brightness">Reduce Brightness</string>
     <string name="tile_one_handed">One Handed</string>
-    <string name="tile_heads_up">Heads Up</string>
+    <string name="tile_heads_up">Pop-up notifications</string>
     <string name="tile_auto_sync">Auto Sync</string>
-    <string name="tile_camera_privacy">Camera</string>
-    <string name="tile_mic_privacy">Microphone</string>
+    <string name="tile_camera_privacy">Camera access</string>
+    <string name="tile_mic_privacy">Microphone access</string>
     <string name="tile_work_profile">Work Profile</string>
     <string name="tile_usb_tether">USB Tethering</string>
     <string name="tile_dream">Screen Saver</string>
@@ -133,7 +133,7 @@
     <string name="tile_cast">Cast</string>
     <string name="tile_profiles">Profiles</string>
     <string name="tile_smart_pixels">Smart Pixels</string>
-    <string name="tile_screen_record">Screen Record</string>
+    <string name="tile_screen_record">Record</string>
     <string name="tile_screenshot">Screenshot</string>
 
     <!-- Icon Idle Opacity -->
@@ -187,4 +187,16 @@
     <string name="aspect_ratio_change_failed">Could not change aspect ratio.</string>
     <string name="aspect_ratio_swipe_down_again">Swipe down again to move the game to the bottom</string>
     <string name="aspect_ratio_swipe_up_again">Swipe up again to move the game back to the center</string>
+    <string name="tile_category_game_tools">Game tools</string>
+    <string name="tile_category_sound_notifications">Sound &amp; notifications</string>
+    <string name="tile_category_display">Display</string>
+    <string name="tile_category_connectivity">Connectivity</string>
+    <string name="tile_category_accessibility_privacy">Accessibility &amp; privacy</string>
+    <string name="tile_gesture_lock">Gesture lock</string>
+    <string name="tile_touch_response">Touch response</string>
+    <string name="tile_ringer">Ringer</string>
+    <string name="tile_ringer_sound">Sound</string>
+    <string name="tile_ringer_vibrate">Vibrate</string>
+    <string name="tile_ringer_mute">Mute</string>
+    <string name="tile_reset_to_default">Reset to default</string>
 </resources>
