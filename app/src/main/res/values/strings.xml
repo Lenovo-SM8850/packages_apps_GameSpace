@@ -201,5 +201,7 @@
     <string name="tile_reset_to_default">Reset to default</string>
     <string name="show_status_at_game_start_title">Show status at game start</string>
     <string name="show_status_at_game_start_summary">Show the mode and active game options when a game starts</string>
+    <string name="game_memory_cleanup_ran">Background cleanup ran</string>
+    <string name="game_memory_cleanup_failed">Could not clean background apps</string>
     <string name="game_performance">Game performance</string>
 </resources>
