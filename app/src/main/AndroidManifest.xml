@@ -74,6 +74,13 @@
         
         <activity
             android:name=".settings.SettingsActivity"
+            android:exported="true" />
+
+        <activity
+            android:name="io.github.miner7222.gamespace.library.LibraryActivity"
+            android:icon="@mipmap/ic_launcher"
+            android:label="@string/settings_title"
+            android:theme="@style/LibraryTheme"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
