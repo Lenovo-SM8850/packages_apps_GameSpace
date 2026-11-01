@@ -66,6 +66,7 @@ import kotlin.math.min
 import javax.inject.Inject
 
 import io.chaldeaprjkt.gamespace.R
+import io.github.miner7222.gamespace.library.GameOption
 import io.chaldeaprjkt.gamespace.data.AppSettings
 
 interface DanmakuServiceInterface {
@@ -179,6 +180,15 @@ class DanmakuService @Inject constructor(
         if (gameVisible == visible) return
         gameVisible = visible
         if (!visible) {
+            handler.removeCallbacks(drainRunnable)
+            pending.clear()
+            clearActive()
+            removeWindow()
+        }
+    }
+
+    fun refreshInGameOptions() {
+        if (!danmakuNotificationMode) {
             handler.removeCallbacks(drainRunnable)
             pending.clear()
             clearActive()
@@ -309,7 +319,7 @@ class DanmakuService @Inject constructor(
     }
 
     override fun showNotificationAsOverlay(notification: String) {
-        if (destroyed || !gameVisible) return
+        if (destroyed || !danmakuNotificationMode) return
         val text = notification.replace(WHITESPACE, " ").trim()
         if (text.isEmpty()) return
         pending.addLast(Pending(text))
@@ -330,7 +340,7 @@ class DanmakuService @Inject constructor(
     }
 
     override val danmakuNotificationMode: Boolean
-        get() = gameVisible && appSettings.danmakuNotification
+        get() = gameVisible && appSettings.inGameOptions.current(GameOption.DANMAKU) == 1
 
     /** Moves waiting lines onto the nearest free lanes, or schedules the next attempt. */
     private fun drainPending() {

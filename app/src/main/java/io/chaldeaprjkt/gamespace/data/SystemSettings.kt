@@ -16,10 +16,10 @@
  */
 package io.chaldeaprjkt.gamespace.data
 
+import android.os.UserHandle
 import android.annotation.SuppressLint
 import android.content.Context
 import android.os.PowerManager
-import android.os.UserHandle
 import android.provider.Settings
 import androidx.compose.runtime.mutableStateOf
 import io.chaldeaprjkt.gamespace.utils.GameModeUtils
@@ -32,6 +32,7 @@ class SystemSettings @Inject constructor(
     private val gameModeUtils: GameModeUtils
 ) {
 
+    private val libraryContext = context
     private val resolver = context.contentResolver
     private val userId = context.userId
 
@@ -123,18 +124,24 @@ class SystemSettings @Inject constructor(
         get() =
             Settings.System.getStringForUser(
                 resolver, "gamespace_game_list",
-                UserHandle.USER_CURRENT
+                userId
             )
                 ?.split(";")
                 ?.toList()?.filter { it.isNotEmpty() }
-                ?.map { UserGame.fromSettings(it) } ?: emptyList()
+                ?.map { UserGame.fromSettings(it) }
+                ?.map { game -> game.copy(mode = io.github.miner7222.gamespace.library.SessionOptions
+                    .savedMode(libraryContext, game.packageName) ?: game.mode) } ?: emptyList()
         set(games) {
             Settings.System.putStringForUser(
                 resolver,
                 "gamespace_game_list",
                 if (games.isEmpty()) "" else
-                    games.joinToString(";") { it.toString() },
-                UserHandle.USER_CURRENT
+                    games.joinToString(";") { game ->
+                        val runtime = if (io.github.miner7222.gamespace.library.SessionOptions.packageName(libraryContext) == game.packageName)
+                            io.github.miner7222.gamespace.library.SessionOptions.mode(libraryContext) else null
+                        game.copy(mode = runtime ?: game.mode).toString()
+                    },
+                userId
             )
             gameModeUtils.setupBatteryMode(games.isNotEmpty())
         }
@@ -150,6 +157,12 @@ class SystemSettings @Inject constructor(
                 resolver, "gamespace_auto_game_detect",
                 if (value) 1 else 0, userId
             )
+        }
+
+    var gestureLock: Boolean
+        get() = Settings.Secure.getIntForUser(resolver, "ax_gaming_gesture_lock", 0, userId) == 1
+        set(value) {
+            Settings.Secure.putIntForUser(resolver, "ax_gaming_gesture_lock", if (value) 1 else 0, userId)
         }
 
     var pulseBassHaptics
@@ -173,7 +186,22 @@ class SystemSettings @Inject constructor(
                 io.github.miner7222.gamespace.library.ModePreferences.DEFAULT, value, userId)
         }
 
-    private fun Boolean.toInt() = if (this) 1 else 0
+    var libraryHideGames: Boolean
+        get() = Settings.Secure.getIntForUser(resolver, "gamespace_hide_games", 0, userId) == 1
+        set(value) { Settings.Secure.putIntForUser(resolver, "gamespace_hide_games", if (value) 1 else 0, userId) }
 
-    private val libraryContext = context
+    var libraryHomeExceptions: Set<String>
+        get() = Settings.Secure.getStringForUser(resolver, "gamespace_home_exceptions", userId)
+            .orEmpty().split(',').filter { it.isNotEmpty() }.toSet()
+        set(value) { Settings.Secure.putStringForUser(resolver, "gamespace_home_exceptions", value.sorted().joinToString(","), userId) }
+
+    var libraryHintDismissed: Boolean
+        get() = Settings.Secure.getIntForUser(resolver, "gamespace_library_hint_dismissed", 0, userId) == 1
+        set(value) { Settings.Secure.putIntForUser(resolver, "gamespace_library_hint_dismissed", if (value) 1 else 0, userId) }
+
+    var librarySort: Int
+        get() = Settings.Secure.getIntForUser(resolver, "gamespace_library_sort", 0, userId)
+        set(value) { Settings.Secure.putIntForUser(resolver, "gamespace_library_sort", value, userId) }
+
+    private fun Boolean.toInt() = if (this) 1 else 0
 }

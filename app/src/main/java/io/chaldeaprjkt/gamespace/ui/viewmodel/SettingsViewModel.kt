@@ -20,6 +20,7 @@ import io.chaldeaprjkt.gamespace.data.GameSession
 import io.chaldeaprjkt.gamespace.data.SystemSettings
 import io.chaldeaprjkt.gamespace.data.UserGame
 import io.chaldeaprjkt.gamespace.utils.GameModeUtils
+import io.github.miner7222.gamespace.library.GameOption
 import javax.inject.Inject
 
 data class GameModeOption(
@@ -43,22 +44,22 @@ class SettingsViewModel @Inject constructor(
     private val gameModeUtils: GameModeUtils
 ) : ViewModel() {
 
-    var callOverlayEnabled by mutableStateOf(appSettings.callOverlayEnabled)
+    var callOverlayEnabled by mutableStateOf(appSettings.inGameOptions.current(GameOption.CALL_OVERLAY) == 1)
         private set
 
-    var danmakuNotification by mutableStateOf(appSettings.danmakuNotification)
+    var danmakuNotification by mutableStateOf(appSettings.inGameOptions.current(GameOption.DANMAKU) == 1)
         private set
 
-    var callsMode by mutableIntStateOf(appSettings.callsMode)
+    var callsMode by mutableIntStateOf(appSettings.inGameOptions.current(GameOption.CALLS))
         private set
 
-    var ringerMode by mutableIntStateOf(appSettings.ringerMode)
+    var ringerMode by mutableIntStateOf(appSettings.inGameOptions.current(GameOption.RINGER))
         private set
 
-    var noAutoBrightness by mutableStateOf(appSettings.noAutoBrightness)
+    var noAutoBrightness by mutableStateOf(appSettings.inGameOptions.current(GameOption.BRIGHTNESS) == 1)
         private set
 
-    var noThreeScreenshot by mutableStateOf(appSettings.noThreeScreenshot)
+    var noThreeScreenshot by mutableStateOf(appSettings.inGameOptions.current(GameOption.SCREENSHOT) == 1)
         private set
 
     var stayAwake by mutableStateOf(systemSettings.stayAwake)
@@ -79,49 +80,73 @@ class SettingsViewModel @Inject constructor(
     var iconIdleAlpha by mutableFloatStateOf(appSettings.iconIdleAlpha.toFloat())
         private set
 
-    var autoDnd by mutableStateOf(appSettings.autoDnd)
+    var autoDnd by mutableStateOf(appSettings.inGameOptions.current(GameOption.DND) == 1)
         private set
 
     val isBypassSupported = Build.MANUFACTURER.equals("Google", ignoreCase = true) 
             || SystemProperties.getBoolean("persist.sys.ax_chg_bypass", false)
 
+    private val optionsObservation = appSettings.inGameOptions.observe { refreshInGameOptions() }
+
     init {
         loadRegisteredGames()
     }
 
+    private fun updateOption(option: GameOption, value: Int) {
+        gameSession.setOption(option, value)
+    }
+
+    private fun refreshInGameOptions() {
+        val options = appSettings.inGameOptions
+        callOverlayEnabled = options.current(GameOption.CALL_OVERLAY) == 1
+        danmakuNotification = options.current(GameOption.DANMAKU) == 1
+        callsMode = options.current(GameOption.CALLS)
+        ringerMode = options.current(GameOption.RINGER)
+        noAutoBrightness = options.current(GameOption.BRIGHTNESS) == 1
+        noThreeScreenshot = options.current(GameOption.SCREENSHOT) == 1
+        autoDnd = options.current(GameOption.DND) == 1
+        stayAwake = systemSettings.stayAwake
+        bypassChargeEnabled = systemSettings.bypassChargeEnabled
+    }
+
+    override fun onCleared() {
+        optionsObservation.close()
+        super.onCleared()
+    }
+
     fun updateCallOverlay(enabled: Boolean) {
         callOverlayEnabled = enabled
-        appSettings.callOverlayEnabled = enabled
+        updateOption(GameOption.CALL_OVERLAY, if (enabled) 1 else 0)
     }
 
     fun updateDanmakuNotification(enabled: Boolean) {
         danmakuNotification = enabled
-        gameSession.setDanmakuNotification(enabled)
+        updateOption(GameOption.DANMAKU, if (enabled) 1 else 0)
     }
 
     fun updateCallsMode(mode: Int) {
         callsMode = mode
-        appSettings.callsMode = mode
+        updateOption(GameOption.CALLS, mode)
     }
 
     fun updateRingerMode(mode: Int) {
         ringerMode = mode
-        appSettings.ringerMode = mode
+        updateOption(GameOption.RINGER, mode)
     }
 
     fun updateNoAutoBrightness(disabled: Boolean) {
         noAutoBrightness = disabled
-        appSettings.noAutoBrightness = disabled
+        updateOption(GameOption.BRIGHTNESS, if (disabled) 1 else 0)
     }
 
     fun updateNoThreeScreenshot(disabled: Boolean) {
         noThreeScreenshot = disabled
-        appSettings.noThreeScreenshot = disabled
+        updateOption(GameOption.SCREENSHOT, if (disabled) 1 else 0)
     }
 
     fun updateStayAwake(enabled: Boolean) {
         stayAwake = enabled
-        systemSettings.stayAwake = enabled
+        updateOption(GameOption.AWAKE, if (enabled) 1 else 0)
     }
 
     fun updateMenuOpacity(opacity: Float) {
@@ -146,7 +171,7 @@ class SettingsViewModel @Inject constructor(
 
     fun updateAutoDnd(enabled: Boolean) {
         autoDnd = enabled
-        appSettings.autoDnd = enabled
+        updateOption(GameOption.DND, if (enabled) 1 else 0)
     }
 
     fun loadRegisteredGames() {

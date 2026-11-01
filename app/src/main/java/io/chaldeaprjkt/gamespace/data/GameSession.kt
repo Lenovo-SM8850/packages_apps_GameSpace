@@ -17,11 +17,13 @@
  */
 package io.chaldeaprjkt.gamespace.data
 
-import io.github.miner7222.gamespace.library.SessionOptions
-import io.github.miner7222.gamespace.library.GameOption
+import android.app.NotificationManager
 import android.content.Context
 import android.media.AudioManager
 import com.google.gson.Gson
+import io.github.miner7222.gamespace.library.SessionOptions
+import io.github.miner7222.gamespace.library.GameOption
+import io.chaldeaprjkt.gamespace.utils.GameModeUtils
 import javax.inject.Inject
 
 class GameSession @Inject constructor(
@@ -34,122 +36,47 @@ class GameSession @Inject constructor(
     private val db by lazy { context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE) }
     private val audioManager by lazy { context.getSystemService(Context.AUDIO_SERVICE) as AudioManager }
 
+    private var liveState: SessionState? = null
+
     private var state
         get() = db.getString(KEY_SAVED_SESSION, "")
             .takeIf { !it.isNullOrEmpty() }
             ?.let {
                 try {
-                    gson.fromJson(it, SessionState::class.java)
+                    gson.fromJson(it, SessionState::class.java)?.apply {
+                        // Saved sessions from before ownership tracking still need heads-up restoration.
+                        if (!org.json.JSONObject(it).has("ownsHeadsup")) ownsHeadsup = appSettings.danmakuNotification
+                    }
                 } catch (e: RuntimeException) {
                     null
                 }
             }
-        set(value) = db.edit()
-            .putString(KEY_SAVED_SESSION, value?.let {
-                try {
-                    gson.toJson(value)
-                } catch (e: RuntimeException) {
-                    ""
-                }
-            } ?: "")
-            .apply()
+        set(value) {
+            check(db.edit().putString(KEY_SAVED_SESSION, value?.let { gson.toJson(it) } ?: "").commit()) {
+                "Cannot save session recovery state"
+            }
+        }
+
+    private fun persistRecovery(snapshot: SessionState) {
+        snapshot.preferredMode = SessionOptions.savedMode(context, snapshot.packageName) ?: snapshot.preferredMode
+        state = snapshot.copy(appliedRingerMode = 3)
+    }
 
     fun register(sessionName: String) {
-        if (state?.packageName == sessionName) return
+        if (liveState?.packageName == sessionName) return
         unregister()
 
-        state = SessionState(
+        SessionOptions.start(context, sessionName)
+        val saved = SessionState(
             packageName = sessionName,
-            autoBrightness = systemSettings.autoBrightness,
-            statusbarBrightness = systemSettings.statusbarBrightness,
-            headsup = systemSettings.headsup,
-            threeScreenshot = systemSettings.threeScreenshot,
-            ringerMode = audioManager.ringerModeInternal,
-            pulseBassHaptics = systemSettings.pulseBassHaptics,
-            ownsBrightness = appSettings.noAutoBrightness,
-            ownsThreeScreenshot = appSettings.noThreeScreenshot,
-            ownsRingerMode = appSettings.ringerMode != 3,
-            ownsPulseBassHaptics = appSettings.noPulseBassHaptics,
+            userId = context.userId,
+            preferredMode = SessionOptions.savedMode(context, sessionName),
         )
-        systemSettings.bypassChargeEnabled = appSettings.isBypassChargeEnabled(sessionName)
-        if (appSettings.noAutoBrightness) {
-            systemSettings.autoBrightness = false
-            systemSettings.statusbarBrightness = false
-        }
-        if (appSettings.danmakuNotification) {
-            systemSettings.headsup = false
-        }
-        if (appSettings.noThreeScreenshot) {
-            systemSettings.threeScreenshot = 0
-        }
-        if (appSettings.ringerMode != 3) {
-            audioManager.ringerModeInternal = appSettings.ringerMode
-        }
-        if (appSettings.stayAwake) {
-            systemSettings.stayAwake = true
-        }
-        if (appSettings.noPulseBassHaptics) {
-            systemSettings.pulseBassHaptics = 0
-        }
+        // Commit original values and ownership before each system setting is changed.
+        state = saved
+        liveState = saved
+        applyOptions()
     }
-
-    fun rememberBypassChargeEnabled() {
-        val packageName = state?.packageName ?: return
-        appSettings.setBypassChargeEnabled(packageName, systemSettings.bypassChargeEnabled)
-    }
-
-    fun setBypassChargeEnabled(enabled: Boolean) {
-        state?.packageName?.let { appSettings.setBypassChargeEnabled(it, enabled) }
-        systemSettings.bypassChargeEnabled = enabled
-    }
-
-    fun setDanmakuNotification(enabled: Boolean) {
-        appSettings.danmakuNotification = enabled
-        val orig = state ?: return
-        if (enabled) {
-            systemSettings.headsup = false
-        } else {
-            orig.headsup?.let { systemSettings.headsup = it }
-        }
-    }
-
-    fun unregister() {
-        val orig = state?.copy() ?: return
-        if (orig.ownsBrightness) {
-            orig.autoBrightness?.let { systemSettings.autoBrightness = it }
-            orig.statusbarBrightness?.let { systemSettings.statusbarBrightness = it }
-        }
-        if (appSettings.danmakuNotification) {
-            orig.headsup?.let { systemSettings.headsup = it }
-        }
-        if (orig.ownsThreeScreenshot) {
-            systemSettings.threeScreenshot = orig.threeScreenshot
-        }
-        if (orig.ownsRingerMode) {
-            audioManager.ringerModeInternal = orig.ringerMode
-        }
-        if (orig.ownsPulseBassHaptics) {
-            systemSettings.pulseBassHaptics = orig.pulseBassHaptics
-        }
-        systemSettings.stayAwake = false
-        state = null
-        systemSettings.bypassChargeEnabled = false
-    }
-
-    fun finalize() {
-        unregister()
-    }
-
-    companion object {
-        const val PREFS_NAME = "persisted_session"
-        const val KEY_SAVED_SESSION = "session"
-    }
-
-    fun setOption(option: GameOption, value: Int) {
-        if (liveState != null && SessionOptions.choose(context, option, value)) applyOptions()
-    }
-
-    private var liveState: SessionState? = null
 
     /** Recovery metadata is written before taking ownership and after releasing it. */
     fun applyOptions() {
@@ -235,8 +162,87 @@ class GameSession @Inject constructor(
         if (systemSettings.bypassChargeEnabled != bypass) systemSettings.bypassChargeEnabled = bypass
     }
 
-    private fun persistRecovery(snapshot: SessionState) {
-        snapshot.preferredMode = SessionOptions.savedMode(context, snapshot.packageName) ?: snapshot.preferredMode
-        state = snapshot.copy(appliedRingerMode = 3)
+    fun captureDndOwnership() {
+        val orig = liveState ?: return
+        if (orig.ownsDnd) return
+        orig.dndFilter = context.getSystemService(NotificationManager::class.java).currentInterruptionFilter
+        orig.ownsDnd = true
+        persistRecovery(orig)
+    }
+
+    fun releaseDndOwnership() {
+        val orig = liveState ?: return
+        if (!orig.ownsDnd) return
+        orig.ownsDnd = false
+        persistRecovery(orig)
+    }
+
+    fun restoreDnd() {
+        val orig = liveState ?: return
+        restoreDnd(orig)
+        releaseDndOwnership()
+    }
+
+    private fun restoreDnd(orig: SessionState) {
+        if (!orig.ownsDnd) return
+        val filter = orig.dndFilter ?: return
+        val manager = context.getSystemService(NotificationManager::class.java)
+        if (manager.currentInterruptionFilter != filter) manager.setInterruptionFilter(filter)
+    }
+
+    fun rememberBypassChargeEnabled() {
+        if (liveState == null) return
+        val enabled = systemSettings.bypassChargeEnabled
+        if (enabled != (appSettings.inGameOptions.current(GameOption.BYPASS) == 1)) {
+            setOption(GameOption.BYPASS, if (enabled) 1 else 0)
+        }
+    }
+
+    fun setAutoBrightness(enabled: Boolean) {
+        if (liveState != null && SessionOptions.chooseAutoBrightness(context, enabled)) applyOptions()
+    }
+
+    fun setBypassChargeEnabled(enabled: Boolean) = setOption(GameOption.BYPASS, if (enabled) 1 else 0)
+    fun setDanmakuNotification(enabled: Boolean) = setOption(GameOption.DANMAKU, if (enabled) 1 else 0)
+
+    fun setOption(option: GameOption, value: Int) {
+        if (liveState != null && SessionOptions.choose(context, option, value)) applyOptions()
+    }
+
+    fun unregister() {
+        val orig = liveState?.copy() ?: state?.copy()
+        val savedMode = orig?.let { SessionOptions.savedMode(context, it.packageName) ?: it.preferredMode }
+        liveState = null
+        SessionOptions.end(context)
+        // These are session requests, never saved user defaults. Clear even without a journal.
+        systemSettings.gestureLock = false
+        systemSettings.bypassChargeEnabled = false
+        systemSettings.stayAwake = false
+        if (orig == null) return
+        check(orig.userId == null || orig.userId == context.userId) { "Session recovery user mismatch" }
+        if (orig.ownsBrightness) {
+            orig.autoBrightness?.let { systemSettings.autoBrightness = it }
+            orig.statusbarBrightness?.let { systemSettings.statusbarBrightness = it }
+        }
+        if (orig.ownsHeadsup) orig.headsup?.let { systemSettings.headsup = it }
+        if (orig.ownsThreeScreenshot) systemSettings.threeScreenshot = orig.threeScreenshot
+        if (orig.ownsRingerMode) audioManager.ringerModeInternal = orig.ringerMode
+        if (orig.ownsPulseBassHaptics) systemSettings.pulseBassHaptics = orig.pulseBassHaptics
+        restoreDnd(orig)
+        savedMode?.let {
+            io.github.miner7222.gamespace.library.ModePreferences.publish(context, orig.packageName, it)
+            if (!GameModeUtils(context).applyRuntimeModeForUser(orig.packageName, it,
+                    orig.userId ?: context.userId)) return
+        }
+        state = null
+    }
+
+    fun finalize() {
+        unregister()
+    }
+
+    companion object {
+        const val PREFS_NAME = "persisted_session"
+        const val KEY_SAVED_SESSION = "session"
     }
 }
