@@ -49,18 +49,18 @@ class GameModeUtils @Inject constructor(private val context: Context) {
         setInterventionForUser(packageName, modeData, context.userId)
     }
 
-    @Synchronized
     internal fun setInterventionForUser(
         packageName: String, modeData: List<GameConfig>?, userId: Int
-    ): Boolean {
+    ): Boolean = withModeLock {
         val service = IGameManagerService.Stub.asInterface(
             ServiceManager.getService(Context.GAME_SERVICE)
-        ) ?: return false
+        ) ?: return@withModeLock false
         if (modeData == null) {
-            service.resetGameModeConfigOverride(packageName, userId,
-                GameManager.GAME_MODE_PERFORMANCE)
-            service.resetGameModeConfigOverride(packageName, userId,
-                GameManager.GAME_MODE_BATTERY)
+            service.resetGameModeConfigOverride(packageName, userId, -1)
+            if (service.getGameMode(packageName, userId) != GameManager.GAME_MODE_STANDARD) {
+                service.setGameMode(packageName, GameManager.GAME_MODE_STANDARD, userId)
+            }
+            setAngleDriverChoice(packageName, DRIVER_CHOICE_DEFAULT)
         } else {
             val previousMode = service.getGameMode(packageName, userId)
             var updated = false
@@ -76,11 +76,12 @@ class GameModeUtils @Inject constructor(private val context: Context) {
                 }
             } finally {
                 if (updated && service.getGameMode(packageName, userId) != previousMode) {
-                    service.setGameMode(packageName, previousMode, userId)
+                    service.setGameMode(packageName,
+                        previousMode.takeIf { it in 1..3 } ?: GameManager.GAME_MODE_STANDARD, userId)
                 }
             }
         }
-        return true
+        true
     }
 
     fun setActiveGameMode(systemSettings: SystemSettings, mode: Int) {
@@ -88,20 +89,42 @@ class GameModeUtils @Inject constructor(private val context: Context) {
         activeGame = setGameModeFor(packageName, systemSettings, mode)
     }
 
-    @Synchronized
-    fun setGameModeFor(packageName: String, systemSettings: SystemSettings, mode: Int): UserGame {
-        // Settings can change while no session is bound. Use this context's user in both cases.
-        val gameManager = manager ?: context.getSystemService(GameManager::class.java)
-        if (gameManager != null && gameManager.getGameMode(packageName) != mode) {
-            gameManager.setGameMode(packageName, mode)
-        }
+    fun setGameModeFor(packageName: String, systemSettings: SystemSettings, mode: Int): UserGame = withModeLock {
+        require(mode in 0..3)
+        io.github.miner7222.gamespace.library.SessionOptions.saveMode(context, packageName, mode)
+        val runtimeMode = if (io.github.miner7222.gamespace.library.SessionOptions.packageName(context) == packageName)
+            io.github.miner7222.gamespace.library.SessionOptions.mode(context) ?: mode else mode
         val data = UserGame(packageName, mode)
         systemSettings.userGames = systemSettings.userGames
             .filter { x -> x.packageName != packageName }
             .toMutableList()
             .apply { add(data) }
+        applyRuntimeMode(packageName, runtimeMode)
 
-        return data
+        data
+    }
+
+    fun applyRuntimeMode(packageName: String, mode: Int): Boolean =
+        applyRuntimeModeForUser(packageName, mode, context.userId)
+
+    fun applyRuntimeModeForUser(packageName: String, mode: Int, userId: Int): Boolean = withModeLock {
+        require(mode in 0..3)
+        if (!setInterventionForUser(packageName,
+                if (mode == 0) null else GameConfig.ModeBuilder.build(), userId)) return@withModeLock false
+        val service = IGameManagerService.Stub.asInterface(
+            ServiceManager.getService(Context.GAME_SERVICE)
+        ) ?: return@withModeLock false
+        val systemMode = if (mode == 0) GameManager.GAME_MODE_STANDARD else mode
+        // GameManager is bound to its Context's user, never the foreground user.
+        val localManager = manager.takeIf { userId == context.userId }
+        if (localManager != null) {
+            if (localManager.getGameMode(packageName) != systemMode) {
+                localManager.setGameMode(packageName, systemMode)
+            }
+        } else if (service.getGameMode(packageName, userId) != systemMode) {
+            service.setGameMode(packageName, systemMode, userId)
+        }
+        true
     }
 
     fun setupBatteryMode(enable: Boolean) {
@@ -179,6 +202,9 @@ class GameModeUtils @Inject constructor(private val context: Context) {
         )
 
     companion object {
+        private val modeLock = Any()
+        internal fun <T> withModeLock(action: () -> T): T = synchronized(modeLock, action)
+
         const val defaultPreferredMode = GameManager.GAME_MODE_STANDARD
         const val ACTION_ANGLE_FOR_ANDROID = "android.app.action.ANGLE_FOR_ANDROID"
         private const val DRIVER_SELECTION_PACKAGES = "angle_gl_driver_selection_pkgs"

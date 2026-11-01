@@ -20,9 +20,19 @@
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
-    <com.android.settingslib.widget.IllustrationPreference
-        android:key="game_settings_illustration_video"
-        app:lottie_rawRes="@raw/game_settings_illustration" />
+    <PreferenceCategory
+        android:key="library_preferences"
+        android:title="@string/game_list_title">
+        <SwitchPreferenceCompat
+            android:key="gamespace_auto_game_detect"
+            android:title="@string/auto_game_detect_title"
+            android:summary="@string/auto_game_detect_summary"
+            android:defaultValue="true"
+            android:persistent="false" />
+    </PreferenceCategory>
+
+    <PreferenceCategory android:title="@string/library_game_icons">
+    </PreferenceCategory>
 
     <PreferenceCategory
         android:key="game_optimization"
@@ -104,7 +114,8 @@
             android:summary="@string/lock_gesture_summary"
             android:defaultValue="false" />
 
-        <com.crdroid.settings.preferences.SystemSettingSwitchPreference
+        <SwitchPreferenceCompat
+            android:persistent="false"
             android:key="bypass_charge_enabled"
             android:title="@string/bypass_charge_enabled_title"
             android:summary="@string/bypass_charge_enabled_summary"

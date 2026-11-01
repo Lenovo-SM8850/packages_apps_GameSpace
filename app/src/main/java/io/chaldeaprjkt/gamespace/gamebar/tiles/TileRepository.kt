@@ -54,6 +54,7 @@ import com.android.axion.platform.AxPlatformClient
 import com.android.internal.util.ScreenshotHelper
 import io.chaldeaprjkt.gamespace.R
 import io.github.miner7222.gamespace.GameAspectRatioTile
+import io.github.miner7222.gamespace.library.GameOption
 import io.chaldeaprjkt.gamespace.data.AppSettings
 import io.chaldeaprjkt.gamespace.data.GameSession
 import io.chaldeaprjkt.gamespace.data.SystemSettings
@@ -193,14 +194,14 @@ class TileRepository @Inject constructor(
     private val preferredTileOrder = mutableListOf<String>()
     private var supportedFeatures = emptySet<String>()
     private val _availableTiles = mutableStateListOf<TileAction>()
-    private val notificationState = mutableStateOf(appSettings.danmakuNotification)
+    private val notificationState = mutableStateOf((appSettings.inGameOptions.current(GameOption.DANMAKU) == 1))
     private val touchBoostState = mutableStateOf(false)
     private val bypassChargeState = mutableStateOf(systemSettings.bypassChargeEnabled)
     private val preferences by lazy { PreferenceManager.getDefaultSharedPreferences(context) }
     private val preferenceListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
         when (key) {
             AppSettings.KEY_DANMAKU_NOTIFICATION_MODE ->
-                notificationState.value = appSettings.danmakuNotification
+                notificationState.value = (appSettings.inGameOptions.current(GameOption.DANMAKU) == 1)
             "show_fps" -> isFpsInfoVisible.value = appSettings.showFps
         }
     }
@@ -262,7 +263,7 @@ class TileRepository @Inject constructor(
         preferredTileOrder.clear()
         preferredTileOrder.addAll(loadTileOrder())
         isFpsInfoVisible.value = appSettings.showFps
-        notificationState.value = appSettings.danmakuNotification
+        notificationState.value = (appSettings.inGameOptions.current(GameOption.DANMAKU) == 1)
         preferences.registerOnSharedPreferenceChangeListener(preferenceListener)
         platform.addListener(platformListener)
         listOf(
@@ -304,7 +305,7 @@ class TileRepository @Inject constructor(
         platformTiles.forEach { tile ->
             updatePlatformTile(tile, platform.getState(tile.id))
         }
-        notificationState.value = appSettings.danmakuNotification
+        notificationState.value = (appSettings.inGameOptions.current(GameOption.DANMAKU) == 1)
         bypassChargeState.value = systemSettings.bypassChargeEnabled
         isFpsInfoVisible.value = appSettings.showFps
         touchBoostState.value = SystemProperties.getInt("persist.sys.touchboost_enable", 0) == 1
@@ -601,6 +602,10 @@ class TileRepository @Inject constructor(
             toggleAction = {
                 onBeforePlatformAction?.invoke(feature)
                 when (feature) {
+                    AxPlatformClient.FEATURE_ZEN -> {
+                        val enabled = Settings.Global.getInt(context.contentResolver, Settings.Global.ZEN_MODE, 0) != 0
+                        gameSession.setOption(GameOption.DND, if (enabled) 0 else 1)
+                    }
                     AxPlatformClient.FEATURE_VPN, AxPlatformClient.FEATURE_CAST -> {
                         if (platform.getState(feature).getBoolean("enabled", false)) {
                             platform.toggle(feature)
@@ -843,8 +848,7 @@ class TileRepository @Inject constructor(
                 icon = R.drawable.materialsymbols_ic_bedtime_rounded_filled,
                 state = systemSettings.stayAwakeState,
                 setter = {
-                    appSettings.stayAwake = it
-                    systemSettings.stayAwake = it
+                    gameSession.setOption(GameOption.AWAKE, if (it) 1 else 0)
                 }
             )
         )
