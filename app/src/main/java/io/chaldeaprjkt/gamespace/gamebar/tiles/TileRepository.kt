@@ -17,6 +17,7 @@ package io.chaldeaprjkt.gamespace.gamebar.tiles
 
 import android.Manifest
 import android.app.ActivityManager
+import android.content.BroadcastReceiver
 import android.content.ContentResolver
 import android.content.Context
 import android.content.Intent
@@ -259,6 +260,15 @@ class TileRepository @Inject constructor(
         return SessionOptions.differsFromSaved(context, option)
     }
 
+    private fun ringerDiffersFromSaved(): Boolean {
+        sessionRevision.intValue
+        val packageName = SessionOptions.packageName(context) ?: return false
+        val saved = appSettings.inGameOptions.effective(packageName, GameOption.RINGER)
+        // "No change" is a policy, not a physical ringer mode. Keep its choice comparison.
+        return if (saved == 3) SessionOptions.differsFromSaved(context, GameOption.RINGER)
+            else ringerState.value != saved
+    }
+
     private fun wifiDiffersFromSaved(): Boolean {
         sessionRevision.intValue
         return SessionOptions.wifiDiffersFromSaved(context, appSettings.savedWifiLowLatency)
@@ -278,6 +288,14 @@ class TileRepository @Inject constructor(
     private val wifiLowLatencyState = mutableStateOf(false)
     private val ringerState = mutableStateOf(AudioManager.RINGER_MODE_NORMAL)
     private val bypassChargeState = mutableStateOf(systemSettings.bypassChargeEnabled)
+    private val audioManager by lazy { context.getSystemService(AudioManager::class.java) }
+    private val ringerReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            // Read AudioManager rather than trusting broadcast extras.
+            ringerState.value = audioManager.ringerModeInternal
+            sessionRevision.intValue++
+        }
+    }
     private val preferences by lazy { PreferenceManager.getDefaultSharedPreferences(context) }
     private val preferenceListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
         when (key) {
@@ -342,6 +360,10 @@ class TileRepository @Inject constructor(
     fun init(platform: AxPlatformClient) {
         this.platform = platform
         listening = true
+        context.registerReceiver(ringerReceiver,
+            IntentFilter(AudioManager.INTERNAL_RINGER_MODE_CHANGED_ACTION).apply {
+                addAction(AudioManager.RINGER_MODE_CHANGED_ACTION)
+            }, null, stateHandler, Context.RECEIVER_EXPORTED)
 
         defaultTiles = buildDefaultTiles()
         // Seed availability before choosing defaults; the platform may already be connected.
@@ -404,7 +426,7 @@ class TileRepository @Inject constructor(
         gestureState.value = appSettings.inGameOptions.current(GameOption.GESTURES) == 1
         touchResponseState.value = appSettings.inGameOptions.current(GameOption.TOUCH) == 1
         wifiLowLatencyState.value = appSettings.wifiLowLatency
-        ringerState.value = context.getSystemService(AudioManager::class.java).ringerModeInternal
+        ringerState.value = audioManager.ringerModeInternal
         if (pendingDefaultOrder && supportedFeatures.isNotEmpty()) {
             // Binding is asynchronous. Complete a fresh/reset default once states arrive,
             // without reselecting a saved custom list or following later availability changes.
@@ -511,6 +533,7 @@ class TileRepository @Inject constructor(
 
     fun dispose() {
         listening = false
+        context.unregisterReceiver(ringerReceiver)
         platform.removeListener(platformListener)
         context.contentResolver.unregisterContentObserver(settingsObserver)
         preferences.unregisterOnSharedPreferenceChangeListener(preferenceListener)
@@ -957,7 +980,7 @@ class TileRepository @Inject constructor(
             icon = R.drawable.materialsymbols_ic_notifications_active_rounded_filled,
             category = TileCategory.SOUND_NOTIFICATIONS,
             sessionOption = GameOption.RINGER,
-            readSavedDifference = { differsFromSaved(GameOption.RINGER) },
+            readSavedDifference = { ringerDiffersFromSaved() },
             readValue = {
                 context.getString(when (ringerState.value) {
                     AudioManager.RINGER_MODE_SILENT -> R.string.tile_ringer_mute
@@ -966,14 +989,21 @@ class TileRepository @Inject constructor(
                 })
             },
             cycle = {
-                val current = context.getSystemService(AudioManager::class.java).ringerModeInternal
+                val current = audioManager.ringerModeInternal
                 val next = when (current) {
                     AudioManager.RINGER_MODE_NORMAL -> AudioManager.RINGER_MODE_VIBRATE
                     AudioManager.RINGER_MODE_VIBRATE -> AudioManager.RINGER_MODE_SILENT
                     else -> AudioManager.RINGER_MODE_NORMAL
                 }
                 gameSession.setOption(GameOption.RINGER, next)
-                ringerState.value = context.getSystemService(AudioManager::class.java).ringerModeInternal
+                // GameSession already owns/restores this setting. Reapply a repeated choice
+                // when an external writer changed the actual mode since its last apply.
+                if (SessionOptions.hasChoice(context, GameOption.RINGER) &&
+                    appSettings.inGameOptions.current(GameOption.RINGER) == next &&
+                    audioManager.ringerModeInternal != next) {
+                    audioManager.ringerModeInternal = next
+                }
+                ringerState.value = audioManager.ringerModeInternal
             },
         ))
         add(ToggleableTile(
