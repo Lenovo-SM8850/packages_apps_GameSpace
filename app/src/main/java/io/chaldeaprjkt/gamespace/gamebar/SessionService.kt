@@ -260,8 +260,11 @@ class SessionService : Hilt_SessionService() {
         
         gameModeUtils.activeGame = userGame
         
-        val availableModes = gameManager.getAvailableGameModes(app)
-        if (availableModes.contains(preferred) && gameManager.getGameMode(app) != preferred) {
+        val currentMode = gameManager.getGameMode(app)
+        // Restore the saved choice even when the framework has reset an unavailable mode.
+        if (currentMode != GameManager.GAME_MODE_UNSUPPORTED &&
+            preferred in GameManager.GAME_MODE_STANDARD..GameManager.GAME_MODE_BATTERY &&
+            currentMode != preferred) {
             gameManager.setGameMode(app, preferred)
         }
     }
