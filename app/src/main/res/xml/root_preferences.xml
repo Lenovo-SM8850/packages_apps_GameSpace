@@ -37,6 +37,10 @@
     </PreferenceCategory>
 
     <PreferenceCategory android:title="@string/library_game_icons">
+        <io.github.miner7222.gamespace.library.HideGamesPreference
+            android:key="gamespace_hide_games"
+            android:title="@string/library_hide_title"
+            android:summary="@string/library_hide_summary" />
     </PreferenceCategory>
 
     <PreferenceCategory
