@@ -14,64 +14,64 @@
  * limitations under the License.
  */
 
-@file:OptIn(ExperimentalMaterial3ExpressiveApi::class)
-
 package io.chaldeaprjkt.gamespace.gamebar
 
-import kotlin.math.abs
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectDragGestures
-import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Dashboard
+import androidx.compose.material.icons.rounded.Stop
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.android.compose.animation.scene.SceneTransitionLayout
 import com.android.compose.animation.scene.SwipeDetector
 import com.android.compose.animation.scene.rememberMutableSceneTransitionLayoutState
 import io.chaldeaprjkt.gamespace.R
+import io.github.miner7222.gamespace.gamebar.RecordingPhase
+import io.github.miner7222.gamespace.gamebar.RecordingState
+import java.util.Locale
+import kotlin.math.abs
+import kotlin.math.roundToInt
 
-private const val PILL_WIDTH_DP = 36
-private const val PILL_BUTTON_SIZE_DP = 40
-private const val NOTCH_WIDTH_DP = 14
-private const val NOTCH_HEIGHT_DP = 36
-private const val NOTCH_CHEVRON_SIZE_DP = 10
-private const val NOTCH_TOUCH_WIDTH_DP = 28
-private const val DRAG_THRESHOLD_DP = 12
+// Shared with the native overlay so hit targets and gesture exclusions use the same bounds.
+internal const val HANDLE_WIDTH_DP = 48
+internal const val HANDLE_HEIGHT_DP = 80
+internal const val MINI_WIDTH_DP = 136
+internal const val MINI_HEIGHT_DP = 128
+internal const val MINI_RECORDING_HEIGHT_DP = 184
+
+internal fun handleWidthDp(showFps: Boolean) = HANDLE_WIDTH_DP + if (showFps) 40 else 0
 
 @Composable
 fun GameBarView(
@@ -81,22 +81,20 @@ fun GameBarView(
     isIdle: Boolean,
     idleAlpha: Float,
     dockedOnLeft: Boolean,
-    mapperEnabled: Boolean,
-    onShowPanel: () -> Unit,
-    onToggleLock: () -> Unit,
-    onMapControls: () -> Unit,
+    recording: RecordingState,
+    onShowPanel: (expandFps: Boolean) -> Unit,
+    onStopRecording: () -> Unit,
     pillExpanded: Boolean,
-    barTopPx: Int,
-    onToggleFps: () -> Unit,
+    collapseInstantly: Boolean,
     onExpanded: () -> Unit,
     onCollapsed: () -> Unit,
-    collapseRequestKey: Int,
+    onInteraction: (pressed: Boolean) -> Unit,
     onDragStart: () -> Pair<Int, Int>,
     onDragUpdate: (Int, Int) -> Unit,
     onDragEnd: (Int, Int) -> Unit,
 ) {
     val state = rememberMutableSceneTransitionLayoutState(
-        initialScene = GameBarScenes.Pill,
+        initialScene = GameBarScenes.Handle,
         transitions = GameBarTransitions,
     )
     val scope = rememberCoroutineScope()
@@ -105,276 +103,206 @@ fun GameBarView(
             override fun detectSwipe(change: PointerInputChange) = false
         }
     }
-
-    val animatedPillAlpha by animateFloatAsState(
-        targetValue = if (isIdle) idleAlpha else 1f,
-        label = "pillAlpha",
-    )
-
-    LaunchedEffect(collapseRequestKey) {
-        if (collapseRequestKey > 0) {
-            state.setTargetScene(GameBarScenes.Pill, scope)
-            onCollapsed()
-        }
+    LaunchedEffect(pillExpanded, collapseInstantly) {
+        val target = if (pillExpanded) GameBarScenes.MiniBar else GameBarScenes.Handle
+        // The dashboard replaces the pill: collapse without replaying it when the bar shows again.
+        if (!pillExpanded && collapseInstantly) state.snapTo(target, emptySet())
+        else state.setTargetScene(target, scope)
     }
-
+    val animatedAlpha by animateFloatAsState(
+        targetValue = if (isIdle && !pillExpanded) idleAlpha else 1f,
+        label = "handleAlpha",
+    )
     var startWindowX by remember { mutableIntStateOf(0) }
     var startWindowY by remember { mutableIntStateOf(0) }
-    var accDragX by remember { mutableFloatStateOf(0f) }
-    var accDragY by remember { mutableFloatStateOf(0f) }
+    var dragX by remember { mutableFloatStateOf(0f) }
+    var dragY by remember { mutableFloatStateOf(0f) }
     var repositioning by remember { mutableStateOf(false) }
-
-    val pointerModifier = Modifier
-        .pointerInput(dockedOnLeft) {
-            val dragThresholdPx = DRAG_THRESHOLD_DP.dp.toPx()
-            detectDragGestures(
-                onDragStart = { _ ->
-                    val pos = onDragStart()
-                    startWindowX = pos.first
-                    startWindowY = pos.second
-                    accDragX = 0f
-                    accDragY = 0f
-                    repositioning = false
-                },
-                onDrag = { change, dragAmount ->
-                    change.consume()
-                    accDragX += dragAmount.x
-                    accDragY += dragAmount.y
-                    if (!repositioning &&
-                        (abs(accDragY) > dragThresholdPx || abs(accDragX) > dragThresholdPx)
-                    ) {
-                        repositioning = true
-                    }
-                    if (repositioning) {
-                        onDragUpdate(
-                            startWindowX + accDragX.toInt(),
-                            startWindowY + accDragY.toInt(),
-                        )
-                    }
-                },
-                onDragEnd = {
-                    if (repositioning) {
-                        onDragEnd(
-                            startWindowX + accDragX.toInt(),
-                            startWindowY + accDragY.toInt(),
-                        )
-                    } else {
-                        onDragEnd(startWindowX, startWindowY)
-                    }
-                },
-                onDragCancel = {
-                    onDragEnd(startWindowX, startWindowY)
-                },
-            )
-        }
-
-    val density = LocalDensity.current
-    val barTopDp = with(density) { barTopPx.toDp() }
-
-    val sceneContent = @Composable {
-        SceneTransitionLayout(
-            state = state,
-            swipeDetector = noSwipe,
-        ) {
-            scene(GameBarScenes.Pill) {
-                PillTab(
-                    dockedOnLeft = dockedOnLeft,
-                    showFps = showFps,
-                    fpsText = fpsText,
-                    idleAlpha = animatedPillAlpha,
-                    pointerModifier = pointerModifier,
-                    onTap = {
-                        state.setTargetScene(GameBarScenes.VerticalPill, scope)
-                        onExpanded()
-                    },
-                    modifier = Modifier.element(GameBarElements.PillContent),
-                )
-            }
-            scene(GameBarScenes.VerticalPill) {
-                VerticalPill(
-                    isLocked = isLocked,
-                    mapperEnabled = mapperEnabled,
-                    dockedOnLeft = dockedOnLeft,
-                    showFps = showFps,
-                    onToggleFps = onToggleFps,
-                    onShowPanel = onShowPanel,
-                    onToggleLock = onToggleLock,
-                    onMapControls = onMapControls,
-                    modifier = Modifier.element(GameBarElements.VerticalPillContent),
-                )
-            }
-        }
+    val dragModifier = Modifier.pointerInput(dockedOnLeft) {
+        val threshold = 12.dp.toPx()
+        detectDragGestures(
+            onDragStart = {
+                val position = onDragStart()
+                startWindowX = position.first
+                startWindowY = position.second
+                dragX = 0f
+                dragY = 0f
+                repositioning = false
+            },
+            onDrag = { change, amount ->
+                change.consume()
+                dragX += amount.x
+                dragY += amount.y
+                if (abs(dragX) > threshold || abs(dragY) > threshold) repositioning = true
+                if (repositioning) onDragUpdate(startWindowX + dragX.toInt(), startWindowY + dragY.toInt())
+            },
+            onDragEnd = {
+                onDragEnd(startWindowX + if (repositioning) dragX.toInt() else 0,
+                    startWindowY + if (repositioning) dragY.toInt() else 0)
+            },
+            onDragCancel = { onDragEnd(startWindowX, startWindowY) },
+        )
     }
-
-    if (pillExpanded) {
-        val dismissAlignment = if (dockedOnLeft) Alignment.TopStart else Alignment.TopEnd
-        Box(modifier = Modifier.fillMaxSize()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                    ) {
-                        state.setTargetScene(GameBarScenes.Pill, scope)
-                        onCollapsed()
-                    },
-            )
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(top = barTopDp),
-                contentAlignment = dismissAlignment,
-            ) {
-                sceneContent()
+    // Observe without consuming: taps, swipes and held fingers all postpone collapse.
+    val currentInteraction by rememberUpdatedState(onInteraction)
+    Box(Modifier.fillMaxSize().pointerInput(Unit) {
+        awaitEachGesture {
+            awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+            currentInteraction(true)
+            try {
+                var pressed = true
+                while (pressed) {
+                    pressed = awaitPointerEvent(PointerEventPass.Initial).changes.any { it.pressed }
+                }
+            } finally {
+                currentInteraction(false)
             }
         }
-    } else {
-        sceneContent()
+    }, contentAlignment = if (dockedOnLeft) Alignment.CenterStart else Alignment.CenterEnd) {
+        SceneTransitionLayout(state = state, swipeDetector = noSwipe) {
+            scene(GameBarScenes.Handle) {
+                EdgeHandle(isLocked, dockedOnLeft, animatedAlpha, showFps, fpsText, onExpanded,
+                    Modifier.element(GameBarElements.HandleContent).then(dragModifier))
+            }
+            scene(GameBarScenes.MiniBar) {
+                MiniBar(fpsText, dockedOnLeft, recording, onShowPanel, onStopRecording, onCollapsed,
+                    Modifier.element(GameBarElements.MiniBarContent))
+            }
+        }
     }
 }
 
-private const val FPS_CIRCLE_SIZE_DP = 28
-
 @Composable
-private fun PillTab(
-    dockedOnLeft: Boolean,
+private fun EdgeHandle(
+    locked: Boolean,
+    onLeft: Boolean,
+    alpha: Float,
     showFps: Boolean,
     fpsText: String,
-    idleAlpha: Float,
-    pointerModifier: Modifier,
     onTap: () -> Unit,
-    modifier: Modifier = Modifier,
+    modifier: Modifier,
 ) {
-    if (showFps) {
-        Box(
-            modifier = modifier
-                .size(FPS_CIRCLE_SIZE_DP.dp)
-                .alpha(idleAlpha)
-                .then(pointerModifier)
-                .pointerInput(onTap) { detectTapGestures(onTap = { onTap() }) }
-                .border(0.5.dp, Color.White.copy(alpha = 0.4f), CircleShape)
-                .clip(CircleShape)
-                .background(Color(0xCC1A1A1A)),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(
-                text = fpsText,
-                color = Color.White,
-                style = MaterialTheme.typography.labelSmall,
-            )
+    val description = stringResource(R.string.gamebar_open_controls)
+    val lockState = if (locked) stringResource(R.string.dashboard_gesture_on) else null
+    Box(modifier.size(handleWidthDp(showFps).dp, HANDLE_HEIGHT_DP.dp).alpha(alpha)
+        .semantics {
+            contentDescription = description
+            if (lockState != null) stateDescription = lockState
+        }.clickable(role = Role.Button, onClick = onTap)
+        .padding(horizontal = 4.dp),
+        contentAlignment = if (onLeft) Alignment.CenterStart else Alignment.CenterEnd) {
+        val shape = RoundedCornerShape(6.dp)
+        Box(Modifier.size(12.dp, 64.dp).shadow(3.dp, shape)
+            .background(MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.94f), shape)
+            .border(1.dp, Color.White.copy(alpha = 0.28f), shape), contentAlignment = Alignment.Center) {
+            Box(Modifier.size(4.dp, 28.dp).background(
+                if (locked) MaterialTheme.colorScheme.primary
+                else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f), RoundedCornerShape(2.dp)))
         }
-    } else {
-        val notchShape = if (dockedOnLeft) {
-            RoundedCornerShape(topEndPercent = 100, bottomEndPercent = 100)
-        } else {
-            RoundedCornerShape(topStartPercent = 100, bottomStartPercent = 100)
-        }
-        Box(
-            modifier = modifier
-                .width(NOTCH_TOUCH_WIDTH_DP.dp)
-                .height(NOTCH_HEIGHT_DP.dp)
-                .then(pointerModifier)
-                .pointerInput(onTap) { detectTapGestures(onTap = { onTap() }) },
-            contentAlignment = if (dockedOnLeft) Alignment.CenterStart else Alignment.CenterEnd,
-        ) {
-            Box(
-                modifier = Modifier
-                    .width(NOTCH_WIDTH_DP.dp)
-                    .height(NOTCH_HEIGHT_DP.dp)
-                    .alpha(idleAlpha)
-                    .border(0.5.dp, Color.White.copy(alpha = 0.35f), notchShape)
-                    .clip(notchShape)
-                    .background(Color(0xCC1A1A1A)),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    painter = painterResource(
-                        if (dockedOnLeft) R.drawable.ic_arrow_left
-                        else R.drawable.ic_arrow_right
-                    ),
-                    contentDescription = null,
-                    tint = Color.White.copy(alpha = 0.85f),
-                    modifier = Modifier.size(NOTCH_CHEVRON_SIZE_DP.dp),
-                )
+        if (showFps) {
+            Column(Modifier.align(if (onLeft) Alignment.CenterEnd else Alignment.CenterStart)
+                .size(56.dp, 40.dp)
+                .background(MaterialTheme.colorScheme.surfaceContainerHighest, RoundedCornerShape(16.dp)),
+                horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                Text(fpsText.ifEmpty { "–" }, color = MaterialTheme.colorScheme.onSurface,
+                    fontSize = 17.sp, lineHeight = 20.sp, fontWeight = FontWeight.Bold,
+                    style = TextStyle(fontFeatureSettings = "tnum"))
+                Text(stringResource(R.string.gamebar_fps_label), color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 11.sp, lineHeight = 14.sp)
             }
         }
     }
 }
 
 @Composable
-private fun VerticalPill(
-    isLocked: Boolean,
-    mapperEnabled: Boolean,
-    dockedOnLeft: Boolean,
-    showFps: Boolean,
-    onToggleFps: () -> Unit,
-    onShowPanel: () -> Unit,
-    onToggleLock: () -> Unit,
-    onMapControls: () -> Unit,
-    modifier: Modifier = Modifier,
+private fun MiniBar(
+    fpsText: String,
+    onLeft: Boolean,
+    recording: RecordingState,
+    onShowPanel: (Boolean) -> Unit,
+    onStopRecording: () -> Unit,
+    onCollapsed: () -> Unit,
+    modifier: Modifier,
 ) {
-    val pillShape = RoundedCornerShape((PILL_WIDTH_DP / 2).dp)
-    Column(
-        modifier = modifier
-            .padding(
-                start = if (dockedOnLeft) 12.dp else 0.dp,
-                end = if (dockedOnLeft) 0.dp else 12.dp,
-            )
-            .width(PILL_WIDTH_DP.dp)
-            .background(color = Color(0xCC1A1A1A), shape = pillShape)
-            .clip(pillShape),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
-    ) {
-        IconButton(
-            onClick = onToggleFps,
-            modifier = Modifier.size(PILL_BUTTON_SIZE_DP.dp),
-        ) {
-            Icon(
-                painter = painterResource(R.drawable.ic_fps),
-                contentDescription = null,
-                tint = if (showFps) MaterialTheme.colorScheme.primary else Color.White,
-                modifier = Modifier.size(20.dp),
-            )
+    val battery = rememberBatteryInfo()
+    var swipe by remember { mutableFloatStateOf(0f) }
+    Column(modifier.width(MINI_WIDTH_DP.dp)
+        .padding(start = if (onLeft) 8.dp else 0.dp, end = if (onLeft) 0.dp else 8.dp)
+        .pointerInput(onLeft) {
+            val threshold = 32.dp.toPx()
+            var collapseSent = false
+            detectHorizontalDragGestures(onDragStart = { swipe = 0f; collapseSent = false },
+                onHorizontalDrag = { change, amount ->
+                    swipe += amount
+                    change.consume()
+                    if (!collapseSent && ((onLeft && swipe < -threshold) || (!onLeft && swipe > threshold))) {
+                        collapseSent = true
+                        onCollapsed()
+                    }
+                })
         }
-        IconButton(
-            onClick = onShowPanel,
-            modifier = Modifier.size(PILL_BUTTON_SIZE_DP.dp),
-        ) {
-            Icon(
-                painter = painterResource(R.drawable.materialsymbols_ic_dashboard_rounded_filled),
-                contentDescription = null,
-                tint = Color.White,
-                modifier = Modifier.size(20.dp),
-            )
+        .shadow(6.dp, RoundedCornerShape(32.dp))
+        .background(MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.94f), RoundedCornerShape(32.dp))
+        .padding(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            if (onLeft) DashboardCell(onLeft) { onShowPanel(false) }
+            ReadoutCell(fpsText.ifEmpty { "–" }, stringResource(R.string.gamebar_fps_label)) { onShowPanel(true) }
+            if (!onLeft) DashboardCell(onLeft) { onShowPanel(false) }
         }
-        IconButton(
-            onClick = onToggleLock,
-            modifier = Modifier.size(PILL_BUTTON_SIZE_DP.dp),
-        ) {
-            Icon(
-                painter = painterResource(
-                    if (isLocked) R.drawable.materialsymbols_ic_lock_rounded_filled
-                    else R.drawable.materialsymbols_ic_lock_open_rounded_filled
-                ),
-                contentDescription = null,
-                tint = if (isLocked) MaterialTheme.colorScheme.primary else Color.White,
-                modifier = Modifier.size(20.dp),
-            )
+        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            ReadoutCell(stringResource(R.string.dashboard_temperature, battery.temperatureC.roundToInt()),
+                stringResource(R.string.gamebar_temperature_label)) { onShowPanel(false) }
+            ReadoutCell(if (battery.level >= 0) "${battery.level}%" else "–",
+                stringResource(R.string.gamebar_battery_label)) { onShowPanel(false) }
         }
-        if (mapperEnabled) {
-            IconButton(
-                onClick = onMapControls,
-                modifier = Modifier.size(PILL_BUTTON_SIZE_DP.dp),
-            ) {
-                Icon(
-                    painter = painterResource(R.drawable.materialsymbols_ic_sports_esports_rounded_filled),
-                    contentDescription = null,
-                    tint = Color.White,
-                    modifier = Modifier.size(20.dp),
-                )
+        if (recording.phase == RecordingPhase.ACTIVE) {
+            val elapsed = recording.elapsedMillis?.let {
+                String.format(Locale.getDefault(), "%d:%02d", it / 60000, it / 1000 % 60)
+            } ?: stringResource(R.string.dashboard_elapsed_unknown)
+            val stop = stringResource(R.string.dashboard_stop_recording)
+            Row(Modifier.fillMaxWidth().height(52.dp)
+                .clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp, bottomEnd = 26.dp, bottomStart = 26.dp))
+                .background(MaterialTheme.colorScheme.errorContainer)
+                .semantics(mergeDescendants = true) { contentDescription = "$stop, $elapsed" }
+                .clickable(role = Role.Button, onClick = onStopRecording),
+                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally)) {
+                Icon(Icons.Rounded.Stop, null, Modifier.size(24.dp), tint = MaterialTheme.colorScheme.onErrorContainer)
+                Text(elapsed, color = MaterialTheme.colorScheme.onErrorContainer, fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold, style = TextStyle(fontFeatureSettings = "tnum"))
             }
         }
+    }
+}
+
+@Composable
+private fun DashboardCell(onLeft: Boolean, onClick: () -> Unit) {
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val corner by animateDpAsState(if (pressed) 20.dp else 28.dp, label = "dashboardCorner")
+    val shape = RoundedCornerShape(topStart = if (onLeft) corner else 20.dp,
+        topEnd = if (onLeft) 20.dp else corner, bottomStart = 20.dp, bottomEnd = 20.dp)
+    Box(Modifier.size(56.dp).clip(shape).background(MaterialTheme.colorScheme.primaryContainer)
+        .clickable(interactionSource = interaction, indication = androidx.compose.material3.ripple(),
+            role = Role.Button, onClick = onClick), contentAlignment = Alignment.Center) {
+        Icon(Icons.Rounded.Dashboard, stringResource(R.string.gamebar_open_dashboard), Modifier.size(28.dp),
+            tint = MaterialTheme.colorScheme.onPrimaryContainer)
+    }
+}
+
+@Composable
+private fun ReadoutCell(value: String, label: String, onClick: () -> Unit) {
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val corner by animateDpAsState(if (pressed) 24.dp else 20.dp, label = "readoutCorner")
+    Column(Modifier.size(56.dp).clip(RoundedCornerShape(corner))
+        .background(MaterialTheme.colorScheme.surfaceContainerHighest)
+        .semantics(mergeDescendants = true) {}
+        .clickable(interactionSource = interaction, indication = androidx.compose.material3.ripple(),
+            role = Role.Button, onClick = onClick),
+        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+        Text(value, color = MaterialTheme.colorScheme.onSurface, fontSize = 17.sp, lineHeight = 20.sp,
+            fontWeight = FontWeight.Bold, style = TextStyle(fontFeatureSettings = "tnum"))
+        Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, lineHeight = 14.sp,
+            fontWeight = FontWeight.SemiBold, letterSpacing = 0.3.sp)
     }
 }

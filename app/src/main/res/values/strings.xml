@@ -251,5 +251,10 @@
     <string name="dashboard_already_added">%1$s, already added</string>
     <string name="dashboard_recording">Recording</string>
     <string name="dashboard_stop_recording">Stop recording</string>
+    <string name="gamebar_open_controls">Open game controls</string>
+    <string name="gamebar_open_dashboard">Open dashboard</string>
+    <string name="gamebar_fps_label">FPS</string>
+    <string name="gamebar_temperature_label">Temp</string>
+    <string name="gamebar_battery_label">Battery</string>
     <string name="game_performance">Game performance</string>
 </resources>

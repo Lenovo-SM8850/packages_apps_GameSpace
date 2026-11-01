@@ -26,7 +26,6 @@ import android.content.*
 import android.content.res.Configuration
 import android.graphics.PixelFormat
 import android.graphics.Rect
-import android.os.Bundle
 import android.os.Handler
 import android.os.Process
 import android.os.UserHandle
@@ -52,6 +51,9 @@ import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.LayoutDirection
+import io.github.miner7222.gamespace.gamebar.RecordingPhase
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.ui.input.pointer.pointerInput
@@ -99,6 +101,8 @@ class GameSidebar(
     private var halfWidth = 0
     private var safeHeight = 0
     private var safeArea = 0
+    private var safeLeft = 0
+    private var safeRight = 0
     private var shouldClose = false
     private var panelShowing = false
     private var barReady = false
@@ -132,11 +136,11 @@ class GameSidebar(
     private val fpsTextState = mutableStateOf("")
     private val isLockedState = mutableStateOf(false)
     private val isIdleState = mutableStateOf(true)
-    private val collapseRequestState = mutableIntStateOf(0)
     private var pillExpanded = false
+    private val pillSnapState = mutableStateOf(false)
     private val pillExpandedState = mutableStateOf(false)
     private val barTopState = mutableIntStateOf(0)
-    private var handleCenterOffsetPx = 0
+    private var handleCenterY = 0
     private val taskManager by lazy { ActivityTaskManager.getService() }
 
     private val refreshGameTask = Runnable { updateGameTaskVisibility() }
@@ -225,10 +229,7 @@ class GameSidebar(
         }
     }
 
-    private val recordingListener = object : AxPlatformClient.Listener() {
-        override fun onStateChanged(key: String, state: Bundle) {}
-    }
-
+    @SuppressLint("ClickableViewAccessibility")
     fun onCreate() {
         tileRepository.onBeforePlatformAction = { feature ->
             when (feature) {
@@ -263,14 +264,24 @@ class GameSidebar(
                 repeatOnLifecycle(Lifecycle.State.STARTED) {
                     setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
                     setContent {
+                        val recording by tileRepository.recordingState.collectAsState()
                         LaunchedEffect(showFpsState.value) {
                             updateFpsTracking()
+                            if (!pillExpanded) {
+                                gameBarLayoutParam.width = px(handleWidthDp(showFpsState.value))
+                                runCatching { wm.updateViewLayout(gameBarView, gameBarLayoutParam) }
+                                updateGestureExclusions()
+                            }
+                        }
+                        LaunchedEffect(recording.phase) {
+                            if (pillExpanded) updateMiniBarLayout()
                         }
                         CompositionLocalProvider(
                             LocalOnBackPressedDispatcherOwner provides noOpBackDispatcherOwner,
+                            LocalLayoutDirection provides LayoutDirection.Ltr,
                         ) {
                             MaterialExpressiveTheme(
-                            colorScheme = dynamicDarkColorScheme(context),
+                            colorScheme = if (isSystemInDarkTheme()) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context),
                             motionScheme = MotionScheme.expressive(),
                         ) {
                             GameBarView(
@@ -280,31 +291,26 @@ class GameSidebar(
                                 isIdle = isIdleState.value,
                                 idleAlpha = (appSettings.iconIdleAlpha / 100f).coerceAtLeast(0.05f),
                                 dockedOnLeft = dockedOnLeftState.value,
-                                mapperEnabled = BuildFlags.MAPPER_ENABLED,
-                                onShowPanel = { handler.post { showPanel() } },
-                                onMapControls = { handler.post { enterMapperEdit() } },
-                                onToggleLock = {
-                                    val enabled = !isLockedState.value
-                                    io.github.miner7222.gamespace.library.SessionOptions.choose(context, GameOption.GESTURES, if (enabled) 1 else 0)
-                                    setGestureLock(enabled)
-                                    scheduleIdle()
-                                },
-                                onToggleFps = {
-                                    tileRepository.setFpsInfoEnabled(!showFpsState.value)
-                                    scheduleIdle()
-                                },
+                                recording = recording,
+                                onShowPanel = { expandFps -> handler.post { showPanel(expandFps) } },
+                                onStopRecording = { tileRepository.stopRecording() },
                                 pillExpanded = pillExpandedState.value,
-                                barTopPx = barTopState.intValue,
+                                collapseInstantly = pillSnapState.value,
                                 onExpanded = { handler.post { setPillExpanded(true) } },
-                                onCollapsed = {
-                                    handler.post { setPillExpanded(false) }
-                                    scheduleIdle()
+                                onCollapsed = { handler.post { setPillExpanded(false) } },
+                                onInteraction = { pressed ->
+                                    handler.removeCallbacks(miniCollapseRunnable)
+                                    handler.removeCallbacks(idleRunnable)
+                                    isIdleState.value = false
+                                    if (!pressed) {
+                                        if (pillExpanded) scheduleMiniCollapse() else scheduleIdle()
+                                    }
                                 },
-                                collapseRequestKey = collapseRequestState.intValue,
                                 onDragStart = {
                                     val loc = IntArray(2)
                                     gameBarView.getLocationOnScreen(loc)
-                                    gameBarLayoutParam.gravity = Gravity.TOP or Gravity.START
+                                    gameBarLayoutParam.gravity = Gravity.TOP or Gravity.LEFT
+                                    // Coordinates are absolute because this window does not fit system insets.
                                     gameBarLayoutParam.x = loc[0]
                                     gameBarLayoutParam.y = loc[1]
                                     runCatching { wm.updateViewLayout(gameBarView, gameBarLayoutParam) }
@@ -319,8 +325,9 @@ class GameSidebar(
                                     circleOnLeft = x < halfWidth
                                     dockedOnLeftState.value = circleOnLeft
                                     appSettings.x = if (circleOnLeft) -1 else 1
-                                    appSettings.y = y
+                                    gameBarLayoutParam.y = y
                                     dockGameBar()
+                                    appSettings.y = gameBarLayoutParam.y
                                     runCatching { wm.updateViewLayout(gameBarView, gameBarLayoutParam) }
                                     scheduleIdle()
                                 },
@@ -330,10 +337,14 @@ class GameSidebar(
                     }
                 }
             }
-            addOnLayoutChangeListener { v, _, _, _, _, _, _, _, _ ->
-                v.setSystemGestureExclusionRects(
-                    listOf(Rect(0, 0, v.width, v.height))
-                )
+            addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+                updateGestureExclusions()
+            }
+            setOnTouchListener { _, event ->
+                if (event.actionMasked == MotionEvent.ACTION_OUTSIDE && pillExpanded) {
+                    setPillExpanded(false)
+                    true
+                } else false
             }
         }
 
@@ -366,6 +377,7 @@ class GameSidebar(
         notifyUiBlocking()
         gameTaskHidden = false
         gamePackage = packageName
+        fpsTextState.value = ""
         gameTaskId = ActivityTaskManager.INVALID_TASK_ID
         if (!taskListenerRegistered) {
             try {
@@ -379,7 +391,6 @@ class GameSidebar(
         if (BuildFlags.MAPPER_ENABLED) {
             mapperController.onGameStart(packageName)
         }
-        platform.addListener(recordingListener)
         handler.post {
             if (!::gameBarView.isInitialized) return@post
             runCatching {
@@ -400,9 +411,9 @@ class GameSidebar(
             taskListenerRegistered = false
         }
         mapperController.onGameLeave()
-        platform.removeListener(recordingListener)
         stopFpsTracking()
         shouldClose = true
+        setPillExpanded(false)
         setGestureLock(false)
         handler.removeCallbacksAndMessages(null)
         forceRemovePanel()
@@ -432,6 +443,7 @@ class GameSidebar(
         mapperController.onConfigurationChanged(newConfig)
         updateScreenMetrics()
         forceRemovePanel()
+        setPillExpanded(false)
         if (gameBarView.visibility != View.VISIBLE) {
             handler.removeCallbacks(firstPaint)
             handler.postDelayed({ firstPaint.run() }, 100)
@@ -442,10 +454,12 @@ class GameSidebar(
         danmakuService.updateConfiguration(newConfig)
     }
 
-    private fun showPanel() {
+    private fun showPanel(initialGraphExpanded: Boolean = false) {
         updateGameTaskVisibility()
         if (!gameVisible || shouldClose || gameTaskHidden || panelShowing || screenshotInProgress) return
         panelShowing = true
+        pillSnapState.value = true
+        setPillExpanded(false)
         notifyUiBlocking()
         panelDismissing.value = false
         handler.removeCallbacks(idleRunnable)
@@ -457,7 +471,7 @@ class GameSidebar(
 
         panelLayoutParam.flags = panelLayoutParam.flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE.inv()
         panelLayoutParam.alpha = 1f
-        val pv = createPanelView()
+        val pv = createPanelView(initialGraphExpanded)
         panelView = pv
 
         try {
@@ -518,7 +532,7 @@ class GameSidebar(
         if (::gameBarView.isInitialized) updateGameBarVisibility()
     }
 
-    private fun createPanelView(): ComposeView {
+    private fun createPanelView(initialGraphExpanded: Boolean): ComposeView {
         return ComposeView(context).apply {
             repeatWhenAttached {
                 repeatOnLifecycle(Lifecycle.State.STARTED) {
@@ -528,7 +542,7 @@ class GameSidebar(
                             colorScheme = if (isSystemInDarkTheme()) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context),
                             motionScheme = MotionScheme.expressive(),
                         ) {
-                            PanelContent()
+                            PanelContent(initialGraphExpanded)
                         }
                     }
                 }
@@ -537,7 +551,7 @@ class GameSidebar(
     }
 
     @Composable
-    private fun PanelContent() {
+    private fun PanelContent(initialGraphExpanded: Boolean) {
         val apps = remember { getQuickStartApps(context) }
         val dismissing by panelDismissing
 
@@ -600,10 +614,7 @@ class GameSidebar(
         }
         // Full-height phone landscapes leave 12dp above/below; other edge panels use 16dp.
         val margin = minOf(16.dp, ((safeHeightDp - height) / 2).coerceAtLeast(0.dp))
-        val handleLocation = IntArray(2).also { gameBarView.getLocationOnScreen(it) }
-        val anchorPx = if (pillExpanded) barTopState.intValue + handleCenterOffsetPx
-            else handleLocation[1] + gameBarView.height / 2
-        val anchor = with(density) { anchorPx.toDp() }
+        val anchor = with(density) { handleCenterY.toDp() }
         val top = if (phonePortrait) safeTop + safeHeightDp - height - 12.dp
             else (anchor - height / 2).coerceIn(safeTop + margin,
                 (safeTop + safeHeightDp - height - margin).coerceAtLeast(safeTop + margin))
@@ -635,47 +646,80 @@ class GameSidebar(
                     gameModeUtils = gameModeUtils, systemSettings = settings, tileRepository = tileRepository,
                     mediaVolume = mediaVolume, gamePackage = packageName,
                     onDismiss = { forceRemovePanel() }, panelWidth = width, maxHeight = height,
-                    onEditingChanged = { editingPanel = it })
+                    onEditingChanged = { editingPanel = it }, initialGraphExpanded = initialGraphExpanded)
             }
         }
     }
 
     private fun setPillExpanded(expanded: Boolean) {
-        if (expanded && !gameVisible) return
+        if (expanded && (!gameVisible || !barReady || shouldClose || panelShowing || gameTaskHidden)) return
         if (pillExpanded == expanded) return
-        pillExpanded = expanded
-        pillExpandedState.value = expanded
-        notifyUiBlocking()
+        handler.removeCallbacks(miniCollapseRunnable)
+        handler.removeCallbacks(idleRunnable)
         if (expanded) {
             barTopState.intValue = gameBarLayoutParam.y
             val location = IntArray(2).also { gameBarView.getLocationOnScreen(it) }
-            handleCenterOffsetPx = location[1] - gameBarLayoutParam.y + gameBarView.height / 2
-            gameBarLayoutParam.gravity = Gravity.TOP or Gravity.START
-            gameBarLayoutParam.x = 0
-            gameBarLayoutParam.y = 0
-            gameBarLayoutParam.width = WindowManager.LayoutParams.MATCH_PARENT
-            gameBarLayoutParam.height = WindowManager.LayoutParams.MATCH_PARENT
-            gameBarLayoutParam.flags = gameBarLayoutParam.flags and
-                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL.inv()
+            handleCenterY = location[1] + gameBarView.height / 2
+        }
+        pillExpanded = expanded
+        if (expanded) pillSnapState.value = false
+        pillExpandedState.value = expanded
+        notifyUiBlocking()
+        isIdleState.value = false
+        if (expanded) {
+            updateMiniBarLayout()
+            scheduleMiniCollapse()
         } else {
-            gameBarLayoutParam.width = WindowManager.LayoutParams.WRAP_CONTENT
-            gameBarLayoutParam.height = WindowManager.LayoutParams.WRAP_CONTENT
-            gameBarLayoutParam.flags = gameBarLayoutParam.flags or
-                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
+            gameBarLayoutParam.width = px(handleWidthDp(showFpsState.value))
+            gameBarLayoutParam.height = px(HANDLE_HEIGHT_DP)
             gameBarLayoutParam.y = barTopState.intValue
             dockGameBar()
+            runCatching { wm.updateViewLayout(gameBarView, gameBarLayoutParam) }
+            updateGestureExclusions()
+            scheduleIdle()
         }
+        updateFpsTracking()
+    }
+
+    private fun updateMiniBarLayout() {
+        if (!pillExpanded) return
+        val recording = tileRepository.recordingState.value.phase == RecordingPhase.ACTIVE
+        gameBarLayoutParam.width = px(MINI_WIDTH_DP)
+        gameBarLayoutParam.height = px(if (recording) MINI_RECORDING_HEIGHT_DP else MINI_HEIGHT_DP)
+        gameBarLayoutParam.gravity = Gravity.TOP or (if (circleOnLeft) Gravity.LEFT else Gravity.RIGHT)
+        gameBarLayoutParam.x = if (circleOnLeft) safeLeft else safeRight
+        // Keep the handle anchor across expansion, recording-row changes and collapse.
+        gameBarLayoutParam.y = (handleCenterY - gameBarLayoutParam.height / 2).coerceIn(safeArea,
+            (safeHeight - gameBarLayoutParam.height).coerceAtLeast(safeArea))
         runCatching { wm.updateViewLayout(gameBarView, gameBarLayoutParam) }
+        updateGestureExclusions()
+    }
+
+    private fun updateGestureExclusions() {
+        if (!::gameBarView.isInitialized) return
+        val width = gameBarLayoutParam.width.coerceAtLeast(0)
+        val height = gameBarLayoutParam.height.coerceAtLeast(0)
+        val inset = if (pillExpanded) px(8) else 0
+        gameBarView.systemGestureExclusionRects = listOf(Rect(
+            if (circleOnLeft) inset else 0, 0, width - if (circleOnLeft) 0 else inset, height))
     }
 
     private fun collapseVerticalPill() {
-        if (!pillExpanded) return
-        collapseRequestState.intValue = collapseRequestState.intValue + 1
+        setPillExpanded(false)
     }
+
+    private val miniCollapseRunnable = Runnable { setPillExpanded(false) }
+
+    private fun scheduleMiniCollapse() {
+        handler.removeCallbacks(miniCollapseRunnable)
+        if (pillExpanded && !shouldClose) handler.postDelayed(miniCollapseRunnable, MINI_TIMEOUT_MS)
+    }
+
+    private fun px(dp: Int) = (dp * context.resources.displayMetrics.density).toInt()
 
     private fun updateFpsTracking() {
         stopFpsTracking()
-        if (showFpsState.value) {
+        if (gamePackage != null && !shouldClose && (showFpsState.value || pillExpanded)) {
             taskManager?.focusedRootTaskInfo?.taskId?.let {
                 wm.registerTaskFpsCallback(it, Runnable::run, taskFpsCallback)
             }
@@ -689,10 +733,15 @@ class GameSidebar(
     }
 
     private fun updateScreenMetrics() {
-        val bounds = wm.maximumWindowMetrics.bounds
+        val metrics = wm.maximumWindowMetrics
+        val bounds = metrics.bounds
+        val insets = metrics.windowInsets.getInsetsIgnoringVisibility(
+            android.view.WindowInsets.Type.systemBars() or android.view.WindowInsets.Type.displayCutout())
         halfWidth = bounds.width() / 2
-        safeArea = context.statusbarHeight + (4 * context.resources.displayMetrics.density).toInt()
-        safeHeight = bounds.height() - safeArea
+        safeArea = insets.top + px(4)
+        safeHeight = (bounds.height() - insets.bottom - px(4)).coerceAtLeast(safeArea)
+        safeLeft = insets.left
+        safeRight = insets.right
     }
 
     private fun initActions() {
@@ -713,9 +762,12 @@ class GameSidebar(
     }
 
     private fun dockGameBar() {
-        gameBarLayoutParam.gravity = Gravity.TOP or (if (circleOnLeft) Gravity.START else Gravity.END)
-        gameBarLayoutParam.x = 0
-        gameBarLayoutParam.y = gameBarLayoutParam.y.coerceIn(safeArea, safeHeight)
+        gameBarLayoutParam.gravity = Gravity.TOP or (if (circleOnLeft) Gravity.LEFT else Gravity.RIGHT)
+        gameBarLayoutParam.x = if (circleOnLeft) safeLeft else safeRight
+        gameBarLayoutParam.y = gameBarLayoutParam.y.coerceIn(safeArea,
+            (safeHeight - px(HANDLE_HEIGHT_DP)).coerceAtLeast(safeArea))
+        handleCenterY = gameBarLayoutParam.y + px(HANDLE_HEIGHT_DP) / 2
+        updateGestureExclusions()
     }
 
     private val idleRunnable = Runnable {
@@ -747,7 +799,7 @@ class GameSidebar(
     private fun scheduleIdle() {
         handler.removeCallbacks(idleRunnable)
         isIdleState.value = false
-        handler.postDelayed(idleRunnable, IDLE_TIMEOUT_MS)
+        if (!shouldClose && !pillExpanded && !panelShowing) handler.postDelayed(idleRunnable, IDLE_TIMEOUT_MS)
     }
 
     private fun getQuickStartApps(context: Context): List<AppInfo> {
@@ -771,11 +823,13 @@ class GameSidebar(
         WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
         WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
             WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+            WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH or
             WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
         PixelFormat.TRANSLUCENT
     ).apply {
-        width = WindowManager.LayoutParams.WRAP_CONTENT
-        height = WindowManager.LayoutParams.WRAP_CONTENT
+        setFitInsetsTypes(0)
+        width = px(handleWidthDp(appSettings.showFps))
+        height = px(HANDLE_HEIGHT_DP)
         layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
         preferMinimalPostProcessing = true
         gravity = Gravity.TOP or Gravity.END
@@ -796,6 +850,7 @@ class GameSidebar(
 
     companion object {
         private const val IDLE_TIMEOUT_MS = 3000L
+        private const val MINI_TIMEOUT_MS = 4000L
         private const val TASK_RECHECK_DELAY_MS = 500L
         private const val TASK_QUERY_LIMIT = 16
     }
