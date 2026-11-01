@@ -5,6 +5,7 @@
 -->
 <resources>
     <string name="library_open">Open library</string>
+    <string name="library_game_icons">Game icons</string>
     <string name="library_continue">Continue playing</string>
     <string name="library_recent">Recently played</string>
     <string name="library_sort_name">Name</string>
@@ -21,10 +22,15 @@
     <string name="library_empty_auto">Installed games appear here automatically.</string>
     <string name="library_empty_manual">Add a game to start your library.</string>
     <string name="library_mode_performance_summary">Prioritizes frame rate. May run warmer and use more battery.</string>
+    <string name="library_also_show_home">Also show on Home screen</string>
     <string name="library_app_info">App info</string>
     <string name="library_remove">Remove from library</string>
     <string name="library_removed">%1$s removed from library</string>
     <string name="library_undo">Undo</string>
+    <string name="library_hide_title">Hide games from Home screen and app list</string>
+    <string name="library_hide_confirmation_title">Hide games?</string>
+    <string name="library_hide_confirmation_body">Library games won\'t show on the Home screen or in the app list.</string>
+    <string name="library_hide_action">Hide</string>
     <plurals name="library_game_count">
         <item quantity="one">%d game</item>
         <item quantity="other">%d games</item>

@@ -175,6 +175,11 @@ private fun GameSheetContent(game: LibraryGame, state: LibraryState, library: Li
                 Icons.Rounded.Tune, shape, onClick = onOptions)
         }
         extraRows.forEach { row -> rows.add { shape -> key(row.key) { row.content(shape) } } }
+        if (state.hideGames) rows.add { shape ->
+            val checked = game.packageName in state.homeExceptions
+            SheetRow(stringResource(R.string.library_also_show_home), null, Icons.Rounded.Home,
+                shape, checked = checked, onCheckedChange = { library.showOnHome(game.packageName, it) })
+        }
         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
             rows.forEachIndexed { index, row -> row(groupedShape(index, rows.size)) }
         }

@@ -31,6 +31,7 @@ import com.android.settingslib.widget.SettingsBasePreferenceFragment
 import dagger.hilt.android.AndroidEntryPoint
 
 import io.chaldeaprjkt.gamespace.R
+import io.github.miner7222.gamespace.library.HideGamesPreference
 import io.github.miner7222.gamespace.library.LibraryActivity
 import io.chaldeaprjkt.gamespace.utils.di.ServiceViewEntryPoint
 import io.chaldeaprjkt.gamespace.utils.entryPointOf
@@ -117,6 +118,7 @@ class SettingsFragment : Hilt_SettingsFragment(),
             appSettings.inGameOptions.global(io.github.miner7222.gamespace.library.GameOption.BYPASS) == 1
         findPreference<SwitchPreferenceCompat>("gamespace_auto_game_detect")?.isChecked =
             systemSettings.autoGameDetect
+        findPreference<HideGamesPreference>("gamespace_hide_games")?.refresh()
         val count = systemSettings.userGames.size
         findPreference<Preference>("library_open")?.summary = resources.getQuantityString(
             R.plurals.library_game_count, count, count)

@@ -45,6 +45,8 @@ data class LibraryState(
     val games: List<LibraryGame> = emptyList(),
     val loading: Boolean = true,
     val autoDetect: Boolean = true,
+    val hideGames: Boolean = false,
+    val homeExceptions: Set<String> = emptySet(),
     val hintDismissed: Boolean = false,
     val sort: Int = 0,
 )
@@ -65,6 +67,8 @@ class LibraryViewModel @Inject constructor(
     init {
         listOf(Settings.System.getUriFor(LibraryKeys.GAMES),
             Settings.System.getUriFor("gamespace_auto_game_detect"),
+            Settings.Secure.getUriFor(LibraryKeys.HIDE),
+            Settings.Secure.getUriFor(LibraryKeys.EXCEPTIONS),
             Settings.Secure.getUriFor(LibraryKeys.HINT),
             Settings.Secure.getUriFor(LibraryKeys.SORT)).forEach {
             context.contentResolver.registerContentObserver(it, false, observer)
@@ -115,6 +119,8 @@ class LibraryViewModel @Inject constructor(
                         else games.sortedWith(compareByDescending<LibraryGame> { it.lastPlayed }.then(comparator)),
                     loading = false,
                     autoDetect = settings.autoGameDetect,
+                    hideGames = settings.libraryHideGames,
+                    homeExceptions = settings.libraryHomeExceptions,
                     hintDismissed = settings.libraryHintDismissed,
                     sort = sort,
                 )
@@ -125,6 +131,12 @@ class LibraryViewModel @Inject constructor(
     fun register(packageName: String) { repository.register(packageName); refresh() }
     fun setSort(sort: Int) { settings.librarySort = sort; refresh() }
     fun dismissHint() { settings.libraryHintDismissed = true; refresh() }
+    fun showOnHome(packageName: String, enabled: Boolean) {
+        settings.libraryHomeExceptions = if (enabled) settings.libraryHomeExceptions + packageName
+            else settings.libraryHomeExceptions - packageName
+        LauncherVisibility.sync(context, context.userId)
+        refresh()
+    }
 
     override fun onCleared() { context.contentResolver.unregisterContentObserver(observer) }
 }
