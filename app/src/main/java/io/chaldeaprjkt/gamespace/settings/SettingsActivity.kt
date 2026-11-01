@@ -18,6 +18,9 @@
 package io.chaldeaprjkt.gamespace.settings
 
 import android.os.Bundle
+import android.view.Gravity
+import android.widget.FrameLayout
+import io.chaldeaprjkt.gamespace.R
 import com.android.settingslib.collapsingtoolbar.CollapsingToolbarBaseActivity
 import dagger.hilt.android.AndroidEntryPoint
 
@@ -26,6 +29,18 @@ class SettingsActivity : Hilt_SettingsActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        setTitle(if (intent.hasExtra("referer")) R.string.settings_title else R.string.tile_settings)
+        appBarLayout?.setExpanded(false, false)
+        findViewById<android.view.View>(com.android.settingslib.collapsingtoolbar.R.id.content_frame)?.apply {
+            val params = layoutParams
+            params.width = (minOf(resources.configuration.screenWidthDp, 840) * resources.displayMetrics.density).toInt()
+            when (params) {
+                is FrameLayout.LayoutParams -> params.gravity = Gravity.CENTER_HORIZONTAL
+                is android.widget.LinearLayout.LayoutParams -> params.gravity = Gravity.CENTER_HORIZONTAL
+                is androidx.coordinatorlayout.widget.CoordinatorLayout.LayoutParams -> params.gravity = Gravity.CENTER_HORIZONTAL
+            }
+            layoutParams = params
+        }
         if (savedInstanceState == null) {
             supportFragmentManager
                 .beginTransaction()

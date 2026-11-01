@@ -17,6 +17,8 @@
  */
 package io.chaldeaprjkt.gamespace.data
 
+import io.github.miner7222.gamespace.library.SessionOptions
+import io.github.miner7222.gamespace.library.GameOption
 import android.content.Context
 import android.media.AudioManager
 import com.google.gson.Gson
@@ -141,5 +143,100 @@ class GameSession @Inject constructor(
     companion object {
         const val PREFS_NAME = "persisted_session"
         const val KEY_SAVED_SESSION = "session"
+    }
+
+    fun setOption(option: GameOption, value: Int) {
+        if (liveState != null && SessionOptions.choose(context, option, value)) applyOptions()
+    }
+
+    private var liveState: SessionState? = null
+
+    /** Recovery metadata is written before taking ownership and after releasing it. */
+    fun applyOptions() {
+        val orig = liveState ?: return
+        val options = appSettings.inGameOptions
+        val brightness = options.current(GameOption.BRIGHTNESS) == 1
+        val panelAuto = SessionOptions.autoBrightness(context)
+        if (panelAuto != null || brightness) {
+            if (!orig.ownsBrightness) {
+                orig.autoBrightness = systemSettings.autoBrightness
+                orig.statusbarBrightness = systemSettings.statusbarBrightness
+                orig.ownsBrightness = true
+                persistRecovery(orig)
+            }
+            val auto = panelAuto ?: false
+            if (systemSettings.autoBrightness != auto) systemSettings.autoBrightness = auto
+            val statusbar = if (auto) orig.statusbarBrightness ?: false else false
+            if (systemSettings.statusbarBrightness != statusbar) systemSettings.statusbarBrightness = statusbar
+        } else if (orig.ownsBrightness) {
+            orig.autoBrightness?.let { systemSettings.autoBrightness = it }
+            orig.statusbarBrightness?.let { systemSettings.statusbarBrightness = it }
+            orig.ownsBrightness = false
+            persistRecovery(orig)
+        }
+        val headsup = options.current(GameOption.DANMAKU) == 1
+        if (headsup != orig.ownsHeadsup) {
+            if (headsup) {
+                orig.headsup = systemSettings.headsup
+                orig.ownsHeadsup = true
+                persistRecovery(orig)
+                systemSettings.headsup = false
+            } else {
+                orig.headsup?.let { systemSettings.headsup = it }
+                orig.ownsHeadsup = false
+                persistRecovery(orig)
+            }
+        }
+        val screenshot = options.current(GameOption.SCREENSHOT) == 1
+        if (screenshot != orig.ownsThreeScreenshot) {
+            if (screenshot) {
+                orig.threeScreenshot = systemSettings.threeScreenshot
+                orig.ownsThreeScreenshot = true
+                persistRecovery(orig)
+                systemSettings.threeScreenshot = 0
+            } else {
+                systemSettings.threeScreenshot = orig.threeScreenshot
+                orig.ownsThreeScreenshot = false
+                persistRecovery(orig)
+            }
+        }
+        val ringer = options.current(GameOption.RINGER)
+        if (ringer != orig.appliedRingerMode) {
+            if (ringer != 3) {
+                if (!orig.ownsRingerMode) {
+                    orig.ringerMode = audioManager.ringerModeInternal
+                    orig.ownsRingerMode = true
+                    persistRecovery(orig)
+                }
+                audioManager.ringerModeInternal = ringer
+            } else if (orig.ownsRingerMode) {
+                audioManager.ringerModeInternal = orig.ringerMode
+                orig.ownsRingerMode = false
+                persistRecovery(orig)
+            }
+            orig.appliedRingerMode = ringer
+        }
+        val haptics = options.current(GameOption.HAPTICS) == 1
+        if (haptics != orig.ownsPulseBassHaptics) {
+            if (haptics) {
+                orig.pulseBassHaptics = systemSettings.pulseBassHaptics
+                orig.ownsPulseBassHaptics = true
+                persistRecovery(orig)
+                systemSettings.pulseBassHaptics = 0
+            } else {
+                systemSettings.pulseBassHaptics = orig.pulseBassHaptics
+                orig.ownsPulseBassHaptics = false
+                persistRecovery(orig)
+            }
+        }
+        val awake = options.current(GameOption.AWAKE) == 1
+        if (systemSettings.stayAwake != awake) systemSettings.stayAwake = awake
+        val bypass = options.current(GameOption.BYPASS) == 1
+        if (systemSettings.bypassChargeEnabled != bypass) systemSettings.bypassChargeEnabled = bypass
+    }
+
+    private fun persistRecovery(snapshot: SessionState) {
+        snapshot.preferredMode = SessionOptions.savedMode(context, snapshot.packageName) ?: snapshot.preferredMode
+        state = snapshot.copy(appliedRingerMode = 3)
     }
 }
