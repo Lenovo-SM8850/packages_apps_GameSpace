@@ -34,6 +34,8 @@ import android.provider.Settings
 import android.util.Log
 import android.view.*
 import android.window.TaskFpsCallback
+import android.window.OnBackInvokedDispatcher
+import android.window.OnBackInvokedCallback
 import androidx.activity.OnBackPressedDispatcher
 import androidx.activity.OnBackPressedDispatcherOwner
 import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
@@ -155,6 +157,11 @@ class GameSidebar(
             currentState = Lifecycle.State.RESUMED
         }
         override val lifecycle: Lifecycle get() = reg
+    }
+
+    private val panelBackOwner = object : OnBackPressedDispatcherOwner {
+        override val onBackPressedDispatcher = OnBackPressedDispatcher { requestDismissPanel() }
+        override val lifecycle: Lifecycle get() = noOpBackDispatcherOwner.lifecycle
     }
 
     private val panelDismissing = mutableStateOf(false)
@@ -638,8 +645,20 @@ class GameSidebar(
 
     private fun createPanelView(initialGraphExpanded: Boolean): ComposeView {
         return ComposeView(context).apply {
+            defaultFocusHighlightEnabled = false
+            isFocusableInTouchMode = true
+            val back = OnBackInvokedCallback { panelBackOwner.onBackPressedDispatcher.onBackPressed() }
+            var backDispatcher: OnBackInvokedDispatcher? = null
+            setOnKeyListener { _, keyCode, event ->
+                if (keyCode != android.view.KeyEvent.KEYCODE_BACK) false
+                else {
+                    if (event.action == android.view.KeyEvent.ACTION_UP && !event.isCanceled)
+                        panelBackOwner.onBackPressedDispatcher.onBackPressed()
+                    true
+                }
+            }
             val touchRegion = ViewTreeObserver.OnComputeInternalInsetsListener { info ->
-                // Keep outside-tap dismissal without allocating a full-display surface or taking focus.
+                // Capture outside taps without allocating a full-display surface.
                 val location = IntArray(2)
                 getLocationOnScreen(location)
                 val bounds = wm.maximumWindowMetrics.bounds
@@ -650,8 +669,13 @@ class GameSidebar(
             addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
                 override fun onViewAttachedToWindow(view: View) {
                     view.viewTreeObserver.addOnComputeInternalInsetsListener(touchRegion)
+                    backDispatcher = view.findOnBackInvokedDispatcher()
+                    backDispatcher?.registerOnBackInvokedCallback(OnBackInvokedDispatcher.PRIORITY_OVERLAY, back)
+                    view.requestFocus()
                 }
                 override fun onViewDetachedFromWindow(view: View) {
+                    backDispatcher?.unregisterOnBackInvokedCallback(back)
+                    backDispatcher = null
                     view.viewTreeObserver.takeIf { it.isAlive }?.removeOnComputeInternalInsetsListener(touchRegion)
                 }
             })
@@ -671,8 +695,10 @@ class GameSidebar(
                 repeatOnLifecycle(Lifecycle.State.STARTED) {
                     setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
                     setContent {
-                        OverlayTheme(context) {
-                            PanelContent(initialGraphExpanded)
+                        CompositionLocalProvider(LocalOnBackPressedDispatcherOwner provides panelBackOwner) {
+                            OverlayTheme(context) {
+                                PanelContent(initialGraphExpanded)
+                            }
                         }
                     }
                 }
@@ -972,7 +998,7 @@ class GameSidebar(
 
     private fun createPanelLayoutParam() = WindowManager.LayoutParams(
         WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-        WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+        WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM or
             WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
         PixelFormat.TRANSLUCENT
     ).apply {
