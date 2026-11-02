@@ -23,6 +23,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -86,7 +87,10 @@ internal fun GameOptionsScreen(game: LibraryGame, expanded: Boolean, onBack: () 
                             Icon(Icons.AutoMirrored.Rounded.ArrowBack, stringResource(R.string.library_back))
                         }
                     }, colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surfaceContainer))
-                    Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(16.dp),
+                    // A line appears under the header once the list scrolls beneath it.
+                    Box(Modifier.fillMaxWidth().height(1.dp).background(
+                        if (scrolled) MaterialTheme.colorScheme.outlineVariant else Color.Transparent))
+                    Column(Modifier.weight(1f).verticalScroll(scroll).padding(start = 16.dp, top = 8.dp, end = 16.dp, bottom = 16.dp),
                         verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         available.forEachIndexed { index, option ->
                             val value = snapshot.effective.getValue(option)

@@ -179,6 +179,7 @@ fun GamePanelCard(
     val recording by tileRepository.recordingState.collectAsState()
     val tiles = tileRepository.tiles
     val scroll = rememberScrollState()
+    val scrolled by remember { derivedStateOf { scroll.value > 0 } }
     CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides Dp.Unspecified) {
         Surface(Modifier.width(panelWidth).height(maxHeight), shape = RoundedCornerShape(28.dp),
             color = MaterialTheme.colorScheme.surfaceContainer.copy(alpha = overlayPanelAlpha()),
@@ -200,6 +201,7 @@ fun GamePanelCard(
                         onSettings = { openSettings(GameSettingsDestination.IN_GAME_OPTIONS) })
                     DashboardModes(selectedMode, compact, Modifier.padding(horizontal = px).padding(top = if (compact) 4.dp else 8.dp),
                         onNone = noneAction, onMode = { SessionOptions.chooseMode(context, it.toSystemGameMode()) })
+                    ScrollEdge(scrolled)
                     Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(scroll)
                         .padding(horizontal = px).padding(top = 8.dp, bottom = 12.dp)) {
                         if (graphExpanded) FpsGraph(Modifier.padding(bottom = 10.dp), fpsInteractor)
@@ -803,11 +805,25 @@ private fun SheetGrip() {
 
 @Composable
 private fun MoreDivider() {
-    Row(Modifier.fillMaxWidth().height(32.dp), verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        HorizontalDivider(Modifier.weight(1f))
-        Text(stringResource(R.string.dashboard_more_starts), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        HorizontalDivider(Modifier.weight(1f))
+    Box(Modifier.fillMaxWidth().height(32.dp), contentAlignment = Alignment.Center) {
+        Box(Modifier.fillMaxWidth().height(2.dp).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)))
+        Row(Modifier.height(28.dp).background(MaterialTheme.colorScheme.primaryContainer, CircleShape)
+            .padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            Icon(Icons.Rounded.ExpandMore, null, Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onPrimaryContainer)
+            Text(stringResource(R.string.dashboard_more_starts), fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onPrimaryContainer)
+        }
+    }
+}
+
+/** Keeps a gap under the pinned header and shows a line once the content scrolls beneath it. */
+@Composable
+private fun ScrollEdge(scrolled: Boolean) {
+    Column(Modifier.fillMaxWidth()) {
+        Spacer(Modifier.height(8.dp))
+        Box(Modifier.fillMaxWidth().height(1.dp).background(
+            if (scrolled) MaterialTheme.colorScheme.outlineVariant else Color.Transparent))
     }
 }
 
