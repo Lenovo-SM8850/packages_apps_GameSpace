@@ -169,13 +169,15 @@ class CycleTile(
     private val cycle: () -> Unit,
     private val readSavedDifference: () -> Boolean = { false },
     private val readIcon: () -> Int = { defaultIcon },
+    /** Whether the tile reads as on; a cycle with no off position leaves it false. */
+    private val readEnabled: () -> Boolean = { false },
 ) : TileAction {
     override val icon: Int get() = readIcon()
     override val differsFromSaved: Boolean get() = readSavedDifference()
     override val kind = TileKind.CYCLE
-    override val isEnabled = false
+    override val isEnabled: Boolean get() = readEnabled()
     override val valueLine: String get() = readValue()
-    @Composable override fun observeEnabled(): State<Boolean> = rememberUpdatedState(false)
+    @Composable override fun observeEnabled(): State<Boolean> = rememberUpdatedState(readEnabled())
     override fun toggle() = cycle()
 }
 
@@ -1073,6 +1075,8 @@ class TileRepository @Inject constructor(
             category = TileCategory.SOUND_NOTIFICATIONS,
             sessionOption = GameOption.RINGER,
             readSavedDifference = { ringerDiffersFromSaved() },
+            // Sound and vibrate read as on; only mute reads as off.
+            readEnabled = { ringerState.value != AudioManager.RINGER_MODE_SILENT },
             readIcon = {
                 when (ringerState.value) {
                     AudioManager.RINGER_MODE_SILENT -> R.drawable.materialsymbols_ic_volume_off_rounded_filled
