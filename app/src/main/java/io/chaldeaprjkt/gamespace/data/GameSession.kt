@@ -237,9 +237,6 @@ class GameSession @Inject constructor(
         state = null
     }
 
-    fun finalize() {
-        unregister()
-    }
 
     companion object {
         const val PREFS_NAME = "persisted_session"
