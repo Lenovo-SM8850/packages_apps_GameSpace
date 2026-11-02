@@ -49,6 +49,7 @@ import android.os.BatteryManager
 import android.os.Binder
 import android.os.Handler
 import android.os.IBinder
+import android.os.SystemClock
 import android.os.Looper
 import android.util.Log
 import android.view.WindowManager
@@ -94,6 +95,13 @@ class SessionService : Hilt_SessionService() {
     @Inject lateinit var gson: Gson
 
     private var currentPackage: String? = null
+    private var suspended = false
+    private enum class SuspensionReason { FRAMEWORK, CALL, SCREEN }
+    private val suspensionReasons = mutableSetOf<SuspensionReason>()
+    private var frameworkSessionActive = false
+    private var frameworkGameVisible = false
+    private var deferredGameStart = false
+    private var gameProcessId = 0
     private var gameTaskIds = emptySet<Int>()
     private val removingTaskIds = mutableSetOf<Int>()
     private var taskListenerRegistered = false
@@ -101,6 +109,7 @@ class SessionService : Hilt_SessionService() {
     private val taskListener = object : TaskStackListener() {
         override fun onTaskRemovalStarted(taskInfo: ActivityManager.RunningTaskInfo) {
             mainHandler.post {
+                if (pendingStart?.getIntExtra(EXTRA_GAME_TASK_ID, -1) == taskInfo.taskId) clearPendingStart()
                 if (taskInfo.userId == sessionUserId && currentPackage != null &&
                     (taskInfo.baseActivity?.packageName == currentPackage ||
                         taskInfo.topActivity?.packageName == currentPackage)) {
@@ -112,6 +121,7 @@ class SessionService : Hilt_SessionService() {
 
         override fun onTaskRemoved(taskId: Int) {
             mainHandler.post {
+                if (pendingStart?.getIntExtra(EXTRA_GAME_TASK_ID, -1) == taskId) clearPendingStart()
                 onGameTaskRemoved(taskId)
                 removingTaskIds.remove(taskId)
             }
@@ -129,6 +139,42 @@ class SessionService : Hilt_SessionService() {
     private lateinit var platform: AxPlatformClient
 
     private val mainHandler = Handler(Looper.getMainLooper())
+    private var pendingStart: Intent? = null
+    private var pendingStartDeadline = 0L
+    private val retryStart = Runnable {
+        val pending = pendingStart
+        if (pending != null) onStartCommand(pending, 0, 0)
+    }
+
+    private fun matchesPending(intent: Intent): Boolean {
+        val pending = pendingStart ?: return false
+        fun sameInt(key: String, unknown: Int): Boolean {
+            val first = pending.getIntExtra(key, unknown)
+            val second = intent.getIntExtra(key, unknown)
+            return first == unknown || second == unknown || first == second
+        }
+        return pending.getStringExtra(EXTRA_PACKAGE_NAME) == intent.getStringExtra(EXTRA_PACKAGE_NAME) &&
+            sameInt(EXTRA_GAME_TASK_ID, -1) && sameInt(EXTRA_GAME_PROCESS_ID, 0)
+    }
+
+    private fun clearPendingStart() {
+        mainHandler.removeCallbacks(retryStart)
+        pendingStart = null
+        pendingStartDeadline = 0L
+    }
+
+    private fun deferStart(intent: Intent) {
+        if (!matchesPending(intent)) pendingStartDeadline = SystemClock.uptimeMillis() + 5000L
+        if (SystemClock.uptimeMillis() >= pendingStartDeadline) {
+            clearPendingStart()
+            if (currentPackage == null) stopSelf()
+            return
+        }
+        pendingStart = Intent(intent)
+        mainHandler.removeCallbacks(retryStart)
+        mainHandler.postDelayed(retryStart, 250L)
+    }
+
     private val screenOffPanelCollapse = Runnable {
         if (currentPackage != null) sidebar.collapseForScreenOff()
     }
@@ -161,8 +207,19 @@ class SessionService : Hilt_SessionService() {
     private val wifiStateReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             when (intent.action) {
-                Intent.ACTION_SCREEN_OFF -> { startStatus.cancel(); releaseWifiLock() }
-                Intent.ACTION_USER_SWITCHED, Intent.ACTION_USER_BACKGROUND -> startStatus.cancel()
+                Intent.ACTION_SCREEN_OFF -> {
+                    suspensionReasons.add(SuspensionReason.SCREEN)
+                    suspendGameSession()
+                }
+                Intent.ACTION_SCREEN_ON -> {
+                    suspensionReasons.remove(SuspensionReason.SCREEN)
+                    resumeGameSession()
+                    updateWifiLock()
+                }
+                Intent.ACTION_USER_SWITCHED, Intent.ACTION_USER_BACKGROUND -> {
+                    clearPendingStart()
+                    stopGameSession()
+                }
                 Intent.ACTION_BATTERY_CHANGED, AudioManager.INTERNAL_RINGER_MODE_CHANGED_ACTION -> publishSessionStatus()
                 else -> updateWifiLock()
             }
@@ -216,6 +273,13 @@ class SessionService : Hilt_SessionService() {
         tileRepository.init(platform)
         mediaVolume.start()
         brightnessInteractor.onToggleAutoMode = { session.setAutoBrightness(it) }
+        brightnessInteractor.onSetBrightness = { percent ->
+            if (currentPackage == null || suspended) false else {
+                session.capturePanelBrightness()
+                SessionOptions.chooseBrightness(this, percent)
+                true
+            }
+        }
 
         val windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
         val mainHandler = Handler(Looper.getMainLooper())
@@ -258,8 +322,19 @@ class SessionService : Hilt_SessionService() {
             // Let the panel announce the accepted request before the one-second screen-off delay.
             mainHandler.postDelayed(screenOffPanelCollapse, 800)
         }
-        tileRepository.onScreenOff = { screenOffSession.request() }
+        tileRepository.onScreenOff = {
+            if (!suspended && frameworkSessionActive && frameworkGameVisible) screenOffSession.request()
+        }
         callListener.onIncomingCall = { screenOffSession.end() }
+        callListener.onCallActiveChanged = { active ->
+            if (active) {
+                suspensionReasons.add(SuspensionReason.CALL)
+                suspendGameSession()
+            } else {
+                suspensionReasons.remove(SuspensionReason.CALL)
+                resumeGameSession()
+            }
+        }
 
         wifiMonitoring = true
         appSettings.registerPreferenceListener(wifiPreferenceListener)
@@ -288,10 +363,54 @@ class SessionService : Hilt_SessionService() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == ACTION_START) {
+        if (intent != null && matchesPending(intent)) {
+            if (intent.action == ACTION_END || intent.action == ACTION_SUSPEND) clearPendingStart()
+            else if (intent.action == ACTION_VISIBILITY) {
+                pendingStart?.putExtra(EXTRA_GAME_VISIBLE, intent.getBooleanExtra(EXTRA_GAME_VISIBLE, false))
+                if (currentPackage == null) return START_NOT_STICKY
+            }
+        }
+        // Framework keeps the binding across suspend: visibility hides UI only, suspend
+        // releases effects, resume reacquires without a launch pill, end discards choices.
+        // Task/process extras reject stale commands; the service's Context selects the user.
+        if (intent != null && (intent.action == ACTION_SUSPEND || intent.action == ACTION_END)) {
+            if (matchesSession(intent)) {
+                if (intent.action == ACTION_SUSPEND) {
+                    frameworkSessionActive = false
+                    suspensionReasons.add(SuspensionReason.FRAMEWORK)
+                    suspendGameSession()
+                } else stopGameSession()
+            }
+        } else if (intent?.action == ACTION_RESUME) {
             val packageName = intent.getStringExtra(EXTRA_PACKAGE_NAME)
             if (packageName != null) {
-                if (!startGameSession(packageName)) return START_NOT_STICKY
+                if (matchesSession(intent)) {
+                    frameworkSessionActive = true
+                    suspensionReasons.remove(SuspensionReason.FRAMEWORK)
+                    if (getSystemService(android.os.PowerManager::class.java).isInteractive) {
+                        suspensionReasons.remove(SuspensionReason.SCREEN)
+                    }
+                } else if (currentPackage == null) {
+                    if (!startGameSession(packageName, intent.getIntExtra(EXTRA_GAME_TASK_ID, -1),
+                            intent.getIntExtra(EXTRA_GAME_PROCESS_ID, 0), announce = false,
+                            visible = intent.getBooleanExtra(EXTRA_GAME_VISIBLE, true))) {
+                        deferStart(intent)
+                        return START_NOT_STICKY
+                    }
+                    clearPendingStart()
+                } else return START_NOT_STICKY
+                setGameUiVisible(intent.getBooleanExtra(EXTRA_GAME_VISIBLE, true))
+            }
+        } else if (intent?.action == ACTION_START) {
+            val packageName = intent.getStringExtra(EXTRA_PACKAGE_NAME)
+            if (packageName != null) {
+                if (!startGameSession(packageName, intent.getIntExtra(EXTRA_GAME_TASK_ID, -1),
+                        intent.getIntExtra(EXTRA_GAME_PROCESS_ID, 0),
+                        visible = intent.getBooleanExtra(EXTRA_GAME_VISIBLE, true))) {
+                    deferStart(intent)
+                    return START_NOT_STICKY
+                }
+                clearPendingStart()
                 // Framework acknowledgement reuses ACTION_START; it updates, never rearms, the pill.
                 bypassChargeActive = intent.getBooleanExtra("bypass_charge_active", false)
                 publishSessionStatus()
@@ -304,20 +423,32 @@ class SessionService : Hilt_SessionService() {
             if (currentPackage == null) {
                 // A visibility update must never resurrect a stopped session.
                 stopSelf(startId)
-            } else if (currentPackage == intent.getStringExtra(EXTRA_PACKAGE_NAME)) {
+            } else if (matchesSession(intent)) {
                 setGameUiVisible(intent.getBooleanExtra(EXTRA_GAME_VISIBLE, false))
             }
         }
         return START_NOT_STICKY
     }
 
+    private fun matchesSession(intent: Intent): Boolean =
+        currentPackage != null && currentPackage == intent.getStringExtra(EXTRA_PACKAGE_NAME) &&
+            (intent.getIntExtra(EXTRA_GAME_TASK_ID, -1).let { it == -1 || it in gameTaskIds }) &&
+            (intent.getIntExtra(EXTRA_GAME_PROCESS_ID, 0).let { it == 0 || it == gameProcessId })
+
     private fun setGameUiVisible(visible: Boolean) {
-        sidebar.setGameVisible(visible)
-        aspectRatioGesture.setGameVisible(visible)
-        danmakuService.setGameVisible(visible)
-        callListener.setGameVisible(visible)
+        frameworkGameVisible = visible
+        if (visible) resumeGameSession()
+        updateGameUiVisibility()
+    }
+
+    private fun updateGameUiVisibility() {
+        val show = frameworkGameVisible && currentPackage != null && !suspended
+        sidebar.setGameVisible(show)
+        aspectRatioGesture.setGameVisible(show)
+        danmakuService.setGameVisible(show)
+        callListener.setGameVisible(show)
         publishSessionStatus()
-        startStatus.setGameVisible(visible)
+        startStatus.setGameVisible(show)
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
@@ -347,11 +478,14 @@ class SessionService : Hilt_SessionService() {
         }
     }
 
-    private fun startGameSession(packageName: String): Boolean {
-        val tasks = gameTasks(packageName)
+    private fun startGameSession(packageName: String, taskId: Int = -1,
+        processId: Int = 0, announce: Boolean = true, visible: Boolean = true): Boolean {
+        val allTasks = gameTasks(packageName)
+        val tasks = if (taskId == -1) allTasks else allTasks?.filter { it == taskId }?.toSet()
         // A delayed framework acknowledgement must not restart a removed game's session.
         if (tasks != null && tasks.isEmpty()) return false
-        if (currentPackage == packageName && (tasks == null || gameTaskIds.isEmpty() ||
+        if (currentPackage == packageName && (processId == 0 || processId == gameProcessId) &&
+            (taskId == -1 || taskId in gameTaskIds) && (tasks == null || gameTaskIds.isEmpty() ||
                 tasks.any { it in gameTaskIds })) {
             if (tasks != null) gameTaskIds = tasks
             Log.d(TAG, "Session already active for $packageName")
@@ -365,31 +499,75 @@ class SessionService : Hilt_SessionService() {
         Log.i(TAG, "Starting game session for $packageName")
         sessionUserId = userId
         currentPackage = packageName
-        gameTaskIds = tasks.orEmpty()
+        suspended = true
+        frameworkSessionActive = true
+        frameworkGameVisible = visible
+        suspensionReasons.clear()
+        callListener.init(active = false)
+        if (callListener.isCallActive) suspensionReasons.add(SuspensionReason.CALL)
+        if (!getSystemService(android.os.PowerManager::class.java).isInteractive) {
+            suspensionReasons.add(SuspensionReason.SCREEN)
+        }
+        gameProcessId = processId
+        gameTaskIds = tasks ?: if (taskId != -1) setOf(taskId) else emptySet()
         bypassChargeActive = false
-        screenSampler.start(packageName)
-        
         session.unregister()
-        session.register(packageName)
-        SidebarVisibility.setGame(this, packageName)
-        
-        applyGameModeConfig(packageName)
-        applyAutoDnd()
-
-        tileRepository.onGameStart(packageName)
-        sidebar.onGameStart(packageName)
+        session.register(packageName, active = false)
+        deferredGameStart = true
+        sidebar.onGameStart(packageName, active = false)
         screenOffSession.onGameStart(packageName)
-
-        callListener.init()
-        refreshInGameOptions()
-        updateWifiLock()
-        // All synchronous session options and startup cleanup have completed before arming.
-        startStatus.beginSession(appSettings.showStatusAtGameStart)
+        resumeGameSession()
+        // A session first encountered during a call also resumes silently.
+        if (announce && !suspended) startStatus.beginSession(appSettings.showStatusAtGameStart)
         publishSessionStatus()
         return true
     }
 
+    private fun suspendGameSession() {
+        if (currentPackage == null || suspended) return
+        suspended = true
+        startStatus.cancel()
+        mainHandler.removeCallbacks(screenOffPanelCollapse)
+        updateGameUiVisibility()
+        screenSampler.stop()
+        screenOffSession.end()
+        SidebarVisibility.setGame(this, null)
+        releaseWifiLock()
+        sidebar.setSessionActive(false)
+        callListener.setSessionActive(false)
+        danmakuService.setSessionActive(false)
+        restoreAutoDnd()
+        session.suspend()
+    }
+
+    private fun resumeGameSession() {
+        val packageName = currentPackage ?: return
+        if (!suspended || !frameworkSessionActive || !frameworkGameVisible ||
+            suspensionReasons.isNotEmpty() || callListener.isCallActive ||
+            !getSystemService(android.os.PowerManager::class.java).isInteractive) return
+        suspended = false
+        session.resume()
+        applyGameModeConfig(packageName)
+        screenSampler.start(packageName)
+        if (deferredGameStart) {
+            deferredGameStart = false
+            tileRepository.onGameStart(packageName)
+        }
+        sidebar.setSessionActive(true)
+        SidebarVisibility.setGame(this, packageName)
+        danmakuService.setSessionActive(true)
+        callListener.setSessionActive(true)
+        brightnessInteractor.refresh()
+        SessionOptions.brightness(this)?.let { brightnessInteractor.restoreSessionBrightness(it) }
+        refreshInGameOptions()
+        updateGameUiVisibility()
+    }
+
     private fun stopGameSession() {
+        frameworkSessionActive = false
+        frameworkGameVisible = false
+        suspensionReasons.clear()
+        deferredGameStart = false
         startStatus.cancel()
         mainHandler.removeCallbacks(screenOffPanelCollapse)
         Log.i(TAG, "Stopping game session")
@@ -403,11 +581,13 @@ class SessionService : Hilt_SessionService() {
         sidebar.onGameLeave()
         restoreAutoDnd()
         session.unregister()
-        currentPackage?.let { applyGameModeConfig(it) }
         gameModeUtils.activeGame = null
         callListener.destroy()
+        danmakuService.setSessionActive(false)
 
         currentPackage = null
+        suspended = false
+        gameProcessId = 0
         gameTaskIds = emptySet()
         bypassChargeActive = false
     }
@@ -416,7 +596,7 @@ class SessionService : Hilt_SessionService() {
         val packageName = currentPackage
         try {
             val wifi = wifiManager
-            if (!wifiMonitoring || packageName == null || !appSettings.wifiLowLatency ||
+            if (!wifiMonitoring || suspended || packageName == null || !appSettings.wifiLowLatency ||
                 !appSettings.wifiLowLatencySupported || wifi?.isWifiEnabled != true ||
                 !getSystemService(android.os.PowerManager::class.java).isInteractive || wifiNetworks.isEmpty()) {
                 releaseWifiLock()
@@ -463,7 +643,7 @@ class SessionService : Hilt_SessionService() {
 
     private fun refreshInGameOptions() {
         SidebarVisibility.refresh(this)
-        if (currentPackage == null) return
+        if (currentPackage == null || suspended) return
         session.applyOptions()
         currentPackage?.let { applyGameModeConfig(it) }
         updateWifiLock()
@@ -554,6 +734,7 @@ class SessionService : Hilt_SessionService() {
         GameModeUtils.withModeLock {
             val userGame = settings.userGames.firstOrNull { it.packageName == app }
             val preferred = SessionOptions.mode(this) ?: userGame?.mode ?: settings.libraryDefaultMode
+            io.github.miner7222.gamespace.library.ModePreferences.publish(this, app, preferred)
             gameModeUtils.activeGame = io.chaldeaprjkt.gamespace.data.UserGame(app, preferred)
             // Always reconcile the real service state; a cached choice can outlive an external change.
             gameModeUtils.applyRuntimeModeForUser(app, preferred, sessionUserId)
@@ -561,6 +742,7 @@ class SessionService : Hilt_SessionService() {
     }
 
     override fun onDestroy() {
+        clearPendingStart()
         Log.d(TAG, "SessionService destroyed")
         if (taskListenerRegistered) {
             runCatching { taskManager.unregisterTaskStackListener(taskListener) }
@@ -581,9 +763,11 @@ class SessionService : Hilt_SessionService() {
         aspectRatioGesture.release()
         unregisterReceiver(dndReceiver)
         brightnessInteractor.onToggleAutoMode = null
+        brightnessInteractor.onSetBrightness = null
         tileRepository.onScreenOff = null
         screenOffSession.onNotice = null
         callListener.onIncomingCall = null
+        callListener.onCallActiveChanged = null
         tileRepository.dispose()
         mediaVolume.dispose()
         gameModeUtils.unbind()
@@ -601,7 +785,12 @@ class SessionService : Hilt_SessionService() {
     companion object {
         const val TAG = "SessionService"
         const val ACTION_START = "game_start"
+        const val ACTION_SUSPEND = "game_suspend"
+        const val ACTION_RESUME = "game_resume"
+        const val ACTION_END = "game_end"
         const val ACTION_VISIBILITY = "game_visibility"
+        const val EXTRA_GAME_TASK_ID = "game_task_id"
+        const val EXTRA_GAME_PROCESS_ID = "game_process_id"
         const val EXTRA_GAME_VISIBLE = "game_visible"
         const val EXTRA_PACKAGE_NAME = "package_name"
     }

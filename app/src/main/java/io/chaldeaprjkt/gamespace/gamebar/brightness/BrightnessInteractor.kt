@@ -38,9 +38,12 @@ class BrightnessInteractor @Inject constructor(
 
     fun setBrightness(percent: Float) {
         if (_userHasInteracted.value) {
-            repository.setBrightness(percent)
+            if (onSetBrightness?.invoke(percent) != false) repository.setBrightness(percent)
         }
     }
+
+    var onSetBrightness: ((Float) -> Boolean)? = null
+    fun restoreSessionBrightness(percent: Float) = repository.setBrightness(percent)
 
     var onToggleAutoMode: ((Boolean) -> Unit)? = null
 
