@@ -497,8 +497,8 @@ fun TileButton(tile: TileAction, modifier: Modifier = Modifier, tablet: Boolean 
     onClick: () -> Unit = { tile.toggle() }, onDefault: () -> Unit = {}) {
     val enabled by tile.observeEnabled()
     val changed = tile.differsFromSaved
-    // A set aspect ratio reads as on and names the ratio alone; full screen reads as off.
-    val active = (tile.kind == TileKind.TOGGLE || ratio) && enabled
+    // Toggles, a set aspect ratio and a ringer that can make sound read as on.
+    val active = enabled
     val record = tile.id == "screen_record" && recording.phase == RecordingPhase.ACTIVE
     val color = MaterialTheme.colorScheme
     val inner = overlayInnerAlpha()
