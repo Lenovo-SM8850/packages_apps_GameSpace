@@ -477,7 +477,9 @@ fun TileButton(tile: TileAction, modifier: Modifier = Modifier, tablet: Boolean 
     onClick: () -> Unit = { tile.toggle() }, onDefault: () -> Unit = {}) {
     val enabled by tile.observeEnabled()
     val changed = tile.differsFromSaved
-    val active = tile.kind == TileKind.TOGGLE && enabled
+    // A set aspect ratio reads as on and names the ratio alone; full screen reads as off.
+    val ratio = tile.id == "screen_aspect_ratio"
+    val active = (tile.kind == TileKind.TOGGLE || ratio) && enabled
     val record = tile.id == "screen_record" && recording.phase == RecordingPhase.ACTIVE
     val color = MaterialTheme.colorScheme
     val background by animateColorAsState(if (record) color.errorContainer else if (active) color.primaryContainer else color.surfaceContainerHighest)
@@ -488,9 +490,9 @@ fun TileButton(tile: TileAction, modifier: Modifier = Modifier, tablet: Boolean 
             ?: stringResource(R.string.dashboard_elapsed_unknown)
         RecordingPhase.STARTING -> stringResource(R.string.dashboard_record_starting)
         else -> null
-    } else if (tile.kind == TileKind.CYCLE || tile.kind == TileKind.DIALOG) tile.valueLine else null
+    } else if (!ratio && (tile.kind == TileKind.CYCLE || tile.kind == TileKind.DIALOG)) tile.valueLine else null
     val label = if (record) stringResource(R.string.dashboard_recording)
-        else if (tile.id == "screen_aspect_ratio") stringResource(R.string.tile_aspect_ratio) else tile.label
+        else tile.label
     val actionLabel = if (record) stringResource(R.string.dashboard_stop_recording) else null
     val context = LocalContext.current
     val defaultLabel = stringResource(R.string.dashboard_game_default)
@@ -762,7 +764,7 @@ fun TileEditPanel(repository: TileRepository, apps: List<AppInfo>, mainCount: In
                                     Text(title, fontSize = 13.sp, maxLines = 1)
                                 }
                             } else InputChip(selected = false, onClick = {
-                                drag.addTile(DragTileData(tile.id, tile.label, tile.icon)); save()
+                                drag.addTile(DragTileData(tile.id, title, tile.icon)); save()
                                 onMessage(context.getString(if (drag.tiles.size <= mainCount) R.string.dashboard_added_main
                                     else R.string.dashboard_added_more, title))
                             }, label = { Text(title, maxLines = 1) },
