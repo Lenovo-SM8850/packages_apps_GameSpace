@@ -13,11 +13,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MotionScheme
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.unit.dp
-
-/** Reads the opacity of the layer an overlay surface sits in, so its blur fades with it. */
-val LocalOverlayFade = staticCompositionLocalOf<() -> Float> { { 1f } }
 
 /** Overlays sit on top of a game, so they always use the dark scheme. */
 @Composable

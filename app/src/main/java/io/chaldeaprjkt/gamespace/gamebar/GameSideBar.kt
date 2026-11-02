@@ -44,10 +44,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.ComposeView
@@ -58,10 +55,10 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.ui.input.pointer.pointerInput
 import io.github.miner7222.gamespace.gamebar.MediaVolumeController
-import io.github.miner7222.gamespace.gamebar.LocalOverlayFade
 import io.github.miner7222.gamespace.gamebar.OverlayTheme
 import io.github.miner7222.gamespace.gamebar.StatsOverlay
 import androidx.compose.ui.platform.ViewCompositionStrategy
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.*
 import com.android.axion.compose.lifecycle.repeatWhenAttached
@@ -609,6 +606,35 @@ class GameSidebar(
 
     private fun createPanelView(initialGraphExpanded: Boolean): ComposeView {
         return ComposeView(context).apply {
+            val touchRegion = ViewTreeObserver.OnComputeInternalInsetsListener { info ->
+                // Keep outside-tap dismissal without allocating a full-display surface or taking focus.
+                val location = IntArray(2)
+                getLocationOnScreen(location)
+                val bounds = wm.maximumWindowMetrics.bounds
+                info.setTouchableInsets(ViewTreeObserver.InternalInsetsInfo.TOUCHABLE_INSETS_REGION)
+                info.touchableRegion.set(-location[0], -location[1],
+                    bounds.width() - location[0], bounds.height() - location[1])
+            }
+            addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
+                override fun onViewAttachedToWindow(view: View) {
+                    view.viewTreeObserver.addOnComputeInternalInsetsListener(touchRegion)
+                }
+                override fun onViewDetachedFromWindow(view: View) {
+                    view.viewTreeObserver.takeIf { it.isAlive }?.removeOnComputeInternalInsetsListener(touchRegion)
+                }
+            })
+            var outsideGesture = false
+            setOnTouchListener { _, event ->
+                if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+                    outsideGesture = event.x < 0 || event.y < 0 || event.x >= width || event.y >= height
+                    if (outsideGesture) requestDismissPanel()
+                }
+                val consumed = outsideGesture
+                if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) {
+                    outsideGesture = false
+                }
+                consumed
+            }
             repeatWhenAttached {
                 repeatOnLifecycle(Lifecycle.State.STARTED) {
                     setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
@@ -634,7 +660,7 @@ class GameSidebar(
         val slideSign = if (circleOnLeft) -1f else 1f
 
         val slideOffset by animateFloatAsState(
-            targetValue = if (show) 0f else slideSign * 400f,
+            targetValue = if (show) 0f else slideSign * PANEL_SLIDE_PX,
             animationSpec = tween(
                 durationMillis = if (show) 350 else 250,
                 easing = if (show) FastOutSlowInEasing else FastOutLinearInEasing,
@@ -645,13 +671,11 @@ class GameSidebar(
             },
         )
 
-        val panelAlphaState = animateFloatAsState(
+        val panelAlpha by animateFloatAsState(
             targetValue = if (show) 1f else 0f,
             animationSpec = tween(if (show) 280 else 180),
             label = "panel_alpha",
         )
-        val panelAlpha by panelAlphaState
-        val panelFade = remember { { panelAlphaState.value } }
 
         val panelScale by animateFloatAsState(
             targetValue = if (show) 1f else 0.88f,
@@ -699,10 +723,29 @@ class GameSidebar(
         var swipe by remember { mutableFloatStateOf(0f) }
         val threshold = with(density) { 48.dp.toPx() }
         val packageName = gamePackage ?: return
+        val panelLeft = with(density) { left.coerceAtLeast(0.dp).roundToPx() }
+        val panelTop = with(density) { top.coerceAtLeast(0.dp).roundToPx() }
+        val panelWidth = with(density) { width.roundToPx().coerceAtLeast(1) }
+        val panelHeight = with(density) { height.roundToPx().coerceAtLeast(1) }
+        // Include only the slide's visible sweep, keeping the panel at its existing screen position.
+        val windowLeft = if (circleOnLeft) (panelLeft - PANEL_SLIDE_PX).coerceAtLeast(0) else panelLeft
+        val windowRight = if (circleOnLeft) panelLeft + panelWidth else
+            (panelLeft + panelWidth + PANEL_SLIDE_PX).coerceAtMost(metrics.bounds.width())
+        val windowWidth = (windowRight - windowLeft).coerceAtLeast(1)
+        SideEffect {
+            if (panelLayoutParam.x != windowLeft || panelLayoutParam.y != panelTop ||
+                panelLayoutParam.width != windowWidth || panelLayoutParam.height != panelHeight) {
+                panelLayoutParam.x = windowLeft
+                panelLayoutParam.y = panelTop
+                panelLayoutParam.width = windowWidth
+                panelLayoutParam.height = panelHeight
+                panelView?.takeIf { it.isAttachedToWindow }?.let { wm.updateViewLayout(it, panelLayoutParam) }
+            }
+        }
         Box(Modifier.fillMaxSize().clickable(
             interactionSource = remember { MutableInteractionSource() }, indication = null,
         ) { if (!dismissing) requestDismissPanel() }) {
-            Box(Modifier.offset(left.coerceAtLeast(0.dp), top.coerceAtLeast(0.dp))
+            Box(Modifier.offset { IntOffset(panelLeft - windowLeft, 0) }.width(width).height(height)
                 .graphicsLayer {
                     translationX = slideOffset
                     alpha = panelAlpha
@@ -716,13 +759,11 @@ class GameSidebar(
                     }, onHorizontalDrag = { change, amount -> swipe += amount; change.consume() })
                 }
                 .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {}) {
-                CompositionLocalProvider(LocalOverlayFade provides panelFade) {
-                    GamePanelCard(interactor = brightnessInteractor, fpsInteractor = fpsInteractor, apps = apps,
-                        gameModeUtils = gameModeUtils, systemSettings = settings, tileRepository = tileRepository,
-                        mediaVolume = mediaVolume, gamePackage = packageName,
-                        onDismiss = { forceRemovePanel() }, panelWidth = width, maxHeight = height,
-                        onEditingChanged = { editingPanel = it }, initialGraphExpanded = initialGraphExpanded)
-                }
+                GamePanelCard(interactor = brightnessInteractor, fpsInteractor = fpsInteractor, apps = apps,
+                    gameModeUtils = gameModeUtils, systemSettings = settings, tileRepository = tileRepository,
+                    mediaVolume = mediaVolume, gamePackage = packageName,
+                    onDismiss = { forceRemovePanel() }, panelWidth = width, maxHeight = height,
+                    onEditingChanged = { editingPanel = it }, initialGraphExpanded = initialGraphExpanded)
             }
         }
     }
@@ -898,13 +939,15 @@ class GameSidebar(
         PixelFormat.TRANSLUCENT
     ).apply {
         setFitInsetsTypes(0)
-        width = WindowManager.LayoutParams.MATCH_PARENT
-        height = WindowManager.LayoutParams.MATCH_PARENT
+        width = 1
+        height = 1
+        gravity = Gravity.TOP or Gravity.LEFT
         layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
         preferMinimalPostProcessing = true
     }
 
     companion object {
+        private const val PANEL_SLIDE_PX = 400
         private const val IDLE_TIMEOUT_MS = 3000L
         private const val MINI_TIMEOUT_MS = 4000L
         private const val TASK_RECHECK_DELAY_MS = 500L
