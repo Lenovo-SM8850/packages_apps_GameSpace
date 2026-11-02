@@ -18,6 +18,7 @@ package io.chaldeaprjkt.gamespace.gamebar
 
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -38,6 +39,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
@@ -74,7 +76,11 @@ internal const val MINI_WIDTH_DP = 136
 internal const val MINI_HEIGHT_DP = 128
 internal const val MINI_RECORDING_HEIGHT_DP = 184
 
-internal fun handleWidthDp(showFps: Boolean) = HANDLE_WIDTH_DP + if (showFps) 40 else 0
+internal fun miniWidthDp(showStats: Boolean, recording: Boolean) =
+    if (showStats && !recording) 76 else MINI_WIDTH_DP
+
+internal fun miniHeightDp(showStats: Boolean, recording: Boolean) =
+    (if (showStats) 68 else MINI_HEIGHT_DP) + if (recording) MINI_RECORDING_HEIGHT_DP - MINI_HEIGHT_DP else 0
 
 @Composable
 fun GameBarView(
@@ -95,6 +101,7 @@ fun GameBarView(
     onDragStart: () -> Pair<Int, Int>,
     onDragUpdate: (Int, Int) -> Unit,
     onDragEnd: (Int, Int) -> Unit,
+    onMiniBarSizeChanged: (Int, Int) -> Unit,
 ) {
     val state = rememberMutableSceneTransitionLayoutState(
         initialScene = GameBarScenes.Handle,
@@ -164,11 +171,12 @@ fun GameBarView(
     }, contentAlignment = if (dockedOnLeft) Alignment.CenterStart else Alignment.CenterEnd) {
         SceneTransitionLayout(state = state, swipeDetector = noSwipe) {
             scene(GameBarScenes.Handle) {
-                EdgeHandle(isLocked, dockedOnLeft, animatedAlpha, showFps, fpsText, onExpanded,
+                EdgeHandle(isLocked, dockedOnLeft, animatedAlpha, onExpanded,
                     Modifier.element(GameBarElements.HandleContent).then(dragModifier))
             }
             scene(GameBarScenes.MiniBar) {
-                MiniBar(fpsText, dockedOnLeft, recording, onShowPanel, onStopRecording, onCollapsed,
+                MiniBar(fpsText, showFps, dockedOnLeft, recording, onShowPanel, onStopRecording, onCollapsed,
+                    onMiniBarSizeChanged,
                     Modifier.element(GameBarElements.MiniBarContent))
             }
         }
@@ -180,14 +188,12 @@ private fun EdgeHandle(
     locked: Boolean,
     onLeft: Boolean,
     alpha: Float,
-    showFps: Boolean,
-    fpsText: String,
     onTap: () -> Unit,
     modifier: Modifier,
 ) {
     val description = stringResource(R.string.gamebar_open_controls)
     val lockState = if (locked) stringResource(R.string.dashboard_gesture_on) else null
-    Box(modifier.size(handleWidthDp(showFps).dp, HANDLE_HEIGHT_DP.dp).alpha(alpha)
+    Box(modifier.size(HANDLE_WIDTH_DP.dp, HANDLE_HEIGHT_DP.dp).alpha(alpha)
         .semantics {
             contentDescription = description
             if (lockState != null) stateDescription = lockState
@@ -202,35 +208,33 @@ private fun EdgeHandle(
                 if (locked) MaterialTheme.colorScheme.primary
                 else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f), RoundedCornerShape(2.dp)))
         }
-        if (showFps) {
-            Column(Modifier.align(if (onLeft) Alignment.CenterEnd else Alignment.CenterStart)
-                .size(56.dp, 40.dp)
-                .background(MaterialTheme.colorScheme.surfaceContainerHighest, RoundedCornerShape(16.dp))
-                .border(overlayBorder(), RoundedCornerShape(16.dp)),
-                horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                Text(fpsText.ifEmpty { "–" }, color = MaterialTheme.colorScheme.onSurface,
-                    fontSize = 17.sp, lineHeight = 20.sp, fontWeight = FontWeight.Bold,
-                    style = TextStyle(fontFeatureSettings = "tnum"))
-                Text(stringResource(R.string.gamebar_fps_label), color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontSize = 11.sp, lineHeight = 14.sp)
-            }
-        }
     }
 }
 
 @Composable
 private fun MiniBar(
     fpsText: String,
+    showStats: Boolean,
     onLeft: Boolean,
     recording: RecordingState,
     onShowPanel: (Boolean) -> Unit,
     onStopRecording: () -> Unit,
     onCollapsed: () -> Unit,
+    onSizeChanged: (Int, Int) -> Unit,
     modifier: Modifier,
 ) {
     val battery = rememberBatteryInfo()
+    val activeRecording = recording.phase == RecordingPhase.ACTIVE
+    val width by animateDpAsState(miniWidthDp(showStats, activeRecording).dp,
+        animationSpec = tween(180), label = "miniWidth")
+    val height by animateDpAsState(miniHeightDp(showStats, activeRecording).dp,
+        animationSpec = tween(180), label = "miniHeight")
+    val density = LocalDensity.current
+    LaunchedEffect(width, height, density) {
+        with(density) { onSizeChanged(width.roundToPx(), height.roundToPx()) }
+    }
     var swipe by remember { mutableFloatStateOf(0f) }
-    Column(modifier.width(MINI_WIDTH_DP.dp)
+    Column(modifier.requiredSize(width, height)
         .padding(start = if (onLeft) 8.dp else 0.dp, end = if (onLeft) 0.dp else 8.dp)
         .pointerInput(onLeft) {
             val threshold = 32.dp.toPx()
@@ -250,16 +254,22 @@ private fun MiniBar(
         .background(MaterialTheme.colorScheme.surfaceContainer.copy(alpha = overlayPanelAlpha()), RoundedCornerShape(32.dp))
         .border(overlayBorder(), RoundedCornerShape(32.dp))
         .padding(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            if (onLeft) DashboardCell(onLeft) { onShowPanel(false) }
-            ReadoutCell(fpsText.ifEmpty { "–" }, stringResource(R.string.gamebar_fps_label)) { onShowPanel(true) }
-            if (!onLeft) DashboardCell(onLeft) { onShowPanel(false) }
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            ReadoutCell(stringResource(R.string.dashboard_temperature, battery.temperatureC.roundToInt()),
-                stringResource(R.string.gamebar_temperature_label)) { onShowPanel(false) }
-            ReadoutCell(if (battery.level >= 0) "${battery.level}%" else "–",
-                stringResource(R.string.gamebar_battery_label)) { onShowPanel(false) }
+        if (showStats) {
+            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                DashboardCell(onLeft) { onShowPanel(false) }
+            }
+        } else {
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                if (onLeft) DashboardCell(onLeft) { onShowPanel(false) }
+                ReadoutCell(fpsText.ifEmpty { "–" }, stringResource(R.string.gamebar_fps_label)) { onShowPanel(true) }
+                if (!onLeft) DashboardCell(onLeft) { onShowPanel(false) }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                ReadoutCell(stringResource(R.string.dashboard_temperature, battery.temperatureC.roundToInt()),
+                    stringResource(R.string.gamebar_temperature_label)) { onShowPanel(false) }
+                ReadoutCell(if (battery.level >= 0) "${battery.level}%" else "–",
+                    stringResource(R.string.gamebar_battery_label)) { onShowPanel(false) }
+            }
         }
         if (recording.phase == RecordingPhase.ACTIVE) {
             val elapsed = recording.elapsedMillis?.let {

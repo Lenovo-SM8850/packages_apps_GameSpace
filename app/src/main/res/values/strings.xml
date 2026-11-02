@@ -98,7 +98,7 @@
     <string name="tile_stay_awake">Stay awake</string>
     <string name="tile_wifi">Wi-Fi</string>
     <string name="tile_dnd">Do not disturb</string>
-    <string name="tile_fps_info">FPS counter</string>
+    <string name="tile_fps_info">Stats overlay</string>
     <string name="tile_auto_rotate">Auto-rotate</string>
     <string name="tile_boost_memory">Memory boost</string>
     <string name="tile_settings">Settings</string>
