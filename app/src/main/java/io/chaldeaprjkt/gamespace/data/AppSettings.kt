@@ -56,6 +56,10 @@ class AppSettings @Inject constructor(private val context: Context) {
         get() = db.getBoolean("show_fps", false)
         set(point) = db.edit().putBoolean("show_fps", point).apply()
 
+    var statsOverlayCompact: Boolean
+        get() = db.getBoolean("stats_overlay_compact", false)
+        set(value) = db.edit().putBoolean("stats_overlay_compact", value).apply()
+
     fun statsOverlayPosition(landscape: Boolean): Pair<Int, Int>? {
         val key = if (landscape) "stats_overlay_landscape" else "stats_overlay_portrait"
         if (!db.contains("${key}_x") || !db.contains("${key}_y")) return null
