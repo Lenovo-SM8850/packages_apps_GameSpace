@@ -25,7 +25,8 @@ import javax.inject.Inject
 
 data class GameModeOption(
     val mode: Int,
-    @StringRes val labelRes: Int
+    @StringRes val labelRes: Int,
+    @StringRes val shortRes: Int = 0
 )
 
 data class RegisteredGame(
@@ -210,9 +211,9 @@ class SettingsViewModel @Inject constructor(
 
     val gameModeOptions = listOf(
         GameModeOption(0, R.string.game_mode_none),
-        GameModeOption(3, R.string.game_mode_battery),
-        GameModeOption(1, R.string.game_mode_balanced),
-        GameModeOption(2, R.string.game_mode_performance)
+        GameModeOption(3, R.string.game_mode_battery, R.string.game_mode_battery_short),
+        GameModeOption(1, R.string.game_mode_balanced, R.string.game_mode_balanced_short),
+        GameModeOption(2, R.string.game_mode_performance, R.string.game_mode_performance_short)
     )
 
     val angleFeatureAvailable: Boolean

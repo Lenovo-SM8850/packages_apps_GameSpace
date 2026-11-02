@@ -42,6 +42,7 @@ class GameAspectRatioTile @Inject constructor(
     override val id = "screen_aspect_ratio"
     override val icon = R.drawable.materialsymbols_ic_aspect_ratio_rounded_filled
     override val label: String get() = context.getString(R.string.tile_aspect_ratio)
+    override val shortLabel: String? get() = context.shortLabel(R.string.tile_aspect_ratio_short)
     override val isEnabled: Boolean
         get() = available && mode.value != null
     // The picker lists only centered modes; a stored bottom placement shows as its ratio.

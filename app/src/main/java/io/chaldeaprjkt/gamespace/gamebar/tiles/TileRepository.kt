@@ -63,6 +63,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import io.github.miner7222.gamespace.library.GameOption
 import io.github.miner7222.gamespace.library.SidebarVisibility
 import io.github.miner7222.gamespace.library.SessionOptions
+import io.github.miner7222.gamespace.shortLabel
 import io.chaldeaprjkt.gamespace.data.AppSettings
 import io.chaldeaprjkt.gamespace.data.GameSession
 import io.chaldeaprjkt.gamespace.data.SystemSettings
@@ -100,6 +101,8 @@ interface TileAction {
     val kind: TileKind
     val category: TileCategory
     val label: String
+    /** A well-known shorter form of [label], used only where [label] does not fit. */
+    val shortLabel: String? get() = null
     val description: String get() = label
     val icon: Int
     val isEnabled: Boolean
@@ -128,6 +131,7 @@ class ToggleableTile(
     override val isSessionTile: Boolean = sessionOption != null,
     private val available: () -> Boolean = { true },
     private val readSavedDifference: () -> Boolean = { false },
+    override val shortLabel: String? = null,
 ) : TileAction {
     override val differsFromSaved: Boolean get() = readSavedDifference()
     override val kind = TileKind.TOGGLE
@@ -150,6 +154,7 @@ class FixedActionTile(
     override val description: String = label,
     private val available: () -> Boolean = { true },
     private val readResult: () -> TileActionResult? = { null },
+    override val shortLabel: String? = null,
 ) : TileAction {
     override val actionResult: TileActionResult? get() = readResult()
     override val kind = TileKind.ACTION
@@ -171,6 +176,7 @@ class CycleTile(
     private val readIcon: () -> Int = { defaultIcon },
     /** Whether the tile reads as on; a cycle with no off position leaves it false. */
     private val readEnabled: () -> Boolean = { false },
+    override val shortLabel: String? = null,
 ) : TileAction {
     override val icon: Int get() = readIcon()
     override val differsFromSaved: Boolean get() = readSavedDifference()
@@ -194,6 +200,7 @@ class PlatformTile(
     private val toggleAction: (() -> Unit)? = null,
     private val readSavedDifference: () -> Boolean = { false },
     private val readResult: () -> TileActionResult? = { null },
+    override val shortLabel: String? = null,
 ) : TileAction {
     override val differsFromSaved: Boolean get() = readSavedDifference()
     override val actionResult: TileActionResult? get() = readResult()
@@ -751,7 +758,8 @@ class TileRepository @Inject constructor(
         if (intent.resolveActivity(context.packageManager) != null) context.startActivity(intent)
     }
 
-    private fun platformTile(feature: String, iconRes: Int, fallbackLabel: String): PlatformTile {
+    private fun platformTile(feature: String, iconRes: Int, fallbackLabel: String,
+        shortLabel: String? = null): PlatformTile {
         // These hooks describe different controls/settings on this ROM. Read and write
         // the actual settings, and observe them so changes from Settings/QS stay in sync.
         val setting = when (feature) {
@@ -772,6 +780,7 @@ class TileRepository @Inject constructor(
             icon = iconRes,
             feature = feature,
             platform = platform,
+            shortLabel = shortLabel,
             readResult = { latestResults[feature] },
             kind = when (feature) {
                 AxPlatformClient.FEATURE_SCREENSHOT -> TileKind.ACTION
@@ -953,6 +962,7 @@ class TileRepository @Inject constructor(
             AxPlatformClient.FEATURE_HEADS_UP,
             R.drawable.materialsymbols_ic_notifications_active_rounded_filled,
             context.getString(R.string.tile_heads_up),
+            context.shortLabel(R.string.tile_heads_up_short),
         ))
         add(platformTile(
             AxPlatformClient.FEATURE_AUTO_SYNC,
@@ -988,6 +998,7 @@ class TileRepository @Inject constructor(
             AxPlatformClient.FEATURE_CAFFEINE,
             R.drawable.materialsymbols_ic_local_cafe_rounded_filled,
             context.getString(R.string.tile_caffeine),
+            context.shortLabel(R.string.tile_caffeine_short),
         ))
         add(platformTile(
             AxPlatformClient.FEATURE_VPN,
@@ -1023,6 +1034,7 @@ class TileRepository @Inject constructor(
                 sessionOption = GameOption.DANMAKU,
                 readSavedDifference = { differsFromSaved(GameOption.DANMAKU) },
                 label = context.getString(R.string.tile_danmaku),
+                shortLabel = context.shortLabel(R.string.tile_danmaku_short),
                 icon = R.drawable.materialsymbols_ic_forum_rounded_filled,
                 state = notificationState,
                 setter = { gameSession.setDanmakuNotification(it) }
@@ -1037,6 +1049,7 @@ class TileRepository @Inject constructor(
                 sessionOption = GameOption.BYPASS,
                 readSavedDifference = { differsFromSaved(GameOption.BYPASS) },
                 label = context.getString(R.string.bypass_charge_enabled_title),
+                shortLabel = context.shortLabel(R.string.bypass_charge_enabled_title_short),
                 icon = R.drawable.materialsymbols_ic_battery_charging_full_rounded_filled,
                 state = bypassChargeState,
                 setter = { gameSession.setBypassChargeEnabled(it) }
@@ -1046,6 +1059,7 @@ class TileRepository @Inject constructor(
         add(ToggleableTile(
             id = "gesture_lock",
             label = context.getString(R.string.tile_gesture_lock),
+            shortLabel = context.shortLabel(R.string.tile_gesture_lock_short),
             icon = R.drawable.materialsymbols_ic_lock_rounded_filled,
             category = TileCategory.GAME_TOOLS,
             sessionOption = GameOption.GESTURES,
@@ -1056,6 +1070,7 @@ class TileRepository @Inject constructor(
         add(ToggleableTile(
             id = "touch_response",
             label = context.getString(R.string.tile_touch_response),
+            shortLabel = context.shortLabel(R.string.tile_touch_response_short),
             icon = R.drawable.materialsymbols_ic_touch_app_rounded_filled,
             category = TileCategory.GAME_TOOLS,
             sessionOption = GameOption.TOUCH,
@@ -1112,6 +1127,7 @@ class TileRepository @Inject constructor(
         add(ToggleableTile(
             id = "wifi_low_latency",
             label = context.getString(R.string.wifi_low_latency_title),
+            shortLabel = context.shortLabel(R.string.wifi_low_latency_title_short),
             icon = R.drawable.materialsymbols_ic_wifi_rounded_filled,
             category = TileCategory.CONNECTIVITY,
             isSessionTile = true,
@@ -1134,6 +1150,7 @@ class TileRepository @Inject constructor(
                 sessionOption = GameOption.AWAKE,
                 readSavedDifference = { differsFromSaved(GameOption.AWAKE) },
                 label = context.getString(R.string.tile_stay_awake),
+                shortLabel = context.shortLabel(R.string.tile_stay_awake_short),
                 icon = R.drawable.materialsymbols_ic_bedtime_rounded_filled,
                 state = systemSettings.stayAwakeState,
                 setter = {
@@ -1148,6 +1165,7 @@ class TileRepository @Inject constructor(
                 category = TileCategory.GAME_TOOLS,
                 available = { hasDeviceCapability("fps_info") },
                 label = context.getString(R.string.tile_fps_info),
+                shortLabel = context.shortLabel(R.string.tile_fps_info_short),
                 icon = R.drawable.materialsymbols_ic_bar_chart_rounded_filled,
                 state = isFpsInfoVisible,
                 setter = { setFpsInfoEnabled(it) }
@@ -1173,6 +1191,7 @@ class TileRepository @Inject constructor(
                 category = TileCategory.GAME_TOOLS,
                 available = { hasDeviceCapability("boost_memory") },
                 label = context.getString(R.string.tile_boost_memory),
+                shortLabel = context.shortLabel(R.string.tile_boost_memory_short),
                 icon = R.drawable.materialsymbols_ic_memory_rounded_filled,
                 readResult = { latestResults["boost_memory"] },
                 action = {
