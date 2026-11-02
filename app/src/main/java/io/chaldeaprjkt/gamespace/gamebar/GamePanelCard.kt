@@ -168,14 +168,10 @@ fun GamePanelCard(
         tileRepository.actionResults.collect { completion -> message(completion.result.message) }
     }
     val activateTile: (TileAction) -> Unit = { tile ->
-        val wasEnabled = tile.isEnabled
         if (tile.id == "screen_record" && tileRepository.recordingState.value.phase == RecordingPhase.ACTIVE) {
             tileRepository.stopRecording()
         } else tile.toggle()
         if (tile.options.isNotEmpty()) dialogTile = tile
-        if (tile.id == "gesture_lock" && !wasEnabled && tile.isEnabled) {
-            message(context.getString(R.string.dashboard_gesture_on))
-        }
     }
     val recording by tileRepository.recordingState.collectAsState()
     val tiles = tileRepository.tiles

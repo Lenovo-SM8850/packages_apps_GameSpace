@@ -35,9 +35,7 @@ enum class GameOption(val key: String, val title: Int, val summary: Int, val def
         R.array.in_game_calls_entries, R.array.in_game_calls_values),
     RINGER("gamespace_ringer_mode", R.string.ringer_mode_title, 0, 3,
         R.array.ringer_mode_entries, R.array.ringer_mode_values),
-    SCREENSHOT("gamespace_tfgesture_disabled", R.string.three_screenshot_disabled_title,
-        R.string.three_screenshot_disabled_summary, 0),
-    GESTURES("gamespace_lock_gesture", R.string.lock_gesture_title,
+    GESTURES("gamespace_lock_gesture", R.string.tile_gesture_lock,
         R.string.library_gesture_lock_summary, 0),
     TOUCH("gamespace_high_touch_polling_enabled", R.string.library_high_touch_title,
         R.string.library_high_touch_summary, 1),
@@ -66,8 +64,43 @@ class InGameOptions(private val context: Context) {
     } catch (_: RuntimeException) { null }
       catch (_: org.json.JSONException) { null }
 
+    /** Merge the retired three-finger option once, including inherited per-game values. */
+    private fun migrateGestureLock(): Boolean {
+        if (preferences.getBoolean(GESTURE_LOCK_MIGRATED, false)) return true
+        val map = readMap() ?: return false
+        val legacyDefault = preferences.getBoolean(LEGACY_THREE_FINGER, false)
+        val gestureDefault = preferences.getBoolean(GameOption.GESTURES.key, false)
+        val mergedDefault = legacyDefault || gestureDefault
+        val packages = map.keys()
+        while (packages.hasNext()) {
+            val game = map.optJSONObject(packages.next()) ?: continue
+            val legacy = game.optInt(LEGACY_THREE_FINGER, if (legacyDefault) 1 else 0) == 1
+            val gestures = game.optInt(GameOption.GESTURES.key, if (gestureDefault) 1 else 0) == 1
+            // Retain legacy values and explicit results until both stores commit, for retries.
+            game.put(GameOption.GESTURES.key, if (legacy || gestures) 1 else 0)
+        }
+        if (!Settings.Secure.putStringForUser(resolver, OVERRIDES, map.toString(), userId)) return false
+        if (!preferences.edit()
+            .putBoolean(GameOption.GESTURES.key, mergedDefault)
+            .remove(LEGACY_THREE_FINGER)
+            .putBoolean(GESTURE_LOCK_MIGRATED, true)
+            .commit()) return false
+        val migratedPackages = map.keys()
+        while (migratedPackages.hasNext()) {
+            val game = map.optJSONObject(migratedPackages.next()) ?: continue
+            game.remove(LEGACY_THREE_FINGER)
+            if (game.optInt(GameOption.GESTURES.key) == (if (mergedDefault) 1 else 0)) {
+                game.remove(GameOption.GESTURES.key)
+            }
+        }
+        // Cleanup is optional: a failed write leaves equivalent explicit overrides.
+        Settings.Secure.putStringForUser(resolver, OVERRIDES, map.toString(), userId)
+        return true
+    }
+
     /** Only the old enabled set carried information; absent packages inherit defaults. */
     fun ensureMigrated(): Boolean = synchronized(lock) {
+        if (!migrateGestureLock()) return@synchronized false
         if (Settings.Secure.getIntForUser(resolver, MIGRATED, 0, userId) == 1) {
             if (preferences.contains(LEGACY_BYPASS)) preferences.edit().remove(LEGACY_BYPASS).apply()
             return@synchronized true
@@ -85,12 +118,15 @@ class InGameOptions(private val context: Context) {
         } else false
     }
 
-    fun global(option: GameOption): Int = if (option == GameOption.BYPASS) {
-        if (preferences.getBoolean(BYPASS_DEFAULT, false)) 1 else 0
-    } else if (option.entries != 0) {
-        preferences.getString(option.key, option.default.toString())?.toIntOrNull()
-            ?.takeIf(option::accepts) ?: option.default
-    } else if (preferences.getBoolean(option.key, option.default == 1)) 1 else 0
+    fun global(option: GameOption): Int {
+        if (option == GameOption.GESTURES) ensureMigrated()
+        return if (option == GameOption.BYPASS) {
+            if (preferences.getBoolean(BYPASS_DEFAULT, false)) 1 else 0
+        } else if (option.entries != 0) {
+            preferences.getString(option.key, option.default.toString())?.toIntOrNull()
+                ?.takeIf(option::accepts) ?: option.default
+        } else if (preferences.getBoolean(option.key, option.default == 1)) 1 else 0
+    }
 
     fun setBypassDefault(enabled: Boolean) {
         preferences.edit().putBoolean(BYPASS_DEFAULT, enabled).apply()
@@ -122,14 +158,22 @@ class InGameOptions(private val context: Context) {
         // Choosing the current default releases this game's override for that option.
         if (value == global(option)) game.remove(option.key) else game.put(option.key, value)
         if (game.length() == 0) map.remove(packageName) else map.put(packageName, game)
-        Settings.Secure.putStringForUser(resolver, OVERRIDES, map.toString(), userId)
+        val saved = Settings.Secure.putStringForUser(resolver, OVERRIDES, map.toString(), userId)
+        if (saved && option == GameOption.GESTURES && currentPackage() == packageName) {
+            SessionOptions.choose(context, option, value)
+        }
+        saved
     }
 
     fun reset(packageName: String): Boolean = synchronized(lock) {
         if (!ensureMigrated()) return@synchronized false
         val map = readMap() ?: return@synchronized false
         map.remove(packageName)
-        Settings.Secure.putStringForUser(resolver, OVERRIDES, map.toString(), userId)
+        val saved = Settings.Secure.putStringForUser(resolver, OVERRIDES, map.toString(), userId)
+        if (saved && currentPackage() == packageName) {
+            SessionOptions.choose(context, GameOption.GESTURES, global(GameOption.GESTURES))
+        }
+        saved
     }
 
     fun availableOptions(): List<GameOption> = GameOption.entries.filter {
@@ -183,6 +227,8 @@ class InGameOptions(private val context: Context) {
         const val MIGRATED = "gamespace_in_game_overrides_migrated"
         const val BYPASS_DEFAULT = "gamespace_bypass_charge_default"
         private const val LEGACY_BYPASS = "bypass_charge_games"
+        private const val LEGACY_THREE_FINGER = "gamespace_tfgesture_disabled"
+        private const val GESTURE_LOCK_MIGRATED = "gamespace_gesture_lock_migrated"
         private val lock = Any()
     }
 }
