@@ -16,6 +16,7 @@
 
 package io.chaldeaprjkt.gamespace.gamebar
 
+import android.graphics.Rect
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -39,13 +40,13 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -94,13 +95,14 @@ fun GameBarView(
     onShowPanel: (expandFps: Boolean) -> Unit,
     onStopRecording: () -> Unit,
     pillExpanded: Boolean,
+    anchorY: Int,
     onExpanded: () -> Unit,
     onCollapsed: () -> Unit,
     onInteraction: (pressed: Boolean) -> Unit,
     onDragStart: () -> Pair<Int, Int>,
     onDragUpdate: (Int, Int) -> Unit,
     onDragEnd: (Int, Int) -> Unit,
-    onMiniBarSizeChanged: (Int, Int) -> Unit,
+    onContentBoundsChanged: (Rect) -> Unit,
 ) {
     val state = rememberMutableSceneTransitionLayoutState(
         initialScene = GameBarScenes.Handle,
@@ -151,7 +153,8 @@ fun GameBarView(
     }
     // Observe without consuming: taps, swipes and held fingers all postpone collapse.
     val currentInteraction by rememberUpdatedState(onInteraction)
-    Box(Modifier.fillMaxSize().pointerInput(Unit) {
+    val currentContentBoundsChanged by rememberUpdatedState(onContentBoundsChanged)
+    Layout(modifier = Modifier.fillMaxSize().pointerInput(Unit) {
         awaitEachGesture {
             awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
             currentInteraction(true)
@@ -164,7 +167,7 @@ fun GameBarView(
                 currentInteraction(false)
             }
         }
-    }, contentAlignment = if (dockedOnLeft) Alignment.CenterStart else Alignment.CenterEnd) {
+    }, content = {
         SceneTransitionLayout(state = state, swipeDetector = noSwipe) {
             scene(GameBarScenes.Handle) {
                 EdgeHandle(isLocked, dockedOnLeft, animatedAlpha, onExpanded,
@@ -172,9 +175,20 @@ fun GameBarView(
             }
             scene(GameBarScenes.MiniBar) {
                 MiniBar(fpsText, showFps, dockedOnLeft, recording, onShowPanel, onStopRecording, onCollapsed,
-                    onMiniBarSizeChanged,
                     Modifier.element(GameBarElements.MiniBarContent))
             }
+        }
+    }) { measurables, constraints ->
+        val scene = measurables.single().measure(constraints.copy(minWidth = 0, minHeight = 0))
+        layout(constraints.maxWidth, constraints.maxHeight) {
+            val left = if (dockedOnLeft) 0 else constraints.maxWidth - scene.width
+            val top = (anchorY - scene.height / 2).coerceIn(0,
+                (constraints.maxHeight - scene.height).coerceAtLeast(0))
+            scene.place(left, top)
+            // Report the same animated bounds used for placement, even when the window is unchanged.
+            currentContentBoundsChanged(Rect(left.coerceAtLeast(0), top,
+                (left + scene.width).coerceAtMost(constraints.maxWidth),
+                (top + scene.height).coerceAtMost(constraints.maxHeight)))
         }
     }
 }
@@ -216,7 +230,6 @@ private fun MiniBar(
     onShowPanel: (Boolean) -> Unit,
     onStopRecording: () -> Unit,
     onCollapsed: () -> Unit,
-    onSizeChanged: (Int, Int) -> Unit,
     modifier: Modifier,
 ) {
     val battery = rememberBatteryInfo()
@@ -225,10 +238,6 @@ private fun MiniBar(
         animationSpec = tween(180), label = "miniWidth")
     val height by animateDpAsState(miniHeightDp(showStats, activeRecording).dp,
         animationSpec = tween(180), label = "miniHeight")
-    val density = LocalDensity.current
-    LaunchedEffect(width, height, density) {
-        with(density) { onSizeChanged(width.roundToPx(), height.roundToPx()) }
-    }
     var swipe by remember { mutableFloatStateOf(0f) }
     Column(modifier.requiredSize(width, height)
         .padding(start = if (onLeft) 8.dp else 0.dp, end = if (onLeft) 0.dp else 8.dp)
