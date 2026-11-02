@@ -302,6 +302,14 @@ class GameSidebar(
                     setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
                     setContent {
                         val recording by tileRepository.recordingState.collectAsState()
+                        val idleOpacity by produceState(appSettings.menuOpacity, appSettings) {
+                            val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+                                if (key == AppSettings.KEY_MENU_OPACITY || key == AppSettings.KEY_ICON_IDLE_ALPHA)
+                                    value = appSettings.menuOpacity
+                            }
+                            appSettings.registerPreferenceListener(listener)
+                            awaitDispose { appSettings.unregisterPreferenceListener(listener) }
+                        }
                         LaunchedEffect(showFpsState.value, recording.phase) {
                             if (miniDashboardOnly(showFpsState.value, recording.phase == RecordingPhase.ACTIVE)) {
                                 setPillExpanded(false)
@@ -322,7 +330,7 @@ class GameSidebar(
                                 fpsText = fpsTextState.value,
                                 isLocked = isLockedState.value,
                                 isIdle = isIdleState.value,
-                                idleAlpha = (appSettings.iconIdleAlpha / 100f).coerceAtLeast(0.05f),
+                                idleAlpha = (idleOpacity / 100f).coerceIn(0.2f, 1f),
                                 dockedOnLeft = dockedOnLeftState.value,
                                 recording = recording,
                                 onShowPanel = { expandFps -> handler.post { showPanel(expandFps) } },

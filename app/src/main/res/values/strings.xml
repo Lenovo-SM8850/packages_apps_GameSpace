@@ -137,7 +137,7 @@
     <string name="tile_screenshot">Screenshot</string>
 
     <!-- Icon Idle Opacity -->
-    <string name="icon_idle_opacity_title">Icon idle opacity</string>
+    <string name="icon_idle_opacity_title">Handle opacity</string>
 
     <!-- Auto DND -->
     <string name="auto_dnd_title">Auto Do Not Disturb</string>
