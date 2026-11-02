@@ -80,6 +80,8 @@ fun overlayBorder(): BorderStroke =
 /**
  * Blurs the game behind this rounded rectangle. The overlay windows span more than their
  * surfaces, so the blur is a region of the window, the same one a window background blur uses.
+ * Apply it where the layout size is the visible surface, ideally after the surface is clipped:
+ * the region takes exactly that size, and its corners never exceed half the shorter side.
  */
 @Composable
 fun Modifier.overlayBlur(cornerRadius: Dp): Modifier {
@@ -94,7 +96,7 @@ fun Modifier.overlayBlur(cornerRadius: Dp): Modifier {
     } ?: return this
     DisposableEffect(drawable) { onDispose { drawable.setVisible(false, false) } }
     return drawBehind {
-        drawable.setCornerRadius(cornerRadius.toPx())
+        drawable.setCornerRadius(minOf(cornerRadius.toPx(), size.minDimension / 2f))
         drawable.setBounds(0, 0, size.width.roundToInt(), size.height.roundToInt())
         drawable.setAlpha((fade().coerceIn(0f, 1f) * 255).roundToInt())
         drawable.draw(drawContext.canvas.nativeCanvas)
