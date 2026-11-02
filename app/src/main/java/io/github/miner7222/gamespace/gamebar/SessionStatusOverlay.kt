@@ -5,36 +5,9 @@
 
 package io.github.miner7222.gamespace.gamebar
 
+import android.content.Context
 import android.database.ContentObserver
 import android.provider.Settings
-import android.view.ViewTreeObserver
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.CubicBezierEasing
-import androidx.compose.animation.core.Easing
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.foundation.Image
-import androidx.compose.ui.MotionDurationScale
-import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.geometry.RoundRect
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.drawscope.clipPath
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalLayoutDirection
-import androidx.compose.ui.unit.LayoutDirection
-import androidx.core.graphics.drawable.toBitmap
-import io.github.miner7222.gamespace.library.SessionOptions
-import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.launch
-import kotlin.math.PI
-import kotlin.math.cos
-import kotlin.math.ceil
-import android.content.Context
 import android.graphics.PixelFormat
 import android.os.Handler
 import android.os.PowerManager
@@ -43,11 +16,17 @@ import android.os.SystemClock
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import android.view.ViewTreeObserver
 import android.widget.FrameLayout
 import android.view.WindowInsets
 import android.view.WindowManager
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.Easing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.*
@@ -58,12 +37,24 @@ import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.MotionDurationScale
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.RoundRect
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.res.stringResource
@@ -76,16 +67,25 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.graphics.drawable.toBitmap
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import com.android.axion.compose.lifecycle.repeatWhenAttached
 import io.chaldeaprjkt.gamespace.R
 import io.chaldeaprjkt.gamespace.gamebar.fromSystemGameMode
 import io.github.miner7222.gamespace.shortLabelResource
+import io.github.miner7222.gamespace.library.SessionOptions
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
+import kotlin.math.PI
+import kotlin.math.cos
+import kotlin.math.ceil
 
 /** Only confirmed persistent states are supplied by the session owner. */
 enum class SessionStatusChip(val label: Int, val icon: ImageVector, val short: Int = 0) {
@@ -304,8 +304,7 @@ class SessionStatusOverlay(
 
 @Composable
 private fun StatusPill(status: SessionStartStatus, maxWidth: Dp, maxHeight: Dp,
-    visible: Boolean, onEntered: () -> Unit, onHidden: () -> Unit,
-    onOpen: () -> Unit, onDismiss: () -> Unit) {
+    visible: Boolean, onEntered: () -> Unit, onHidden: () -> Unit, onOpen: () -> Unit, onDismiss: () -> Unit) {
     val config = LocalConfiguration.current
     val density = LocalDensity.current
     val tablet = config.smallestScreenWidthDp >= 600
@@ -327,7 +326,7 @@ private fun StatusPill(status: SessionStartStatus, maxWidth: Dp, maxHeight: Dp,
     val gap = 8.dp
     // The layout rounds every dimension to whole pixels, so the budget is summed in pixels too.
     fun px(value: Dp): Int = with(density) { value.roundToPx() }
-    val budget = (px(width) - px(height) - px(gap)).coerceAtLeast(0)
+    val budget = px(width)
     val gapPx = px(gap)
     val chipCap = px(132.dp)
     fun plan(modeText: String, texts: List<String>): PillPlan {
@@ -338,8 +337,8 @@ private fun StatusPill(status: SessionStartStatus, maxWidth: Dp, maxHeight: Dp,
         // Start and end padding, the mode, divider, "+N" counter and result badge never shrink, so they
         // are counted first, with the gap between every pair of neighbours.
         fun totalPx(count: Int, icons: Boolean): Int {
-            var sum = px(16.dp) + px(8.dp) + modePx
-            var items = 1
+            var sum = px(height) + px(8.dp) + modePx
+            var items = 2
             if (status.chips.isNotEmpty() || status.memoryCleaned) { sum += px(1.dp); items++ }
             repeat(count) { sum += chipPx(it, icons); items++ }
             if (count < status.chips.size) {
@@ -377,7 +376,6 @@ private fun StatusPill(status: SessionStartStatus, maxWidth: Dp, maxHeight: Dp,
     val iconOnly = chosen.iconOnly
     val count = chosen.count
     val modeTextMaxWidth = with(density) { chosen.modeMaxPx.toDp() }
-    val shape = RoundedCornerShape(26.dp)
     val context = LocalContext.current
     val gameIcon = remember(context) {
         SessionOptions.packageName(context)?.let { packageName ->
@@ -393,22 +391,12 @@ private fun StatusPill(status: SessionStartStatus, maxWidth: Dp, maxHeight: Dp,
         motion.animate(visible, reduceMotion || scale == 0f)
         if (visible) entered() else hidden()
     }
+    val surface = MaterialTheme.colorScheme.surfaceContainer.copy(alpha = overlayPanelAlpha())
+    val border = overlayBorder()
     val iconDirection = if (LocalLayoutDirection.current == LayoutDirection.Rtl) -1f else 1f
     var measuredWidth by remember { mutableIntStateOf(0) }
     var drag by remember { mutableFloatStateOf(0f) }
-    // The blur is applied inside the clipped surface, so it never reaches past the pill.
-    Box(Modifier.onSizeChanged { measuredWidth = it.width }.graphicsLayer {
-        scaleX = motion.circle.value
-        scaleY = scaleX
-    }.drawWithContent {
-        val circle = minOf(size.height, size.width)
-        val shownWidth = circle + (size.width - circle) * motion.expansion.value.coerceIn(0f, 1f)
-        val left = (size.width - shownWidth) / 2f
-        val path = Path().apply {
-            addRoundRect(RoundRect(left, 0f, left + shownWidth, size.height, CornerRadius(size.height / 2f)))
-        }
-        clipPath(path) { this@drawWithContent.drawContent() }
-    }.then(Modifier.widthIn(max = width).height(height).pointerInput(Unit) {
+    Box(Modifier.widthIn(max = width).height(height).onSizeChanged { measuredWidth = it.width }.pointerInput(Unit) {
         val threshold = 24.dp.toPx()
         var dismissed = false
         detectVerticalDragGestures(onDragStart = { drag = 0f; dismissed = false }, onVerticalDrag = { change, amount ->
@@ -416,55 +404,65 @@ private fun StatusPill(status: SessionStartStatus, maxWidth: Dp, maxHeight: Dp,
             drag += amount
             if (!dismissed && drag < -threshold) { dismissed = true; onDismiss() }
         })
-    }.clip(shape)
-        .background(MaterialTheme.colorScheme.surfaceContainer.copy(alpha = overlayPanelAlpha()))
-        .border(overlayBorder(), shape)
-        .clickable(role = Role.Button, onClick = onOpen)
+    }.clickable(role = Role.Button, onClick = onOpen)
         .clearAndSetSemantics {
             contentDescription = description
             role = Role.Button
             onClick(label = openLabel) { onOpen(); true }
-        })) {
-            Row(horizontalArrangement = Arrangement.spacedBy(gap), verticalAlignment = Alignment.CenterVertically) {
-                Spacer(Modifier.size(height))
-                Box(Modifier.graphicsLayer { alpha = motion.content.value }) {
-                    Row(Modifier.padding(start = 16.dp, end = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(gap), verticalAlignment = Alignment.CenterVertically) {
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(mode.icon, null, Modifier.size(22.dp), tint = MaterialTheme.colorScheme.primary)
-            Text(chosen.modeText, Modifier.widthIn(max = modeTextMaxWidth), style = modeStyle,
-                color = MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        }
-        if (status.chips.isNotEmpty() || status.memoryCleaned) {
-            Box(Modifier.requiredSize(1.dp, 24.dp).background(MaterialTheme.colorScheme.outlineVariant))
-        }
-        repeat(count) { index ->
-            Row((if (iconOnly) Modifier.requiredSize(36.dp) else Modifier.height(36.dp))
-                .background(MaterialTheme.colorScheme.secondaryContainer, RoundedCornerShape(12.dp))
-                .then(if (iconOnly) Modifier else Modifier.padding(start = 8.dp, end = 12.dp)),
-                horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
-                verticalAlignment = Alignment.CenterVertically) {
-                Icon(status.chips[index].icon, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSecondaryContainer)
-                if (!iconOnly) Text(chosen.texts[index], Modifier.widthIn(max = 132.dp), style = chipStyle,
-                    color = MaterialTheme.colorScheme.onSecondaryContainer, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }.graphicsLayer {
+            scaleX = motion.circle.value
+            scaleY = scaleX
+        }.drawWithContent {
+            val circle = minOf(size.height, size.width)
+            val shownWidth = circle + (size.width - circle) * motion.expansion.value.coerceIn(0f, 1f)
+            val left = (size.width - shownWidth) / 2f
+            val path = Path().apply {
+                addRoundRect(RoundRect(left, 0f, left + shownWidth, size.height, CornerRadius(size.height / 2f)))
             }
-        }
-        if (count < status.chips.size) {
-            Box(Modifier.requiredHeight(36.dp).requiredWidthIn(min = 36.dp)
-                .background(MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = overlayInnerAlpha()), RoundedCornerShape(12.dp))
-                .padding(horizontal = 10.dp), contentAlignment = Alignment.Center) {
-                Text("+${status.chips.size - count}", style = chipStyle, color = MaterialTheme.colorScheme.onSurface, maxLines = 1)
+            clipPath(path) {
+                drawRect(surface)
+                this@drawWithContent.drawContent()
+                drawPath(path, border.brush, style = Stroke(border.width.toPx()))
             }
-        }
-        if (status.memoryCleaned) {
-            Box(Modifier.requiredSize(36.dp).background(MaterialTheme.colorScheme.tertiaryContainer, CircleShape), contentAlignment = Alignment.Center) {
-                Icon(Icons.Rounded.Memory, memoryLabel, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onTertiaryContainer)
-            }
-        }
-    
-            }
+        }) {
+        Row(Modifier.padding(end = 8.dp), horizontalArrangement = Arrangement.spacedBy(gap),
+            verticalAlignment = Alignment.CenterVertically) {
+            Spacer(Modifier.size(height))
+            Row(Modifier.graphicsLayer { alpha = motion.content.value },
+                horizontalArrangement = Arrangement.spacedBy(gap), verticalAlignment = Alignment.CenterVertically) {
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(mode.icon, null, Modifier.size(22.dp), tint = MaterialTheme.colorScheme.primary)
+                    Text(chosen.modeText, Modifier.widthIn(max = modeTextMaxWidth), style = modeStyle,
+                        color = MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                if (status.chips.isNotEmpty() || status.memoryCleaned) {
+                    Box(Modifier.requiredSize(1.dp, 24.dp).background(MaterialTheme.colorScheme.outlineVariant))
+                }
+                repeat(count) { index ->
+                    Row((if (iconOnly) Modifier.requiredSize(36.dp) else Modifier.height(36.dp))
+                        .background(MaterialTheme.colorScheme.secondaryContainer, RoundedCornerShape(12.dp))
+                        .then(if (iconOnly) Modifier else Modifier.padding(start = 8.dp, end = 12.dp)),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
+                        verticalAlignment = Alignment.CenterVertically) {
+                        Icon(status.chips[index].icon, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSecondaryContainer)
+                        if (!iconOnly) Text(chosen.texts[index], Modifier.widthIn(max = 132.dp), style = chipStyle,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                }
+                if (count < status.chips.size) {
+                    Box(Modifier.requiredHeight(36.dp).requiredWidthIn(min = 36.dp)
+                        .background(MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = overlayInnerAlpha()), RoundedCornerShape(12.dp))
+                        .padding(horizontal = 10.dp), contentAlignment = Alignment.Center) {
+                        Text("+${status.chips.size - count}", style = chipStyle, color = MaterialTheme.colorScheme.onSurface, maxLines = 1)
+                    }
+                }
+                if (status.memoryCleaned) {
+                    Box(Modifier.requiredSize(36.dp).background(MaterialTheme.colorScheme.tertiaryContainer, CircleShape), contentAlignment = Alignment.Center) {
+                        Icon(Icons.Rounded.Memory, memoryLabel, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onTertiaryContainer)
+                    }
                 }
             }
+        }
         Box(Modifier.size(height).graphicsLayer {
             alpha = motion.icon.value
             scaleX = motion.icon.value
