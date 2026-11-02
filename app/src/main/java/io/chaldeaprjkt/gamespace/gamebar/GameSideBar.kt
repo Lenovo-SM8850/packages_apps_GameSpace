@@ -61,6 +61,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import io.github.miner7222.gamespace.gamebar.MediaVolumeController
 import io.github.miner7222.gamespace.gamebar.LocalOverlayFade
 import io.github.miner7222.gamespace.gamebar.OverlayTheme
+import io.github.miner7222.gamespace.gamebar.StatsOverlay
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.*
@@ -163,6 +164,11 @@ class GameSidebar(
 
     private val showFpsState = tileRepository.isFpsInfoVisible
     private val fpsTextState = mutableStateOf("")
+    private val statsOverlay by lazy {
+        StatsOverlay(context, wm, handler, appSettings, fpsTextState) {
+            setPillExpanded(true)
+        }
+    }
     private val isLockedState = mutableStateOf(false)
     private val isIdleState = mutableStateOf(true)
     private var pillExpanded = false
@@ -235,6 +241,7 @@ class GameSidebar(
         } catch (e: Exception) {
             Log.w("GameSidebar", "Unable to query the game task", e)
             updateFullscreenVisibility(false)
+            updateStatsOverlayVisibility()
             return
         }
         val task = tasks.firstOrNull { it.taskId == gameTaskId }
@@ -245,6 +252,7 @@ class GameSidebar(
         val gameTaskFloating = task != null &&
             (task.isFloatingWindow || task.windowingMode == WINDOWING_MODE_FREEFORM)
         updateFullscreenVisibility(task != null && task.isVisible && !gameTaskFloating)
+        updateStatsOverlayVisibility()
         val hidden = gameTaskFloating && task?.isFocused != true
         if (gameTaskHidden == hidden) return
         gameTaskHidden = hidden
@@ -267,6 +275,12 @@ class GameSidebar(
         } else {
             View.INVISIBLE
         }
+        updateStatsOverlayVisibility()
+    }
+
+    private fun updateStatsOverlayVisibility() {
+        statsOverlay.setVisible(showFpsState.value && sessionActive && gameVisible && gameTaskFullscreenVisible && barReady &&
+            !shouldClose && !gameTaskHidden && !screenshotInProgress && !mapperEditing)
     }
 
     private val taskFpsCallback = object : TaskFpsCallback() {
@@ -321,14 +335,7 @@ class GameSidebar(
                         LaunchedEffect(showFpsState.value) {
                             if (!sessionActive) return@LaunchedEffect
                             updateFpsTracking()
-                            if (!pillExpanded) {
-                                gameBarLayoutParam.width = px(handleWidthDp(showFpsState.value))
-                                runCatching { wm.updateViewLayout(gameBarView, gameBarLayoutParam) }
-                                updateGestureExclusions()
-                            }
-                        }
-                        LaunchedEffect(recording.phase) {
-                            if (sessionActive && pillExpanded) updateMiniBarLayout()
+                            updateStatsOverlayVisibility()
                         }
                         CompositionLocalProvider(
                             LocalOnBackPressedDispatcherOwner provides noOpBackDispatcherOwner,
@@ -384,6 +391,9 @@ class GameSidebar(
                                     appSettings.y = gameBarLayoutParam.y
                                     runCatching { wm.updateViewLayout(gameBarView, gameBarLayoutParam) }
                                     scheduleIdle()
+                                },
+                                onMiniBarSizeChanged = { width, height ->
+                                    if (sessionActive && pillExpanded) updateMiniBarLayout(width, height)
                                 },
                             )
                         }
@@ -455,6 +465,7 @@ class GameSidebar(
     fun onGameLeave() {
         sessionActive = false
         updateFullscreenVisibility(false)
+        statsOverlay.setVisible(false)
         handler.removeCallbacks(attachGameBar)
         handler.removeCallbacks(firstPaint)
         gameBarView.animate().cancel()
@@ -519,6 +530,7 @@ class GameSidebar(
         scheduleGameTaskRefresh()
         mapperController.onConfigurationChanged(newConfig)
         updateScreenMetrics()
+        statsOverlay.onConfigurationChanged(newConfig)
         forceRemovePanel()
         setPillExpanded(false)
         if (!sessionActive) return
@@ -560,6 +572,8 @@ class GameSidebar(
             Process.setProcessGroup(Process.myPid(), Process.THREAD_GROUP_SYSTEM)
             wm.addView(pv, panelLayoutParam)
             gameBarView.visibility = View.GONE
+            updateStatsOverlayVisibility()
+            statsOverlay.raiseAbovePanel()
         } catch (_: Exception) {
             brightnessInteractor.dispose()
             fpsInteractor.dispose()
@@ -751,7 +765,7 @@ class GameSidebar(
             updateMiniBarLayout()
             scheduleMiniCollapse()
         } else {
-            gameBarLayoutParam.width = px(handleWidthDp(showFpsState.value))
+            gameBarLayoutParam.width = px(HANDLE_WIDTH_DP)
             gameBarLayoutParam.height = px(HANDLE_HEIGHT_DP)
             gameBarLayoutParam.y = barTopState.intValue
             dockGameBar()
@@ -762,11 +776,11 @@ class GameSidebar(
         updateFpsTracking()
     }
 
-    private fun updateMiniBarLayout() {
+    private fun updateMiniBarLayout(width: Int? = null, height: Int? = null) {
         if (!sessionActive || !pillExpanded) return
         val recording = tileRepository.recordingState.value.phase == RecordingPhase.ACTIVE
-        gameBarLayoutParam.width = px(MINI_WIDTH_DP)
-        gameBarLayoutParam.height = px(if (recording) MINI_RECORDING_HEIGHT_DP else MINI_HEIGHT_DP)
+        gameBarLayoutParam.width = width ?: px(miniWidthDp(showFpsState.value, recording))
+        gameBarLayoutParam.height = height ?: px(miniHeightDp(showFpsState.value, recording))
         gameBarLayoutParam.gravity = Gravity.TOP or (if (circleOnLeft) Gravity.LEFT else Gravity.RIGHT)
         gameBarLayoutParam.x = if (circleOnLeft) safeLeft else safeRight
         // Keep the handle anchor across expansion, recording-row changes and collapse.
@@ -863,6 +877,7 @@ class GameSidebar(
         updateGameTaskVisibility()
         if (!sessionActive || !gameVisible || shouldClose || gameTaskHidden) return
         mapperEditing = true
+        updateStatsOverlayVisibility()
         notifyUiBlocking()
         forceRemovePanel()
         gameBarView.animate().alpha(0f).setDuration(150).withEndAction {
@@ -914,7 +929,7 @@ class GameSidebar(
         PixelFormat.TRANSLUCENT
     ).apply {
         setFitInsetsTypes(0)
-        width = px(handleWidthDp(appSettings.showFps))
+        width = px(HANDLE_WIDTH_DP)
         height = px(HANDLE_HEIGHT_DP)
         layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
         preferMinimalPostProcessing = true

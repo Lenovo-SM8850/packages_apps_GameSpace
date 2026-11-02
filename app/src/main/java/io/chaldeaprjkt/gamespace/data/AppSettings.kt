@@ -56,6 +56,17 @@ class AppSettings @Inject constructor(private val context: Context) {
         get() = db.getBoolean("show_fps", false)
         set(point) = db.edit().putBoolean("show_fps", point).apply()
 
+    fun statsOverlayPosition(landscape: Boolean): Pair<Int, Int>? {
+        val key = if (landscape) "stats_overlay_landscape" else "stats_overlay_portrait"
+        if (!db.contains("${key}_x") || !db.contains("${key}_y")) return null
+        return db.getInt("${key}_x", 0) to db.getInt("${key}_y", 0)
+    }
+
+    fun saveStatsOverlayPosition(landscape: Boolean, x: Int, y: Int) {
+        val key = if (landscape) "stats_overlay_landscape" else "stats_overlay_portrait"
+        db.edit().putInt("${key}_x", x).putInt("${key}_y", y).apply()
+    }
+
     var noAutoBrightness
         get() = db.getBoolean(KEY_AUTO_BRIGHTNESS_DISABLE, true)
         set(it) = db.edit().putBoolean(KEY_AUTO_BRIGHTNESS_DISABLE, it).apply()
