@@ -42,10 +42,10 @@
     <string name="per_app_mode_title">Preferred Mode</string>
     <string name="per_app_angle_title">Graphics driver</string>
     <string name="per_app_performance_title">Performance preset</string>
-    <string name="per_app_performance_summary">Speeds, heat and benchmark records for this game</string>
+    <string name="per_app_performance_summary">Speeds, heat and benchmark records</string>
     <string name="per_app_performance_active" translatable="false">%1$s · %2$s</string>
     <string name="per_app_keep_aspect_ratio_title">Keep aspect ratio in split screen</string>
-    <string name="per_app_keep_aspect_ratio_summary">Show the game at its own aspect ratio in split screen, with bars around it.</string>
+    <string name="per_app_keep_aspect_ratio_summary">Show bars instead of stretching the game</string>
     <string name="per_app_unregister">Remove %1$s from library</string>
 
     <!-- Ringer Mode -->
@@ -200,7 +200,6 @@
     <string name="tile_ringer_mute">Mute</string>
     <string name="tile_reset_to_default">Reset to default</string>
     <string name="show_status_at_game_start_title">Show status at game start</string>
-    <string name="show_status_at_game_start_summary">Show the mode and active game options when a game starts</string>
     <string name="game_memory_cleanup_ran">Background cleanup ran</string>
     <string name="game_memory_cleanup_failed">Could not clean background apps</string>
     <string name="game_screenshot_saved">Screenshot saved</string>
@@ -236,7 +235,7 @@
     <string name="dashboard_move_earlier">Move earlier</string>
     <string name="dashboard_move_later">Move later</string>
     <string name="dashboard_remove">Remove %1$s</string>
-    <string name="dashboard_empty">Add tiles below to customize your dashboard</string>
+    <string name="dashboard_empty">Add tiles below</string>
     <string name="dashboard_quick_apps">Quick-launch apps</string>
     <string name="dashboard_floating">Open in a floating window</string>
     <string name="dashboard_edit_apps">Edit apps</string>

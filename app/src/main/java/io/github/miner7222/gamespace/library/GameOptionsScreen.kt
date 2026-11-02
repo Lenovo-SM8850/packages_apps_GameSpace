@@ -92,7 +92,7 @@ internal fun GameOptionsScreen(game: LibraryGame, expanded: Boolean, onBack: () 
                             val summary = if (option.entries != 0) {
                                 val values = context.resources.getStringArray(option.values)
                                 context.resources.getStringArray(option.entries)[values.indexOf(value.toString()).coerceAtLeast(0)]
-                            } else stringResource(option.summary)
+                            } else if (option.summary != 0) stringResource(option.summary) else null
                             Surface(shape = groupedShape(index, available.size), color = if (isSystemInDarkTheme())
                                 MaterialTheme.colorScheme.surfaceContainerHigh else MaterialTheme.colorScheme.surfaceBright) {
                                 val modifier = if (option.entries == 0) Modifier.toggleable(value == 1, role = Role.Switch,
@@ -102,7 +102,7 @@ internal fun GameOptionsScreen(game: LibraryGame, expanded: Boolean, onBack: () 
                                     verticalAlignment = Alignment.CenterVertically) {
                                     Column(Modifier.weight(1f)) {
                                         Text(stringResource(option.title), style = MaterialTheme.typography.titleMedium)
-                                        Text(summary, style = MaterialTheme.typography.bodyMedium,
+                                        if (summary != null) Text(summary, style = MaterialTheme.typography.bodyMedium,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant)
                                         if (changed) Text(stringResource(R.string.library_option_changed),
                                             style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)

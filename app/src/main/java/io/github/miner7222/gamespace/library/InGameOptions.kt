@@ -42,11 +42,11 @@ enum class GameOption(val key: String, val title: Int, val summary: Int, val def
     TOUCH("gamespace_high_touch_polling_enabled", R.string.library_high_touch_title,
         R.string.library_high_touch_summary, 1),
     SIDEBAR("gamespace_hide_sidebar", R.string.library_hide_sidebar_title,
-        R.string.library_hide_sidebar_summary, 1),
+        0, 1),
     BYPASS("bypass_charge_enabled", R.string.bypass_charge_enabled_title,
         R.string.library_bypass_summary, 0),
     START_STATUS("gamespace_show_status_at_game_start", R.string.show_status_at_game_start_title,
-        R.string.show_status_at_game_start_summary, 1);
+        0, 1);
 
     fun accepts(value: Int): Boolean = when (this) {
         CALLS -> value in 0..2

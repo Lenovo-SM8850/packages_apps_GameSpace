@@ -168,12 +168,13 @@ private fun GameSheetContent(game: LibraryGame, state: LibraryState, library: Li
             model.updatePreferredMode(mode)
             library.refresh()
         }
-        Text(stringResource(when (model.preferredMode) {
+        when (model.preferredMode) {
             0 -> R.string.game_mode_none_summary
             2 -> R.string.library_mode_performance_summary
-            3 -> R.string.library_mode_battery_summary
-            else -> R.string.library_mode_balanced_summary
-        }), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            else -> null
+        }?.let {
+            Text(stringResource(it), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
 
         val rows = mutableListOf<@Composable (Shape) -> Unit>()
         if (effectiveMode == 0 || tuningIntent != null) rows.add { shape ->
