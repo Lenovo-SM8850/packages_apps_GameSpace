@@ -162,13 +162,15 @@ class FixedActionTile(
 class CycleTile(
     override val id: String,
     override val label: String,
-    override val icon: Int,
+    private val defaultIcon: Int,
     override val category: TileCategory,
     override val sessionOption: GameOption,
     private val readValue: () -> String,
     private val cycle: () -> Unit,
     private val readSavedDifference: () -> Boolean = { false },
+    private val readIcon: () -> Int = { defaultIcon },
 ) : TileAction {
+    override val icon: Int get() = readIcon()
     override val differsFromSaved: Boolean get() = readSavedDifference()
     override val kind = TileKind.CYCLE
     override val isEnabled = false
@@ -390,6 +392,10 @@ class TileRepository @Inject constructor(
 
     val allAvailableTiles: List<TileAction>
         get() = _availableTiles
+
+    /** Controls the editor offers; the timed screen-on control repeats the game-long one. */
+    val addableTiles: List<TileAction>
+        get() = _availableTiles.filter { it.id != AxPlatformClient.FEATURE_CAFFEINE }
 
     private val _tiles = mutableStateListOf<TileAction>()
     val tiles: SnapshotStateList<TileAction> get() = _tiles
@@ -1015,7 +1021,7 @@ class TileRepository @Inject constructor(
                 sessionOption = GameOption.DANMAKU,
                 readSavedDifference = { differsFromSaved(GameOption.DANMAKU) },
                 label = context.getString(R.string.tile_danmaku),
-                icon = R.drawable.materialsymbols_ic_notifications_rounded_filled,
+                icon = R.drawable.materialsymbols_ic_forum_rounded_filled,
                 state = notificationState,
                 setter = { gameSession.setDanmakuNotification(it) }
             )
@@ -1063,10 +1069,17 @@ class TileRepository @Inject constructor(
         add(CycleTile(
             id = "ringer",
             label = context.getString(R.string.tile_ringer),
-            icon = R.drawable.materialsymbols_ic_notifications_active_rounded_filled,
+            defaultIcon = R.drawable.materialsymbols_ic_volume_up_rounded_filled,
             category = TileCategory.SOUND_NOTIFICATIONS,
             sessionOption = GameOption.RINGER,
             readSavedDifference = { ringerDiffersFromSaved() },
+            readIcon = {
+                when (ringerState.value) {
+                    AudioManager.RINGER_MODE_SILENT -> R.drawable.materialsymbols_ic_volume_off_rounded_filled
+                    AudioManager.RINGER_MODE_VIBRATE -> R.drawable.materialsymbols_ic_vibration_rounded_filled
+                    else -> R.drawable.materialsymbols_ic_volume_up_rounded_filled
+                }
+            },
             readValue = {
                 context.getString(when (ringerState.value) {
                     AudioManager.RINGER_MODE_SILENT -> R.string.tile_ringer_mute
@@ -1156,7 +1169,7 @@ class TileRepository @Inject constructor(
                 category = TileCategory.GAME_TOOLS,
                 available = { hasDeviceCapability("boost_memory") },
                 label = context.getString(R.string.tile_boost_memory),
-                icon = R.drawable.materialsymbols_ic_speed_rounded_filled,
+                icon = R.drawable.materialsymbols_ic_memory_rounded_filled,
                 readResult = { latestResults["boost_memory"] },
                 action = {
                     val result = clearBackgroundProcesses()

@@ -84,6 +84,10 @@ import io.github.miner7222.gamespace.GameAspectRatioTile
 import io.github.miner7222.gamespace.gamebar.MediaVolumeController
 import io.github.miner7222.gamespace.gamebar.RecordingPhase
 import io.github.miner7222.gamespace.gamebar.RecordingState
+import io.github.miner7222.gamespace.gamebar.overlayBlur
+import io.github.miner7222.gamespace.gamebar.overlayBorder
+import io.github.miner7222.gamespace.gamebar.overlayInnerAlpha
+import io.github.miner7222.gamespace.gamebar.overlayPanelAlpha
 import io.github.miner7222.gamespace.library.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.collect
@@ -118,7 +122,7 @@ fun GamePanelCard(
     val columns = if (tablet) 3 else 4
     val px = if (compact) 12.dp else 16.dp
     val tileHeight = if (tablet) 64.dp else if (compact)
-        ((maxHeight - 202.dp) / 2).coerceIn(48.dp, 60.dp) else 72.dp
+        ((maxHeight - 213.dp) / 2).coerceIn(48.dp, 60.dp) else 72.dp
     var editing by remember { mutableStateOf(false) }
     val editingChanged by rememberUpdatedState(onEditingChanged)
     LaunchedEffect(editing) { editingChanged(editing) }
@@ -175,9 +179,11 @@ fun GamePanelCard(
     val recording by tileRepository.recordingState.collectAsState()
     val tiles = tileRepository.tiles
     val scroll = rememberScrollState()
+    val scrolled by remember { derivedStateOf { scroll.value > 0 } }
     CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides Dp.Unspecified) {
-        Surface(Modifier.width(panelWidth).height(maxHeight), shape = RoundedCornerShape(28.dp),
-            color = MaterialTheme.colorScheme.surfaceContainer, shadowElevation = 2.dp) {
+        Surface(Modifier.width(panelWidth).height(maxHeight).overlayBlur(28.dp), shape = RoundedCornerShape(28.dp),
+            color = MaterialTheme.colorScheme.surfaceContainer.copy(alpha = overlayPanelAlpha()),
+            contentColor = MaterialTheme.colorScheme.onSurface, border = overlayBorder(), shadowElevation = 2.dp) {
             Box(Modifier.fillMaxSize()) {
                 if (editing) {
                     TileEditPanel(tileRepository, apps, mainCount, columns, tablet, compact,
@@ -195,8 +201,9 @@ fun GamePanelCard(
                         onSettings = { openSettings(GameSettingsDestination.IN_GAME_OPTIONS) })
                     DashboardModes(selectedMode, compact, Modifier.padding(horizontal = px).padding(top = if (compact) 4.dp else 8.dp),
                         onNone = noneAction, onMode = { SessionOptions.chooseMode(context, it.toSystemGameMode()) })
+                    ScrollEdge(scrolled)
                     Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(scroll)
-                        .padding(horizontal = px).padding(top = if (compact) 6.dp else 10.dp, bottom = 12.dp)) {
+                        .padding(horizontal = px).padding(top = 8.dp, bottom = 12.dp)) {
                         if (graphExpanded) FpsGraph(Modifier.padding(bottom = 10.dp), fpsInteractor)
                         DashboardSliders(interactor, mediaVolume, compact, onOutput = {
                             onDismiss()
@@ -257,9 +264,10 @@ private fun DashboardHeader(packageName: String, fps: FpsInteractor, expanded: B
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(app.first, Modifier.weight(1f), fontSize = if (compact) 14.sp else 16.sp,
                     lineHeight = if (compact) 18.sp else 20.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Box(Modifier.width(58.dp).height(if (compact) 22.dp else 24.dp).clip(RoundedCornerShape(10.dp))
-                    .background(if (expanded) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHighest)
-                    .clickable(onClick = onGraph).semantics {
+                Box(Modifier.widthIn(min = 58.dp).height(24.dp).clip(RoundedCornerShape(12.dp))
+                    .background(if (expanded) MaterialTheme.colorScheme.primaryContainer
+                        else MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = overlayInnerAlpha()))
+                    .clickable(onClick = onGraph).padding(horizontal = 8.dp).semantics {
                         contentDescription = context.getString(R.string.dashboard_fps_graph, history.lastOrNull()?.roundToInt() ?: 0)
                         stateDescription = context.getString(if (expanded) R.string.dashboard_expanded else R.string.dashboard_collapsed)
                     }, contentAlignment = Alignment.Center) {
@@ -335,6 +343,7 @@ private fun DashboardModes(selected: GameMode, compact: Boolean, modifier: Modif
     val none = selected == GameMode.None
     val context = LocalContext.current
     val explanation = stringResource(R.string.dashboard_modes_off)
+    val inner = overlayInnerAlpha()
     Row(modifier.fillMaxWidth().height(if (compact) 40.dp else 48.dp)
         .then(if (none) Modifier.semantics(mergeDescendants = true) { stateDescription = explanation }
             .clickable(role = Role.Button, onClickLabel = explanation, onClick = onNone) else Modifier.selectableGroup()),
@@ -348,10 +357,12 @@ private fun DashboardModes(selected: GameMode, compact: Boolean, modifier: Modif
             }
             Surface(Modifier.weight(1f).fillMaxHeight().then(if (!none)
                 Modifier.selectable(checked, role = Role.RadioButton, onClick = { onMode(mode) }) else Modifier), shape = shape,
-                color = when { none -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
-                    checked -> MaterialTheme.colorScheme.primary; else -> MaterialTheme.colorScheme.secondaryContainer },
-                contentColor = when { none -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
-                    checked -> MaterialTheme.colorScheme.onPrimary; else -> MaterialTheme.colorScheme.onSecondaryContainer }) {
+                color = when { none -> MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = inner)
+                    checked -> MaterialTheme.colorScheme.primary
+                    else -> MaterialTheme.colorScheme.secondaryContainer.copy(alpha = inner) },
+                contentColor = when { none -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.42f)
+                    checked -> MaterialTheme.colorScheme.onPrimary; else -> MaterialTheme.colorScheme.onSecondaryContainer },
+                border = if (none) BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant) else null) {
                 Box(contentAlignment = Alignment.Center) { Text(context.getString(mode.displayNameRes), fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1) }
             }
         }
@@ -364,8 +375,8 @@ private fun DashboardAuxButton(compact: Boolean, secondRow: Boolean, selected: B
     val context = LocalContext.current
     val outerOffset = if (!compact) 0.dp else if (secondRow) 2.dp else (-2).dp
     val innerOffset = -outerOffset
-    val shape = RoundedCornerShape(if (selected == true) 22.dp else if (compact) 14.dp else 16.dp)
-    Box(Modifier.size(if (compact) 40.dp else 48.dp)) {
+    val shape = RoundedCornerShape(if (selected == true) 20.dp else 14.dp)
+    Box(Modifier.size(44.dp, if (compact) 40.dp else 48.dp)) {
         Box(Modifier.requiredSize(48.dp).offset(y = outerOffset)
             .then(if (selected != null) Modifier.toggleable(selected, enabled, Role.Switch) { onClick() }
                 else Modifier.clickable(enabled = enabled, role = Role.Button, onClick = onClick))
@@ -373,8 +384,10 @@ private fun DashboardAuxButton(compact: Boolean, secondRow: Boolean, selected: B
                 contentDescription = label
                 if (selected != null) stateDescription = context.getString(if (selected) R.string.dashboard_on else R.string.dashboard_off)
             }, contentAlignment = Alignment.Center) {
-            Box(Modifier.offset(y = innerOffset).size(if (compact) 40.dp else 48.dp).clip(shape)
-                .background(if (selected == true) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHighest),
+            Box(Modifier.offset(y = innerOffset).size(44.dp, if (compact) 32.dp else 40.dp).clip(shape)
+                .background(if (selected == true) MaterialTheme.colorScheme.primaryContainer
+                    else MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = overlayInnerAlpha()))
+                .then(if (selected == true) Modifier else Modifier.border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape)),
                 contentAlignment = Alignment.Center) {
                 Icon(icon, null, Modifier.size(22.dp),
                     tint = (if (selected == true) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant)
@@ -419,6 +432,7 @@ private fun DashboardSliders(brightness: BrightnessInteractor, media: MediaVolum
 private fun DashboardSlider(value: Float, enabled: Boolean, label: String, icon: ImageVector,
     compact: Boolean, modifier: Modifier, onValue: (Float) -> Unit) {
     val color = MaterialTheme.colorScheme
+    val inner = overlayInnerAlpha()
     val currentValue by rememberUpdatedState(onValue)
     val density = LocalDensity.current
     val leading = with(density) { (if (compact) 34.dp else 40.dp).toPx() }
@@ -446,7 +460,7 @@ private fun DashboardSlider(value: Float, enabled: Boolean, label: String, icon:
             val track = (if (compact) 28.dp else 40.dp).toPx()
             val top = (size.height - track) / 2
             val active = if (enabled) color.primary else color.onSurface.copy(alpha = 0.38f)
-            drawRoundRect(color.surfaceContainerHighest, Offset(0f, top), Size(size.width, track), CornerRadius(track / 2))
+            drawRoundRect(color.surfaceContainerHighest.copy(alpha = inner), Offset(0f, top), Size(size.width, track), CornerRadius(track / 2))
             drawRoundRect(active, Offset(0f, top), Size((knob - 6.dp.toPx()).coerceAtLeast(0f), track), CornerRadius(track / 2))
             drawRoundRect(active, Offset(knob - 2.dp.toPx(), 0f), Size(4.dp.toPx(), size.height), CornerRadius(2.dp.toPx()))
         }
@@ -482,7 +496,9 @@ fun TileButton(tile: TileAction, modifier: Modifier = Modifier, tablet: Boolean 
     val active = (tile.kind == TileKind.TOGGLE || ratio) && enabled
     val record = tile.id == "screen_record" && recording.phase == RecordingPhase.ACTIVE
     val color = MaterialTheme.colorScheme
-    val background by animateColorAsState(if (record) color.errorContainer else if (active) color.primaryContainer else color.surfaceContainerHighest)
+    val inner = overlayInnerAlpha()
+    val background by animateColorAsState(if (record) color.errorContainer else if (active) color.primaryContainer
+        else color.surfaceContainerHighest.copy(alpha = inner))
     val foreground = if (record) color.onErrorContainer else if (active) color.onPrimaryContainer else color.onSurfaceVariant
     val radius by animateDpAsState(if (active || record) 22.dp else 16.dp)
     val value = if (tile.id == "screen_record") when (recording.phase) {
@@ -547,14 +563,13 @@ private fun BoxScope.DashboardOptionSheet(tile: TileAction, onDismiss: () -> Uni
     val title = stringResource(R.string.tile_aspect_ratio)
     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.3f)).clickable(onClick = onDismiss))
     Surface(Modifier.align(Alignment.BottomCenter).fillMaxWidth().fillMaxHeight(0.8f).semantics { paneTitle = title },
-        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = overlayInnerAlpha()),
+        contentColor = MaterialTheme.colorScheme.onSurface) {
         Column(Modifier.verticalScroll(rememberScrollState()).selectableGroup().padding(16.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(stringResource(R.string.tile_aspect_ratio), Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
-                TextButton(onClick = onDismiss) { Text(stringResource(R.string.dashboard_done)) }
-            }
+            Text(stringResource(R.string.tile_aspect_ratio), Modifier.padding(vertical = 12.dp), style = MaterialTheme.typography.titleMedium)
             tile.options.forEach { option ->
-                Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).selectable(option.selected, role = Role.RadioButton,
+                Row(Modifier.fillMaxWidth().height(44.dp).selectable(option.selected, role = Role.RadioButton,
                     onClick = { tile.selectOption(option); onDismiss() }), verticalAlignment = Alignment.CenterVertically) {
                     RadioButton(option.selected, onClick = null)
                     Text(option.label, Modifier.padding(start = 8.dp))
@@ -569,14 +584,16 @@ fun FpsGraph(modifier: Modifier = Modifier, interactor: FpsInteractor) {
     val history by interactor.fpsHistory.collectAsState()
     val maximum by interactor.dynamicMaxFps.collectAsState()
     val color = MaterialTheme.colorScheme.primary
-    Column(modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceContainerHighest, RoundedCornerShape(20.dp)).padding(12.dp)) {
+    Column(modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = overlayInnerAlpha()),
+        RoundedCornerShape(20.dp)).padding(12.dp)) {
         val stats = listOf(R.string.dashboard_min to (history.minOrNull()?.roundToInt() ?: 0),
             R.string.dashboard_average to (if (history.isEmpty()) 0 else history.average().roundToInt()),
             R.string.dashboard_max to (history.maxOrNull()?.roundToInt() ?: 0))
         Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
             stats.forEach { (label, value) ->
                 Column {
-                    Text(stringResource(label), fontSize = 11.sp, lineHeight = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(stringResource(label), fontSize = 11.sp, lineHeight = 14.sp, fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Text(value.toString(), fontSize = 18.sp, lineHeight = 22.sp,
                         style = MaterialTheme.typography.titleMedium.copy(fontFeatureSettings = "tnum"))
                 }
@@ -608,7 +625,7 @@ fun QuickStartAppSidebar(apps: List<AppInfo>, compact: Boolean = false,
     onMessage: (String) -> Unit = {}, onLaunched: () -> Unit = {}) {
     val context = LocalContext.current
     Row(Modifier.fillMaxWidth().padding(top = 6.dp).height(56.dp)
-        .background(MaterialTheme.colorScheme.surfaceContainerHighest, RoundedCornerShape(28.dp))
+        .background(MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = overlayInnerAlpha()), RoundedCornerShape(28.dp))
         .horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
         if (!compact) Text(stringResource(R.string.dashboard_apps), Modifier.padding(horizontal = 8.dp),
             style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -669,7 +686,13 @@ fun TileEditPanel(repository: TileRepository, apps: List<AppInfo>, mainCount: In
         }
         Column(Modifier.weight(1f).onGloballyPositioned { viewport = it.boundsInRoot() }
             .verticalScroll(editorScroll).padding(horizontal = px).padding(bottom = 16.dp)) {
-            Text(stringResource(R.string.dashboard_in_dashboard), style = MaterialTheme.typography.titleSmall)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(stringResource(R.string.dashboard_in_dashboard), Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
+                Surface(shape = CircleShape, color = MaterialTheme.colorScheme.secondaryContainer) {
+                    Text(drag.tiles.size.toString(), Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                        style = MaterialTheme.typography.labelSmall)
+                }
+            }
             Text(stringResource(R.string.dashboard_drag), style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
             Column(Modifier.fillMaxWidth().padding(top = 8.dp).onGloballyPositioned { gridOrigin = it.positionInRoot() }
@@ -704,18 +727,25 @@ fun TileEditPanel(repository: TileRepository, apps: List<AppInfo>, mainCount: In
                                     add(CustomAccessibilityAction(removeLabel) { drag.removeTile(tile.id); save(); true })
                                 } }) {
                                 Box(Modifier.fillMaxSize().padding(top = 8.dp, end = 8.dp)
-                                    .clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.surfaceContainerHighest)
+                                    .clip(RoundedCornerShape(16.dp))
+                                    .background(MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = overlayInnerAlpha()))
                                     .dragAndDropTileSource(tile, drag), contentAlignment = Alignment.Center) {
-                                    if (tablet) Row(Modifier.padding(horizontal = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    if (tablet) Row(Modifier.padding(horizontal = 6.dp), verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                                         Icon(Icons.Rounded.DragIndicator, stringResource(R.string.dashboard_drag), Modifier.size(18.dp),
                                             tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        Icon(painterResource(tile.icon), null, Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurface)
                                         Text(title, Modifier.weight(1f).padding(4.dp), fontSize = 12.sp,
                                             lineHeight = 14.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                                    } else Column(Modifier.padding(horizontal = 3.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                                        Icon(Icons.Rounded.DragIndicator, stringResource(R.string.dashboard_drag), Modifier.size(20.dp),
+                                    } else {
+                                        Column(Modifier.padding(horizontal = 3.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                            Icon(painterResource(tile.icon), null, Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurface)
+                                            Text(title, fontSize = 11.sp, lineHeight = 14.sp, maxLines = 2,
+                                                overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
+                                        }
+                                        Icon(Icons.Rounded.DragIndicator, stringResource(R.string.dashboard_drag),
+                                            Modifier.align(Alignment.TopStart).padding(3.dp).size(16.dp),
                                             tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                                        Text(title, fontSize = 11.sp, lineHeight = 14.sp, maxLines = 2,
-                                            overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
                                     }
                                 }
                                 CompositionLocalProvider(LocalViewConfiguration provides removeConfiguration) {
@@ -747,23 +777,15 @@ fun TileEditPanel(repository: TileRepository, apps: List<AppInfo>, mainCount: In
             }
             Text(stringResource(R.string.dashboard_add), Modifier.padding(top = 20.dp, bottom = 4.dp), style = MaterialTheme.typography.titleSmall)
             TileCategory.entries.forEach { category ->
-                val available = repository.allAvailableTiles.filter { it.category == category }
+                val added = drag.tileIds().toSet()
+                val available = repository.addableTiles.filter { it.category == category && it.id !in added }
                 if (available.isNotEmpty()) {
                     Text(stringResource(category.labelRes), Modifier.padding(top = 12.dp, bottom = 4.dp),
                         style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         available.forEach { tile ->
-                            val added = drag.tileIds().contains(tile.id)
                             val title = if (tile.id == "screen_aspect_ratio") stringResource(R.string.tile_aspect_ratio) else tile.label
-                            if (added) Surface(Modifier.padding(vertical = 4.dp).height(34.dp)
-                                .semantics(mergeDescendants = true) { contentDescription = context.getString(R.string.dashboard_already_added, title) },
-                                color = MaterialTheme.colorScheme.secondaryContainer, shape = RoundedCornerShape(10.dp)) {
-                                Row(Modifier.padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                    Icon(Icons.Rounded.Check, null, Modifier.size(16.dp))
-                                    Text(title, fontSize = 13.sp, maxLines = 1)
-                                }
-                            } else InputChip(selected = false, onClick = {
+                            InputChip(selected = false, onClick = {
                                 drag.addTile(DragTileData(tile.id, title, tile.icon)); save()
                                 onMessage(context.getString(if (drag.tiles.size <= mainCount) R.string.dashboard_added_main
                                     else R.string.dashboard_added_more, title))
@@ -786,11 +808,25 @@ private fun SheetGrip() {
 
 @Composable
 private fun MoreDivider() {
-    Row(Modifier.fillMaxWidth().height(32.dp), verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        HorizontalDivider(Modifier.weight(1f))
-        Text(stringResource(R.string.dashboard_more_starts), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        HorizontalDivider(Modifier.weight(1f))
+    Box(Modifier.fillMaxWidth().height(32.dp), contentAlignment = Alignment.Center) {
+        Box(Modifier.fillMaxWidth().height(2.dp).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)))
+        Row(Modifier.height(28.dp).background(MaterialTheme.colorScheme.primaryContainer, CircleShape)
+            .padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            Icon(Icons.Rounded.ExpandMore, null, Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onPrimaryContainer)
+            Text(stringResource(R.string.dashboard_more_starts), fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onPrimaryContainer)
+        }
+    }
+}
+
+/** Keeps a gap under the pinned header and shows a line once the content scrolls beneath it. */
+@Composable
+private fun ScrollEdge(scrolled: Boolean) {
+    Column(Modifier.fillMaxWidth()) {
+        Spacer(Modifier.height(8.dp))
+        Box(Modifier.fillMaxWidth().height(1.dp).background(
+            if (scrolled) MaterialTheme.colorScheme.outlineVariant else Color.Transparent))
     }
 }
 

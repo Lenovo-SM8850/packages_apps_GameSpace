@@ -39,7 +39,6 @@ import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.ceil
 import android.content.Context
-import android.content.res.Configuration
 import android.graphics.PixelFormat
 import android.os.Handler
 import android.os.PowerManager
@@ -49,9 +48,9 @@ import android.view.Gravity
 import android.view.WindowInsets
 import android.view.WindowManager
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -219,10 +218,7 @@ class SessionStatusOverlay(
                 repeatOnLifecycle(Lifecycle.State.STARTED) {
                     pill.setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
                     pill.setContent {
-                        MaterialExpressiveTheme(
-                            colorScheme = if (isSystemInDarkTheme()) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context),
-                            motionScheme = MotionScheme.expressive(),
-                        ) {
+                        OverlayTheme(context) {
                             status.value?.let { value ->
                                 val top = with(LocalDensity.current) { geometry.value.y.toDp() }
                                 val overshootRoom = with(LocalDensity.current) {
@@ -293,8 +289,8 @@ class SessionStatusOverlay(
             WindowInsets.Type.displayCutout()).top
         val safeHeight = (metrics.bounds.height() - insets.top - insets.bottom) / density
         return Geometry(
-            ((metrics.bounds.width() - insets.left - insets.right) / density - 24).coerceAtLeast(0f).dp,
-            minOf(56f, (safeHeight - 32).coerceAtLeast(0f)).dp,
+            ((metrics.bounds.width() - insets.left - insets.right) / density - 48).coerceAtLeast(0f).dp,
+            minOf(52f, (safeHeight - 32).coerceAtLeast(0f)).dp,
             (insets.left - insets.right) / 2,
             maxOf(insets.top + (16 * density).toInt(), topCutoutInset + (100 * density).toInt()),
         )
@@ -308,9 +304,8 @@ private fun StatusPill(status: SessionStartStatus, maxWidth: Dp, maxHeight: Dp,
     val config = LocalConfiguration.current
     val density = LocalDensity.current
     val tablet = config.smallestScreenWidthDp >= 600
-    val landscape = config.orientation == Configuration.ORIENTATION_LANDSCAPE
-    val limit = if (tablet) 3 else if (landscape) 2 else 1
-    val height = minOf(if (tablet) 52.dp else 48.dp, maxHeight)
+    val width = minOf(maxWidth, 660.dp)
+    val height = minOf(52.dp, maxHeight)
     val mode = fromSystemGameMode(status.mode)
     val modeLabel = stringResource(mode.displayNameRes)
     val labels = status.chips.map { stringResource(it.label) }
@@ -324,22 +319,30 @@ private fun StatusPill(status: SessionStartStatus, maxWidth: Dp, maxHeight: Dp,
     fun textWidth(text: String, style: TextStyle): Dp = with(density) {
         measurer.measure(text, style, maxLines = 1).size.width.toDp()
     }
-    val gap = if (tablet) 8.dp else 6.dp
+    val gap = 8.dp
     val modeWidth = 28.dp + textWidth(modeLabel, modeStyle)
-    val iconWidth = if (tablet) 36.dp else 32.dp
+    fun chipWidth(index: Int, icons: Boolean): Dp =
+        if (icons) 36.dp else 44.dp + minOf(textWidth(labels[index], chipStyle), 132.dp)
+    // The mode, divider, "+N" counter and result badge never shrink, so they are counted first.
     fun totalWidth(count: Int, icons: Boolean): Dp {
         val widths = mutableListOf(modeWidth)
-        if (status.chips.isNotEmpty() || status.memoryCleaned) widths.add(9.dp)
-        repeat(count) { widths.add(if (icons) iconWidth else 44.dp + textWidth(labels[it], chipStyle)) }
-        if (count < status.chips.size) widths.add(24.dp + textWidth("+${status.chips.size - count}", chipStyle))
-        if (status.memoryCleaned) widths.add(32.dp)
-        return (if (tablet) 26.dp else 22.dp) + widths.fold(0.dp) { a, b -> a + b } + gap * (widths.size - 1)
+        if (status.chips.isNotEmpty() || status.memoryCleaned) widths.add(1.dp)
+        repeat(count) { widths.add(chipWidth(it, icons)) }
+        if (count < status.chips.size) widths.add(maxOf(36.dp, 20.dp + textWidth("+${status.chips.size - count}", chipStyle)))
+        if (status.memoryCleaned) widths.add(36.dp)
+        return 24.dp + widths.fold(0.dp) { a, b -> a + b } + gap * (widths.size - 1)
     }
-    var count = minOf(limit, status.chips.size)
-    val iconOnly = (!tablet && landscape) || totalWidth(count, false) + height + gap > maxWidth
-    // Preserve mode and result badge on narrow screens/font scales; +N names all omitted states.
-    while (count > 0 && totalWidth(count, iconOnly) + height + gap > maxWidth) count--
-    val modeTextMaxWidth = (maxWidth - height - gap - totalWidth(count, iconOnly) + textWidth(modeLabel, modeStyle)).coerceAtLeast(0.dp)
+    // Chips fold into +N from the third one; icons alone are the last resort for two labelled chips.
+    var iconOnly = false
+    var count = minOf(3, status.chips.size)
+    while (count > 0 && totalWidth(count, false) > width) count--
+    if (count < minOf(2, status.chips.size)) {
+        iconOnly = true
+        count = minOf(3, status.chips.size)
+        while (count > 0 && totalWidth(count, true) > width) count--
+    }
+    val modeTextMaxWidth = (width - totalWidth(count, iconOnly) + textWidth(modeLabel, modeStyle)).coerceAtLeast(0.dp)
+    val shape = RoundedCornerShape(26.dp)
     val context = LocalContext.current
     val gameIcon = remember(context) {
         SessionOptions.packageName(context)?.let { packageName ->
@@ -369,7 +372,7 @@ private fun StatusPill(status: SessionStartStatus, maxWidth: Dp, maxHeight: Dp,
             addRoundRect(RoundRect(left, 0f, left + shownWidth, size.height, CornerRadius(size.height / 2f)))
         }
         clipPath(path) { this@drawWithContent.drawContent() }
-    }.then(Modifier.widthIn(max = maxWidth).height(height).pointerInput(Unit) {
+    }.then(Modifier.widthIn(max = width).height(height).pointerInput(Unit) {
         val threshold = 24.dp.toPx()
         var dismissed = false
         detectVerticalDragGestures(onDragStart = { drag = 0f; dismissed = false }, onVerticalDrag = { change, amount ->
@@ -377,18 +380,19 @@ private fun StatusPill(status: SessionStartStatus, maxWidth: Dp, maxHeight: Dp,
             drag += amount
             if (!dismissed && drag < -threshold) { dismissed = true; onDismiss() }
         })
-    }.shadow(6.dp, RoundedCornerShape(26.dp)).clip(RoundedCornerShape(26.dp))
-        .background(MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.94f))
+    }.overlayBlur(26.dp).shadow(6.dp, shape).clip(shape)
+        .background(MaterialTheme.colorScheme.surfaceContainer.copy(alpha = overlayPanelAlpha()))
+        .border(overlayBorder(), shape)
         .clickable(role = Role.Button, onClick = onOpen)
         .clearAndSetSemantics {
             contentDescription = description
             role = Role.Button
             onClick(label = openLabel) { onOpen(); true }
-        }.padding(start = if (tablet) 18.dp else 14.dp, end = 8.dp))) {
+        })) {
             Row(horizontalArrangement = Arrangement.spacedBy(gap), verticalAlignment = Alignment.CenterVertically) {
                 Spacer(Modifier.size(height))
                 Box(Modifier.graphicsLayer { alpha = motion.content.value }) {
-                    Row(Modifier,
+                    Row(Modifier.padding(start = 16.dp, end = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(gap), verticalAlignment = Alignment.CenterVertically) {
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(mode.icon, null, Modifier.size(22.dp), tint = MaterialTheme.colorScheme.primary)
@@ -396,29 +400,28 @@ private fun StatusPill(status: SessionStartStatus, maxWidth: Dp, maxHeight: Dp,
                 color = MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         if (status.chips.isNotEmpty() || status.memoryCleaned) {
-            Box(Modifier.width(9.dp).height(24.dp), contentAlignment = Alignment.Center) {
-                Box(Modifier.width(1.dp).fillMaxHeight().background(MaterialTheme.colorScheme.outlineVariant))
-            }
+            Box(Modifier.requiredSize(1.dp, 24.dp).background(MaterialTheme.colorScheme.outlineVariant))
         }
         repeat(count) { index ->
-            Row((if (iconOnly) Modifier.size(iconWidth) else Modifier.height(if (tablet) 36.dp else 32.dp))
+            Row((if (iconOnly) Modifier.requiredSize(36.dp) else Modifier.height(36.dp))
                 .background(MaterialTheme.colorScheme.secondaryContainer, RoundedCornerShape(12.dp))
                 .then(if (iconOnly) Modifier else Modifier.padding(start = 8.dp, end = 12.dp)),
                 horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
                 verticalAlignment = Alignment.CenterVertically) {
                 Icon(status.chips[index].icon, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSecondaryContainer)
-                if (!iconOnly) Text(labels[index], style = chipStyle, color = MaterialTheme.colorScheme.onSecondaryContainer, maxLines = 1)
+                if (!iconOnly) Text(labels[index], Modifier.widthIn(max = 132.dp), style = chipStyle,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
         if (count < status.chips.size) {
-            Box(Modifier.height(if (tablet) 36.dp else 32.dp)
-                .background(MaterialTheme.colorScheme.surfaceContainerHighest, RoundedCornerShape(12.dp))
-                .padding(horizontal = 12.dp), contentAlignment = Alignment.Center) {
+            Box(Modifier.requiredHeight(36.dp).requiredWidthIn(min = 36.dp)
+                .background(MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = overlayInnerAlpha()), RoundedCornerShape(12.dp))
+                .padding(horizontal = 10.dp), contentAlignment = Alignment.Center) {
                 Text("+${status.chips.size - count}", style = chipStyle, color = MaterialTheme.colorScheme.onSurface, maxLines = 1)
             }
         }
         if (status.memoryCleaned) {
-            Box(Modifier.size(32.dp).background(MaterialTheme.colorScheme.tertiaryContainer, CircleShape), contentAlignment = Alignment.Center) {
+            Box(Modifier.requiredSize(36.dp).background(MaterialTheme.colorScheme.tertiaryContainer, CircleShape), contentAlignment = Alignment.Center) {
                 Icon(Icons.Rounded.Memory, memoryLabel, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onTertiaryContainer)
             }
         }
