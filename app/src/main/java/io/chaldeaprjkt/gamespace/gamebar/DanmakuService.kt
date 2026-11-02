@@ -156,6 +156,7 @@ class DanmakuService @Inject constructor(
     private var samplingEnabled = false
     private var lastFrameAt = -1L
     private var destroyed = false
+    private var sessionActive = false
     private var gameVisible = false
     private val sampleBrightness = Runnable { sampleBackgroundBrightness() }
     private val drainRunnable = Runnable { drainPending() }
@@ -331,7 +332,7 @@ class DanmakuService @Inject constructor(
     }
 
     override val danmakuNotificationMode: Boolean
-        get() = gameVisible && appSettings.inGameOptions.current(GameOption.DANMAKU) == 1
+        get() = sessionActive && gameVisible && appSettings.inGameOptions.current(GameOption.DANMAKU) == 1
 
     /** Moves waiting lines onto the nearest free lanes, or schedules the next attempt. */
     private fun drainPending() {

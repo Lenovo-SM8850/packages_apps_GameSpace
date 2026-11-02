@@ -99,7 +99,10 @@ class GameModeUtils @Inject constructor(private val context: Context) {
             .filter { x -> x.packageName != packageName }
             .toMutableList()
             .apply { add(data) }
-        applyRuntimeMode(packageName, runtimeMode)
+        if (io.github.miner7222.gamespace.library.SessionOptions.packageName(context) != packageName ||
+            io.github.miner7222.gamespace.library.SessionOptions.isActive(context)) {
+            applyRuntimeMode(packageName, runtimeMode)
+        }
 
         data
     }

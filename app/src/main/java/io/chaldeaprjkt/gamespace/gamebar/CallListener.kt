@@ -83,6 +83,11 @@ class CallListener @Inject constructor(
     private val callOverlayEnabled get() = appSettings.inGameOptions.current(GameOption.CALL_OVERLAY) == 1
 
     var onIncomingCall: (() -> Unit)? = null
+    var onCallActiveChanged: ((Boolean) -> Unit)? = null
+    val isCallActive: Boolean get() = activeCall
+    private var activeCall = false
+    private var listening = false
+    private var sessionActive = false
 
     private var previousAudioMode = audioManager.mode
 
@@ -98,11 +103,20 @@ class CallListener @Inject constructor(
     @Suppress("DEPRECATION")
     private val phoneStateListener = object : PhoneStateListener() {
         override fun onCallStateChanged(state: Int, incomingNumber: String?) {
+            if (!listening) return
             val number = incomingNumber.orEmpty()
             callState = state
+            if (state == TelephonyManager.CALL_STATE_OFFHOOK) activeCall = true
+            else if (state == TelephonyManager.CALL_STATE_IDLE) activeCall = false
             this@CallListener.incomingNumber = number
             appliedCallsMode = callsMode
             appliedOverlay = callOverlayEnabled
+            onCallActiveChanged?.invoke(activeCall)
+            if (!sessionActive) {
+                restoreCallAudio()
+                dismissRingerOverlay(immediate = true)
+                return
+            }
             when (state) {
                 TelephonyManager.CALL_STATE_RINGING -> handleIncomingCall(number)
                 TelephonyManager.CALL_STATE_OFFHOOK -> handleOffhookState()
@@ -117,6 +131,7 @@ class CallListener @Inject constructor(
     }
 
     fun refreshInGameOptions() {
+        if (!sessionActive) return
         val mode = callsMode
         val overlay = callOverlayEnabled
         if (!overlay) dismissRingerOverlay(immediate = true)
@@ -131,29 +146,45 @@ class CallListener @Inject constructor(
         appliedOverlay = overlay
     }
 
-    fun init() {
-        callState = TelephonyManager.CALL_STATE_IDLE
-        appliedCallsMode = callsMode
-        appliedOverlay = callOverlayEnabled
-        previousAudioMode = audioManager.mode
-        @Suppress("DEPRECATION")
-        telephonyManager.listen(
-            phoneStateListener,
-            PhoneStateListener.LISTEN_CALL_STATE
-        )
+    fun init(active: Boolean = true) {
+        if (!listening) {
+            @Suppress("DEPRECATION")
+            val currentState = telephonyManager.callState
+            callState = currentState
+            activeCall = currentState == TelephonyManager.CALL_STATE_OFFHOOK
+            appliedCallsMode = callsMode
+            appliedOverlay = callOverlayEnabled
+            listening = true
+            @Suppress("DEPRECATION")
+            telephonyManager.listen(phoneStateListener, PhoneStateListener.LISTEN_CALL_STATE)
+        }
+        setSessionActive(active)
+    }
+
+    /** Continue observing idle while game effects and call routing are suspended. */
+    fun setSessionActive(active: Boolean) {
+        val enabled = active && !isCallActive
+        if (sessionActive == enabled) return
+        sessionActive = enabled
+        if (enabled) {
+            previousAudioMode = audioManager.mode
+            refreshInGameOptions()
+        } else {
+            restoreCallAudio()
+            dismissRingerOverlay(immediate = true)
+        }
     }
 
     fun destroy() {
-        restoreCallAudio()
+        setSessionActive(false)
+        listening = false
         @Suppress("DEPRECATION")
-        telephonyManager.listen(
-            phoneStateListener,
-            PhoneStateListener.LISTEN_NONE
-        )
+        telephonyManager.listen(phoneStateListener, PhoneStateListener.LISTEN_NONE)
         dismissRingerOverlay(immediate = true)
     }
 
     private fun handleIncomingCall(incomingNumber: String) {
+        if (!sessionActive) return
         onIncomingCall?.invoke()
         val displayName = lookupContactName(incomingNumber).ifEmpty { incomingNumber }
 
@@ -184,7 +215,11 @@ class CallListener @Inject constructor(
     }
 
     private fun handleOffhookState() {
+        callState = TelephonyManager.CALL_STATE_OFFHOOK
+        activeCall = true
+        onCallActiveChanged?.invoke(true)
         dismissRingerOverlay()
+        if (!sessionActive) return
 
         if (callsMode == 0 || callsMode == 2) return
 
@@ -278,12 +313,14 @@ class CallListener @Inject constructor(
                             motionScheme = MotionScheme.expressive(),
                         ) {
                             CallOverlay(
-                                onAccept = {
+                                onAccept = accept@{
+                                    if (!sessionActive) return@accept
                                     telecomManager.acceptRingingCall()
                                     handleOffhookState()
                                     dismissRingerOverlay()
                                 },
-                                onReject = {
+                                onReject = reject@{
+                                    if (!sessionActive) return@reject
                                     telecomManager.endCall()
                                     dismissRingerOverlay()
                                 },
