@@ -417,7 +417,7 @@ private fun StatusPill(status: SessionStartStatus, maxWidth: Dp, maxHeight: Dp,
             drag += amount
             if (!dismissed && drag < -threshold) { dismissed = true; onDismiss() }
         })
-    }.shadow(6.dp, shape).clip(shape).overlayBlur(26.dp)
+    }.shadow(6.dp, shape).clip(shape)
         .background(MaterialTheme.colorScheme.surfaceContainer.copy(alpha = overlayPanelAlpha()))
         .border(overlayBorder(), shape)
         .clickable(role = Role.Button, onClick = onOpen)

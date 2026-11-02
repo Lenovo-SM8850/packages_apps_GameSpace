@@ -86,7 +86,6 @@ import io.github.miner7222.gamespace.GameAspectRatioTile
 import io.github.miner7222.gamespace.gamebar.MediaVolumeController
 import io.github.miner7222.gamespace.gamebar.RecordingPhase
 import io.github.miner7222.gamespace.gamebar.RecordingState
-import io.github.miner7222.gamespace.gamebar.overlayBlur
 import io.github.miner7222.gamespace.gamebar.overlayBorder
 import io.github.miner7222.gamespace.gamebar.overlayInnerAlpha
 import io.github.miner7222.gamespace.gamebar.overlayPanelAlpha
@@ -180,7 +179,7 @@ fun GamePanelCard(
     val scroll = rememberScrollState()
     val scrolled by remember { derivedStateOf { scroll.value > 0 } }
     CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides Dp.Unspecified) {
-        Surface(Modifier.width(panelWidth).height(maxHeight).overlayBlur(28.dp), shape = RoundedCornerShape(28.dp),
+        Surface(Modifier.width(panelWidth).height(maxHeight), shape = RoundedCornerShape(28.dp),
             color = MaterialTheme.colorScheme.surfaceContainer.copy(alpha = overlayPanelAlpha()),
             contentColor = MaterialTheme.colorScheme.onSurface, border = overlayBorder(), shadowElevation = 2.dp) {
             Box(Modifier.fillMaxSize()) {

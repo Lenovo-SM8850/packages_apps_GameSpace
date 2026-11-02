@@ -241,7 +241,7 @@ private fun StatsStrip(fpsText: String, idle: Boolean) {
     val battery = rememberBatteryInfo()
     val opacity = animateFloatAsState(if (idle) 0.7f else 1f,
         animationSpec = tween(if (idle) 350 else 0), label = "statsOpacity")
-    Box(Modifier.fillMaxSize().overlayBlur(16.dp)
+    Box(Modifier.fillMaxSize()
         .background(MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = overlayPanelAlpha()),
             RoundedCornerShape(16.dp))
         .border(overlayBorder(), RoundedCornerShape(16.dp))

@@ -63,7 +63,6 @@ import io.chaldeaprjkt.gamespace.R
 import io.github.miner7222.gamespace.FitLabel
 import io.github.miner7222.gamespace.gamebar.RecordingPhase
 import io.github.miner7222.gamespace.gamebar.RecordingState
-import io.github.miner7222.gamespace.gamebar.overlayBlur
 import io.github.miner7222.gamespace.gamebar.overlayBorder
 import io.github.miner7222.gamespace.gamebar.overlayInnerAlpha
 import io.github.miner7222.gamespace.gamebar.overlayPanelAlpha
@@ -218,7 +217,7 @@ private fun EdgeHandle(
         contentAlignment = if (onLeft) Alignment.CenterStart else Alignment.CenterEnd) {
         val shape = RoundedCornerShape(6.dp)
         Box(Modifier.size(12.dp, 64.dp).shadow(3.dp, shape)
-            .background(MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.94f), shape)
+            .background(MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = overlayPanelAlpha()), shape)
             .border(overlayBorder(), shape), contentAlignment = Alignment.Center) {
             Box(Modifier.size(4.dp, 28.dp).background(
                 if (locked) MaterialTheme.colorScheme.primary
@@ -260,7 +259,6 @@ private fun MiniBar(
                     }
                 })
         }
-        .overlayBlur(32.dp)
         .shadow(6.dp, RoundedCornerShape(32.dp))
         .background(MaterialTheme.colorScheme.surfaceContainer.copy(alpha = overlayPanelAlpha()), RoundedCornerShape(32.dp))
         .border(overlayBorder(), RoundedCornerShape(32.dp))
