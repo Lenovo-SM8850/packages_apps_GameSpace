@@ -77,11 +77,15 @@ internal const val MINI_WIDTH_DP = 136
 internal const val MINI_HEIGHT_DP = 128
 internal const val MINI_RECORDING_HEIGHT_DP = 184
 
-internal fun miniWidthDp(showStats: Boolean, recording: Boolean) =
-    if (showStats && !recording) 76 else MINI_WIDTH_DP
+internal fun miniWidthDp(showStats: Boolean) =
+    if (showStats) 76 else MINI_WIDTH_DP
 
 internal fun miniHeightDp(showStats: Boolean, recording: Boolean) =
-    (if (showStats) 68 else MINI_HEIGHT_DP) + if (recording) MINI_RECORDING_HEIGHT_DP - MINI_HEIGHT_DP else 0
+    if (showStats) {
+        if (recording) MINI_HEIGHT_DP else 68
+    } else {
+        if (recording) MINI_RECORDING_HEIGHT_DP else MINI_HEIGHT_DP
+    }
 
 @Composable
 fun GameBarView(
@@ -234,7 +238,7 @@ private fun MiniBar(
 ) {
     val battery = rememberBatteryInfo()
     val activeRecording = recording.phase == RecordingPhase.ACTIVE
-    val width by animateDpAsState(miniWidthDp(showStats, activeRecording).dp,
+    val width by animateDpAsState(miniWidthDp(showStats).dp,
         animationSpec = tween(180), label = "miniWidth")
     val height by animateDpAsState(miniHeightDp(showStats, activeRecording).dp,
         animationSpec = tween(180), label = "miniHeight")
@@ -281,15 +285,26 @@ private fun MiniBar(
                 String.format(Locale.getDefault(), "%d:%02d", it / 60000, it / 1000 % 60)
             } ?: stringResource(R.string.dashboard_elapsed_unknown)
             val stop = stringResource(R.string.dashboard_stop_recording)
-            Row(Modifier.fillMaxWidth().height(52.dp)
+            val recordingModifier = (if (showStats) Modifier.size(56.dp).align(Alignment.CenterHorizontally)
+                else Modifier.fillMaxWidth().height(52.dp))
                 .clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp, bottomEnd = 26.dp, bottomStart = 26.dp))
                 .background(MaterialTheme.colorScheme.errorContainer)
                 .semantics(mergeDescendants = true) { contentDescription = "$stop, $elapsed" }
-                .clickable(role = Role.Button, onClick = onStopRecording),
-                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally)) {
-                Icon(Icons.Rounded.Stop, null, Modifier.size(24.dp), tint = MaterialTheme.colorScheme.onErrorContainer)
-                Text(elapsed, color = MaterialTheme.colorScheme.onErrorContainer, fontSize = 16.sp,
-                    fontWeight = FontWeight.Bold, style = TextStyle(fontFeatureSettings = "tnum"))
+                .clickable(role = Role.Button, onClick = onStopRecording)
+            if (showStats) {
+                Column(recordingModifier, horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center) {
+                    Icon(Icons.Rounded.Stop, null, Modifier.size(24.dp), tint = MaterialTheme.colorScheme.onErrorContainer)
+                    Text(elapsed, color = MaterialTheme.colorScheme.onErrorContainer, fontSize = 11.sp, lineHeight = 14.sp,
+                        fontWeight = FontWeight.Bold, maxLines = 1, style = TextStyle(fontFeatureSettings = "tnum"))
+                }
+            } else {
+                Row(recordingModifier, verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally)) {
+                    Icon(Icons.Rounded.Stop, null, Modifier.size(24.dp), tint = MaterialTheme.colorScheme.onErrorContainer)
+                    Text(elapsed, color = MaterialTheme.colorScheme.onErrorContainer, fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold, style = TextStyle(fontFeatureSettings = "tnum"))
+                }
             }
         }
     }
