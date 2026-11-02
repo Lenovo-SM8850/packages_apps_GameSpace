@@ -7,10 +7,7 @@ package io.github.miner7222.gamespace.gamebar
 
 import android.database.ContentObserver
 import android.provider.Settings
-import android.view.View
-import android.view.ViewGroup
 import android.view.ViewTreeObserver
-import android.widget.FrameLayout
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.Easing
@@ -34,7 +31,6 @@ import io.github.miner7222.gamespace.library.SessionOptions
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.launch
-import kotlin.math.roundToInt
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.ceil
@@ -45,6 +41,9 @@ import android.os.PowerManager
 import android.os.Looper
 import android.os.SystemClock
 import android.view.Gravity
+import android.view.View
+import android.view.ViewGroup
+import android.widget.FrameLayout
 import android.view.WindowInsets
 import android.view.WindowManager
 import androidx.compose.foundation.background
@@ -86,6 +85,7 @@ import androidx.lifecycle.repeatOnLifecycle
 import com.android.axion.compose.lifecycle.repeatWhenAttached
 import io.chaldeaprjkt.gamespace.R
 import io.chaldeaprjkt.gamespace.gamebar.fromSystemGameMode
+import kotlin.math.roundToInt
 
 /** Only confirmed persistent states are supplied by the session owner. */
 enum class SessionStatusChip(val label: Int, val icon: ImageVector) {
@@ -316,32 +316,41 @@ private fun StatusPill(status: SessionStartStatus, maxWidth: Dp, maxHeight: Dp,
     val modeStyle = TextStyle(fontSize = if (tablet) 16.sp else 15.sp, fontWeight = FontWeight.SemiBold)
     val chipStyle = TextStyle(fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
     val measurer = rememberTextMeasurer()
-    fun textWidth(text: String, style: TextStyle): Dp = with(density) {
-        measurer.measure(text, style, maxLines = 1).size.width.toDp()
-    }
+    fun textPx(text: String, style: TextStyle): Int = measurer.measure(text, style, maxLines = 1).size.width
     val gap = 8.dp
-    val modeWidth = 28.dp + textWidth(modeLabel, modeStyle)
-    fun chipWidth(index: Int, icons: Boolean): Dp =
-        if (icons) 36.dp else 44.dp + minOf(textWidth(labels[index], chipStyle), 132.dp)
-    // The mode, divider, "+N" counter and result badge never shrink, so they are counted first.
-    fun totalWidth(count: Int, icons: Boolean): Dp {
-        val widths = mutableListOf(modeWidth)
-        if (status.chips.isNotEmpty() || status.memoryCleaned) widths.add(1.dp)
-        repeat(count) { widths.add(chipWidth(it, icons)) }
-        if (count < status.chips.size) widths.add(maxOf(36.dp, 20.dp + textWidth("+${status.chips.size - count}", chipStyle)))
-        if (status.memoryCleaned) widths.add(36.dp)
-        return 24.dp + widths.fold(0.dp) { a, b -> a + b } + gap * (widths.size - 1)
+    // The layout rounds every dimension to whole pixels, so the budget is summed in pixels too.
+    fun px(value: Dp): Int = with(density) { value.roundToPx() }
+    val budget = (px(width) - px(height) - px(gap)).coerceAtLeast(0)
+    val gapPx = px(gap)
+    val modePx = px(22.dp) + px(6.dp) + textPx(modeLabel, modeStyle)
+    fun chipPx(index: Int, icons: Boolean): Int =
+        if (icons) px(36.dp)
+        else px(8.dp) + px(18.dp) + px(6.dp) + minOf(textPx(labels[index], chipStyle), px(132.dp)) + px(12.dp)
+    // Start and end padding, the mode, divider, "+N" counter and result badge never shrink, so they
+    // are counted first, with the gap between every pair of neighbours.
+    fun totalPx(count: Int, icons: Boolean): Int {
+        var sum = px(16.dp) + px(8.dp) + modePx
+        var items = 1
+        if (status.chips.isNotEmpty() || status.memoryCleaned) { sum += px(1.dp); items++ }
+        repeat(count) { sum += chipPx(it, icons); items++ }
+        if (count < status.chips.size) {
+            sum += maxOf(px(36.dp), 2 * px(10.dp) + textPx("+${status.chips.size - count}", chipStyle)); items++
+        }
+        if (status.memoryCleaned) { sum += px(36.dp); items++ }
+        return sum + gapPx * (items - 1)
     }
     // Chips fold into +N from the third one; icons alone are the last resort for two labelled chips.
     var iconOnly = false
     var count = minOf(3, status.chips.size)
-    while (count > 0 && totalWidth(count, false) > width) count--
+    while (count > 0 && totalPx(count, false) > budget) count--
     if (count < minOf(2, status.chips.size)) {
         iconOnly = true
         count = minOf(3, status.chips.size)
-        while (count > 0 && totalWidth(count, true) > width) count--
+        while (count > 0 && totalPx(count, true) > budget) count--
     }
-    val modeTextMaxWidth = (width - totalWidth(count, iconOnly) + textWidth(modeLabel, modeStyle)).coerceAtLeast(0.dp)
+    val modeTextMaxWidth = with(density) {
+        (budget - totalPx(count, iconOnly) + textPx(modeLabel, modeStyle)).coerceAtLeast(0).toDp()
+    }
     val shape = RoundedCornerShape(26.dp)
     val context = LocalContext.current
     val gameIcon = remember(context) {
@@ -361,6 +370,7 @@ private fun StatusPill(status: SessionStartStatus, maxWidth: Dp, maxHeight: Dp,
     val iconDirection = if (LocalLayoutDirection.current == LayoutDirection.Rtl) -1f else 1f
     var measuredWidth by remember { mutableIntStateOf(0) }
     var drag by remember { mutableFloatStateOf(0f) }
+    // The blur is applied inside the clipped surface, so it never reaches past the pill.
     Box(Modifier.onSizeChanged { measuredWidth = it.width }.graphicsLayer {
         scaleX = motion.circle.value
         scaleY = scaleX
@@ -380,7 +390,7 @@ private fun StatusPill(status: SessionStartStatus, maxWidth: Dp, maxHeight: Dp,
             drag += amount
             if (!dismissed && drag < -threshold) { dismissed = true; onDismiss() }
         })
-    }.overlayBlur(26.dp).shadow(6.dp, shape).clip(shape)
+    }.shadow(6.dp, shape).clip(shape).overlayBlur(26.dp)
         .background(MaterialTheme.colorScheme.surfaceContainer.copy(alpha = overlayPanelAlpha()))
         .border(overlayBorder(), shape)
         .clickable(role = Role.Button, onClick = onOpen)
