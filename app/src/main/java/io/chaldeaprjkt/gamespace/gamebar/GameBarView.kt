@@ -40,7 +40,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.ui.input.pointer.pointerInput
@@ -59,6 +58,9 @@ import com.android.compose.animation.scene.rememberMutableSceneTransitionLayoutS
 import io.chaldeaprjkt.gamespace.R
 import io.github.miner7222.gamespace.gamebar.RecordingPhase
 import io.github.miner7222.gamespace.gamebar.RecordingState
+import io.github.miner7222.gamespace.gamebar.overlayBorder
+import io.github.miner7222.gamespace.gamebar.overlayInnerAlpha
+import io.github.miner7222.gamespace.gamebar.overlayPanelAlpha
 import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -192,8 +194,8 @@ private fun EdgeHandle(
         contentAlignment = if (onLeft) Alignment.CenterStart else Alignment.CenterEnd) {
         val shape = RoundedCornerShape(6.dp)
         Box(Modifier.size(12.dp, 64.dp)
-            .background(MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.94f), shape)
-            .border(1.dp, Color.White.copy(alpha = 0.28f), shape), contentAlignment = Alignment.Center) {
+            .background(MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = overlayPanelAlpha()), shape)
+            .border(overlayBorder(), shape), contentAlignment = Alignment.Center) {
             Box(Modifier.size(4.dp, 28.dp).background(
                 if (locked) MaterialTheme.colorScheme.primary
                 else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f), RoundedCornerShape(2.dp)))
@@ -201,7 +203,8 @@ private fun EdgeHandle(
         if (showFps) {
             Column(Modifier.align(if (onLeft) Alignment.CenterEnd else Alignment.CenterStart)
                 .size(56.dp, 40.dp)
-                .background(MaterialTheme.colorScheme.surfaceContainerHighest, RoundedCornerShape(16.dp)),
+                .background(MaterialTheme.colorScheme.surfaceContainerHighest, RoundedCornerShape(16.dp))
+                .border(overlayBorder(), RoundedCornerShape(16.dp)),
                 horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
                 Text(fpsText.ifEmpty { "–" }, color = MaterialTheme.colorScheme.onSurface,
                     fontSize = 17.sp, lineHeight = 20.sp, fontWeight = FontWeight.Bold,
@@ -240,7 +243,8 @@ private fun MiniBar(
                     }
                 })
         }
-        .background(MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.94f), RoundedCornerShape(32.dp))
+        .background(MaterialTheme.colorScheme.surfaceContainer.copy(alpha = overlayPanelAlpha()), RoundedCornerShape(32.dp))
+        .border(overlayBorder(), RoundedCornerShape(32.dp))
         .padding(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             if (onLeft) DashboardCell(onLeft) { onShowPanel(false) }
@@ -293,7 +297,7 @@ private fun ReadoutCell(value: String, label: String, onClick: () -> Unit) {
     val pressed by interaction.collectIsPressedAsState()
     val corner by animateDpAsState(if (pressed) 24.dp else 20.dp, label = "readoutCorner")
     Column(Modifier.size(56.dp).clip(RoundedCornerShape(corner))
-        .background(MaterialTheme.colorScheme.surfaceContainerHighest)
+        .background(MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = overlayInnerAlpha()))
         .semantics(mergeDescendants = true) {}
         .clickable(interactionSource = interaction, indication = androidx.compose.material3.ripple(),
             role = Role.Button, onClick = onClick),

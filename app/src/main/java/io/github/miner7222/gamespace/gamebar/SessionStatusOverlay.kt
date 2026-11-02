@@ -39,7 +39,6 @@ import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.ceil
 import android.content.Context
-import android.content.res.Configuration
 import android.graphics.PixelFormat
 import android.os.Handler
 import android.os.PowerManager
@@ -220,10 +219,7 @@ class SessionStatusOverlay(
                 repeatOnLifecycle(Lifecycle.State.STARTED) {
                     pill.setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
                     pill.setContent {
-                        MaterialExpressiveTheme(
-                            colorScheme = if (isSystemInDarkTheme()) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context),
-                            motionScheme = MotionScheme.expressive(),
-                        ) {
+                        OverlayTheme(context) {
                             status.value?.let { value ->
                                 val top = with(LocalDensity.current) { geometry.value.y.toDp() }
                                 val overshootRoom = with(LocalDensity.current) {

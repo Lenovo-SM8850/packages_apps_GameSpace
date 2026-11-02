@@ -61,6 +61,8 @@ internal fun GameOptionsScreen(game: LibraryGame, expanded: Boolean, onBack: () 
     var choice by remember { mutableStateOf<GameOption?>(null) }
     val title = stringResource(R.string.in_game_preferences_title)
     val available = snapshot.available
+    val scroll = rememberScrollState()
+    val scrolled by remember { derivedStateOf { scroll.value > 0 } }
     Dialog(onDismissRequest = onBack, properties = DialogProperties(usePlatformDefaultWidth = false,
         decorFitsSystemWindows = false)) {
         BackHandler(onBack = onBack)
