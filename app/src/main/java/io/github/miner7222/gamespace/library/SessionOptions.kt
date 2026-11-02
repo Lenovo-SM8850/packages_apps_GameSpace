@@ -12,6 +12,8 @@ object SessionOptions {
         var wifi: Boolean? = null
         var mode: Int? = null
         var autoBrightness: Boolean? = null
+        var brightness: Float? = null
+        var suspended = false
     }
     private val states = mutableMapOf<Int, State>()
     private val listeners = mutableMapOf<Int, MutableSet<() -> Unit>>()
@@ -27,6 +29,19 @@ object SessionOptions {
         val state = states.remove(context.userId) ?: return
         ModePreferences.publish(context, state.packageName, state.savedMode)
         notify(context)
+    }
+
+    fun isActive(context: Context): Boolean = states[context.userId]?.suspended == false
+
+    fun setSuspended(context: Context, suspended: Boolean) {
+        val state = states[context.userId] ?: return
+        state.suspended = suspended
+        notify(context)
+    }
+
+    fun brightness(context: Context): Float? = states[context.userId]?.brightness
+    fun chooseBrightness(context: Context, percent: Float) {
+        states[context.userId]?.brightness = percent
     }
 
     fun packageName(context: Context): String? = states[context.userId]?.packageName
@@ -97,7 +112,9 @@ object SessionOptions {
         require(mode in 0..3)
         val state = states[context.userId] ?: return false
         state.mode = mode
-        ModePreferences.publish(context, state.packageName, mode)
+        state.savedMode = mode
+        ModePreferences.saveRecoveryMode(context, state.packageName, mode)
+        if (!state.suspended) ModePreferences.publish(context, state.packageName, mode)
         notify(context)
         return true
     }

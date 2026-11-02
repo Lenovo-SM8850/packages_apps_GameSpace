@@ -26,6 +26,8 @@ data class SessionState(
     var userId: Int? = null,
     var dndFilter: Int? = null,
     var ownsDnd: Boolean = false,
+    var suspended: Boolean = false,
+    var brightness: Float? = null,
     var autoBrightness: Boolean? = null,
     var statusbarBrightness: Boolean? = null,
     var headsup: Boolean? = null,

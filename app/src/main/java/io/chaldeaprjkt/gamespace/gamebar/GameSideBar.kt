@@ -117,7 +117,22 @@ class GameSidebar(
     private lateinit var gameBarView: ComposeView
     private var panelView: View? = null
 
+    private var sessionActive = false
     private val firstPaint = Runnable { initActions() }
+    private val attachGameBar = Runnable {
+        if (sessionActive && !shouldClose && gamePackage != null && ::gameBarView.isInitialized) {
+            runCatching {
+                if (!gameBarView.isAttachedToWindow) {
+                    dockGameBar()
+                    wm.addView(gameBarView, gameBarLayoutParam)
+                    gameBarView.visibility = View.INVISIBLE
+                    gameBarView.alpha = 0f
+                }
+                handler.removeCallbacks(firstPaint)
+                handler.postDelayed(firstPaint, 500)
+            }
+        }
+    }
 
     private var circleOnLeft = false
     private val dockedOnLeftState = mutableStateOf(false)
@@ -210,7 +225,7 @@ class GameSidebar(
     }
 
     private fun updateGameBarVisibility() {
-        gameBarView.visibility = if (gameVisible && barReady && !shouldClose && !gameTaskHidden &&
+        gameBarView.visibility = if (sessionActive && gameVisible && barReady && !shouldClose && !gameTaskHidden &&
             !panelShowing && !screenshotInProgress && !mapperEditing) {
             View.VISIBLE
         } else {
@@ -231,7 +246,8 @@ class GameSidebar(
 
     @SuppressLint("ClickableViewAccessibility")
     fun onCreate() {
-        tileRepository.onBeforePlatformAction = { feature ->
+        tileRepository.onBeforePlatformAction = beforeAction@{ feature ->
+            if (!sessionActive) return@beforeAction
             when (feature) {
                 AxPlatformClient.FEATURE_SCREENSHOT -> {
                     screenshotInProgress = true
@@ -249,7 +265,8 @@ class GameSidebar(
                 }
             }
         }
-        tileRepository.onScreenshotComplete = {
+        tileRepository.onScreenshotComplete = screenshotComplete@{
+            if (!sessionActive) return@screenshotComplete
             screenshotInProgress = false
             panelView?.let { view ->
                 panelLayoutParam.flags = panelLayoutParam.flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE.inv()
@@ -266,6 +283,7 @@ class GameSidebar(
                     setContent {
                         val recording by tileRepository.recordingState.collectAsState()
                         LaunchedEffect(showFpsState.value) {
+                            if (!sessionActive) return@LaunchedEffect
                             updateFpsTracking()
                             if (!pillExpanded) {
                                 gameBarLayoutParam.width = px(handleWidthDp(showFpsState.value))
@@ -274,7 +292,7 @@ class GameSidebar(
                             }
                         }
                         LaunchedEffect(recording.phase) {
-                            if (pillExpanded) updateMiniBarLayout()
+                            if (sessionActive && pillExpanded) updateMiniBarLayout()
                         }
                         CompositionLocalProvider(
                             LocalOnBackPressedDispatcherOwner provides noOpBackDispatcherOwner,
@@ -293,7 +311,7 @@ class GameSidebar(
                                 dockedOnLeft = dockedOnLeftState.value,
                                 recording = recording,
                                 onShowPanel = { expandFps -> handler.post { showPanel(expandFps) } },
-                                onStopRecording = { tileRepository.stopRecording() },
+                                onStopRecording = { if (sessionActive) tileRepository.stopRecording() },
                                 pillExpanded = pillExpandedState.value,
                                 collapseInstantly = pillSnapState.value,
                                 onExpanded = { handler.post { setPillExpanded(true) } },
@@ -306,7 +324,8 @@ class GameSidebar(
                                         if (pillExpanded) scheduleMiniCollapse() else scheduleIdle()
                                     }
                                 },
-                                onDragStart = {
+                                onDragStart = dragStart@{
+                                    if (!sessionActive) return@dragStart Pair(0, 0)
                                     val loc = IntArray(2)
                                     gameBarView.getLocationOnScreen(loc)
                                     gameBarLayoutParam.gravity = Gravity.TOP or Gravity.LEFT
@@ -316,12 +335,14 @@ class GameSidebar(
                                     runCatching { wm.updateViewLayout(gameBarView, gameBarLayoutParam) }
                                     Pair(loc[0], loc[1])
                                 },
-                                onDragUpdate = { x, y ->
+                                onDragUpdate = dragUpdate@{ x, y ->
+                                    if (!sessionActive) return@dragUpdate
                                     gameBarLayoutParam.x = x
                                     gameBarLayoutParam.y = y
                                     runCatching { wm.updateViewLayout(gameBarView, gameBarLayoutParam) }
                                 },
-                                onDragEnd = { x, y ->
+                                onDragEnd = dragEnd@{ x, y ->
+                                    if (!sessionActive) return@dragEnd
                                     circleOnLeft = x < halfWidth
                                     dockedOnLeftState.value = circleOnLeft
                                     appSettings.x = if (circleOnLeft) -1 else 1
@@ -363,12 +384,15 @@ class GameSidebar(
             setPillExpanded(false)
         }
         updateGameBarVisibility()
-        mapperController.setGameVisible(visible)
+        mapperController.setGameVisible(visible && sessionActive)
     }
 
     private var sessionUserId = context.userId
 
-    fun onGameStart(packageName: String) {
+    fun onGameStart(packageName: String, active: Boolean = true) {
+        handler.removeCallbacks(attachGameBar)
+        handler.removeCallbacks(firstPaint)
+        sessionActive = active
         sessionUserId = context.userId
         shouldClose = false
         barReady = false
@@ -388,22 +412,18 @@ class GameSidebar(
             }
         }
         scheduleGameTaskRefresh()
-        if (BuildFlags.MAPPER_ENABLED) {
-            mapperController.onGameStart(packageName)
-        }
-        handler.post {
-            if (!::gameBarView.isInitialized) return@post
-            runCatching {
-                dockGameBar()
-                wm.addView(gameBarView, gameBarLayoutParam)
-                gameBarView.visibility = View.INVISIBLE
-                gameBarView.alpha = 0f
-                handler.postDelayed(firstPaint, 500)
-            }
+        if (active) {
+            if (BuildFlags.MAPPER_ENABLED) mapperController.onGameStart(packageName)
+            handler.post(attachGameBar)
         }
     }
 
     fun onGameLeave() {
+        sessionActive = false
+        handler.removeCallbacks(attachGameBar)
+        handler.removeCallbacks(firstPaint)
+        gameBarView.animate().cancel()
+        updateGestureExclusions()
         gamePackage = null
         handler.removeCallbacks(refreshGameTask)
         if (taskListenerRegistered) {
@@ -420,21 +440,42 @@ class GameSidebar(
         runCatching { wm.removeViewImmediate(gameBarView) }
     }
 
+    fun setSessionActive(active: Boolean) {
+        if (sessionActive == active) return
+        sessionActive = active
+        handler.removeCallbacks(attachGameBar)
+        handler.removeCallbacks(firstPaint)
+        if (!active) {
+            barReady = false
+            gameBarView.animate().cancel()
+            stopFpsTracking()
+            updateGestureExclusions()
+            setGestureLock(false)
+            if (BuildFlags.MAPPER_ENABLED) mapperController.onGameLeave()
+        } else {
+            if (BuildFlags.MAPPER_ENABLED) gamePackage?.let { mapperController.onGameStart(it) }
+            refreshInGameOptions()
+            handler.post(attachGameBar)
+        }
+        updateGameBarVisibility()
+    }
+
     fun collapseForScreenOff() {
         forceRemovePanel()
         collapseVerticalPill()
     }
 
     fun refreshInGameOptions() {
-        if (gamePackage != null) setGestureLock(appSettings.inGameOptions.current(GameOption.GESTURES) == 1)
+        if (sessionActive && gamePackage != null) setGestureLock(appSettings.inGameOptions.current(GameOption.GESTURES) == 1)
     }
 
     fun setGestureLock(value: Boolean) {
-        isLockedState.value = value
+        val enabled = value && sessionActive && !shouldClose && gamePackage != null
+        isLockedState.value = enabled
         Settings.Secure.putIntForUser(
             context.contentResolver,
             "ax_gaming_gesture_lock",
-            if (value) 1 else 0,
+            if (enabled) 1 else 0,
             sessionUserId
         )
     }
@@ -444,9 +485,10 @@ class GameSidebar(
         updateScreenMetrics()
         forceRemovePanel()
         setPillExpanded(false)
+        if (!sessionActive) return
         if (gameBarView.visibility != View.VISIBLE) {
             handler.removeCallbacks(firstPaint)
-            handler.postDelayed({ firstPaint.run() }, 100)
+            handler.postDelayed(firstPaint, 100)
         } else {
             dockGameBar()
             runCatching { wm.updateViewLayout(gameBarView, gameBarLayoutParam) }
@@ -458,7 +500,7 @@ class GameSidebar(
 
     private fun showPanel(initialGraphExpanded: Boolean = false) {
         updateGameTaskVisibility()
-        if (!gameVisible || shouldClose || gameTaskHidden || panelShowing || screenshotInProgress) return
+        if (!sessionActive || !gameVisible || shouldClose || gameTaskHidden || panelShowing || screenshotInProgress) return
         panelShowing = true
         pillSnapState.value = true
         setPillExpanded(false)
@@ -654,7 +696,7 @@ class GameSidebar(
     }
 
     private fun setPillExpanded(expanded: Boolean) {
-        if (expanded && (!gameVisible || !barReady || shouldClose || panelShowing || gameTaskHidden)) return
+        if (expanded && (!sessionActive || !gameVisible || !barReady || shouldClose || panelShowing || gameTaskHidden)) return
         if (pillExpanded == expanded) return
         handler.removeCallbacks(miniCollapseRunnable)
         handler.removeCallbacks(idleRunnable)
@@ -684,7 +726,7 @@ class GameSidebar(
     }
 
     private fun updateMiniBarLayout() {
-        if (!pillExpanded) return
+        if (!sessionActive || !pillExpanded) return
         val recording = tileRepository.recordingState.value.phase == RecordingPhase.ACTIVE
         gameBarLayoutParam.width = px(MINI_WIDTH_DP)
         gameBarLayoutParam.height = px(if (recording) MINI_RECORDING_HEIGHT_DP else MINI_HEIGHT_DP)
@@ -699,6 +741,10 @@ class GameSidebar(
 
     private fun updateGestureExclusions() {
         if (!::gameBarView.isInitialized) return
+        if (!sessionActive) {
+            gameBarView.systemGestureExclusionRects = emptyList()
+            return
+        }
         val width = gameBarLayoutParam.width.coerceAtLeast(0)
         val height = gameBarLayoutParam.height.coerceAtLeast(0)
         val inset = if (pillExpanded) px(8) else 0
@@ -721,7 +767,7 @@ class GameSidebar(
 
     private fun updateFpsTracking() {
         stopFpsTracking()
-        if (gamePackage != null && !shouldClose && (showFpsState.value || pillExpanded)) {
+        if (sessionActive && gamePackage != null && !shouldClose && (showFpsState.value || pillExpanded)) {
             taskManager?.focusedRootTaskInfo?.taskId?.let {
                 wm.registerTaskFpsCallback(it, Runnable::run, taskFpsCallback)
             }
@@ -747,7 +793,7 @@ class GameSidebar(
     }
 
     private fun initActions() {
-        if (shouldClose) return
+        if (!sessionActive || shouldClose || gamePackage == null) return
         updateGameTaskVisibility()
         barReady = true
         updateGameBarVisibility()
@@ -778,7 +824,7 @@ class GameSidebar(
 
     private fun enterMapperEdit() {
         updateGameTaskVisibility()
-        if (!gameVisible || shouldClose || gameTaskHidden) return
+        if (!sessionActive || !gameVisible || shouldClose || gameTaskHidden) return
         mapperEditing = true
         notifyUiBlocking()
         forceRemovePanel()
@@ -788,6 +834,7 @@ class GameSidebar(
         mapperController.onEditStarted = null
         mapperController.onEditFinished = {
             handler.post {
+                if (!sessionActive) return@post
                 mapperEditing = false
                 notifyUiBlocking()
                 updateGameBarVisibility()

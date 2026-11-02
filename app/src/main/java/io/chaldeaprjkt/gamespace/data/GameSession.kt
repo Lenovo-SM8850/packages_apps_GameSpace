@@ -19,6 +19,8 @@ package io.chaldeaprjkt.gamespace.data
 
 import android.app.NotificationManager
 import android.content.Context
+import android.hardware.display.DisplayManager
+import android.view.Display
 import android.media.AudioManager
 import com.google.gson.Gson
 import io.github.miner7222.gamespace.library.SessionOptions
@@ -37,6 +39,21 @@ class GameSession @Inject constructor(
     private val audioManager by lazy { context.getSystemService(Context.AUDIO_SERVICE) as AudioManager }
 
     private var liveState: SessionState? = null
+    private val displayManager by lazy { context.getSystemService(DisplayManager::class.java) }
+
+    private fun captureBrightness(orig: SessionState) {
+        if (orig.ownsBrightness) return
+        orig.autoBrightness = systemSettings.autoBrightness
+        orig.statusbarBrightness = systemSettings.statusbarBrightness
+        orig.brightness = displayManager.getBrightness(Display.DEFAULT_DISPLAY)
+        orig.ownsBrightness = true
+        persistRecovery(orig)
+    }
+
+    fun capturePanelBrightness() {
+        val orig = liveState?.takeUnless { it.suspended } ?: return
+        captureBrightness(orig)
+    }
 
     private var state
         get() = db.getString(KEY_SAVED_SESSION, "")
@@ -62,7 +79,7 @@ class GameSession @Inject constructor(
         state = snapshot.copy(appliedRingerMode = 3)
     }
 
-    fun register(sessionName: String) {
+    fun register(sessionName: String, active: Boolean = true) {
         if (liveState?.packageName == sessionName) return
         unregister()
 
@@ -71,33 +88,32 @@ class GameSession @Inject constructor(
             packageName = sessionName,
             userId = context.userId,
             preferredMode = SessionOptions.savedMode(context, sessionName),
+            suspended = !active,
         )
         // Commit original values and ownership before each system setting is changed.
         state = saved
         liveState = saved
-        applyOptions()
+        if (active) applyOptions() else {
+            SessionOptions.setSuspended(context, true)
+            GameModeUtils(context).applyRuntimeModeForUser(sessionName, 0, context.userId)
+        }
     }
 
     /** Recovery metadata is written before taking ownership and after releasing it. */
     fun applyOptions() {
-        val orig = liveState ?: return
+        val orig = liveState?.takeUnless { it.suspended } ?: return
         val options = appSettings.inGameOptions
         val brightness = options.current(GameOption.BRIGHTNESS) == 1
         val panelAuto = SessionOptions.autoBrightness(context)
-        if (panelAuto != null || brightness) {
-            if (!orig.ownsBrightness) {
-                orig.autoBrightness = systemSettings.autoBrightness
-                orig.statusbarBrightness = systemSettings.statusbarBrightness
-                orig.ownsBrightness = true
-                persistRecovery(orig)
-            }
-            val auto = panelAuto ?: false
+        if (panelAuto != null || brightness || SessionOptions.brightness(context) != null) {
+            captureBrightness(orig)
+            val auto = panelAuto ?: if (brightness) false
+                else orig.autoBrightness ?: systemSettings.autoBrightness
             if (systemSettings.autoBrightness != auto) systemSettings.autoBrightness = auto
             val statusbar = if (auto) orig.statusbarBrightness ?: false else false
             if (systemSettings.statusbarBrightness != statusbar) systemSettings.statusbarBrightness = statusbar
         } else if (orig.ownsBrightness) {
-            orig.autoBrightness?.let { systemSettings.autoBrightness = it }
-            orig.statusbarBrightness?.let { systemSettings.statusbarBrightness = it }
+            restoreBrightness(orig)
             orig.ownsBrightness = false
             persistRecovery(orig)
         }
@@ -163,7 +179,7 @@ class GameSession @Inject constructor(
     }
 
     fun captureDndOwnership() {
-        val orig = liveState ?: return
+        val orig = liveState?.takeUnless { it.suspended } ?: return
         if (orig.ownsDnd) return
         orig.dndFilter = context.getSystemService(NotificationManager::class.java).currentInterruptionFilter
         orig.ownsDnd = true
@@ -191,7 +207,7 @@ class GameSession @Inject constructor(
     }
 
     fun rememberBypassChargeEnabled() {
-        if (liveState == null) return
+        if (liveState?.suspended != false) return
         val enabled = systemSettings.bypassChargeEnabled
         if (enabled != (appSettings.inGameOptions.current(GameOption.BYPASS) == 1)) {
             setOption(GameOption.BYPASS, if (enabled) 1 else 0)
@@ -209,6 +225,69 @@ class GameSession @Inject constructor(
         if (liveState != null && SessionOptions.choose(context, option, value)) applyOptions()
     }
 
+    private fun restoreBrightness(orig: SessionState) {
+        orig.brightness?.takeIf { it.isFinite() && it >= 0f }?.let {
+            displayManager.setBrightness(Display.DEFAULT_DISPLAY, it)
+        }
+        orig.autoBrightness?.let { systemSettings.autoBrightness = it }
+        orig.statusbarBrightness?.let { systemSettings.statusbarBrightness = it }
+    }
+
+    /** Keep choices and identity, but journal only ownership that still needs recovery. */
+    fun suspend() {
+        val orig = liveState?.takeUnless { it.suspended } ?: return
+        orig.suspended = true
+        persistRecovery(orig)
+        SessionOptions.setSuspended(context, true)
+        releaseEffects(orig)
+        // Remove GameSpace's runtime interventions while leaving the selected mode in memory.
+        GameModeUtils(context).applyRuntimeModeForUser(orig.packageName, 0,
+            orig.userId ?: context.userId)
+    }
+
+    fun resume() {
+        val orig = liveState?.takeIf { it.suspended } ?: return
+        orig.suspended = false
+        persistRecovery(orig)
+        SessionOptions.setSuspended(context, false)
+        applyOptions()
+    }
+
+    private fun releaseEffects(orig: SessionState) {
+        systemSettings.gestureLock = false
+        systemSettings.bypassChargeEnabled = false
+        systemSettings.stayAwake = false
+        if (orig.ownsBrightness) {
+            restoreBrightness(orig)
+            orig.ownsBrightness = false
+            persistRecovery(orig)
+        }
+        if (orig.ownsHeadsup) {
+            orig.headsup?.let { systemSettings.headsup = it }
+            orig.ownsHeadsup = false
+            persistRecovery(orig)
+        }
+        if (orig.ownsThreeScreenshot) {
+            systemSettings.threeScreenshot = orig.threeScreenshot
+            orig.ownsThreeScreenshot = false
+            persistRecovery(orig)
+        }
+        if (orig.ownsRingerMode) {
+            audioManager.ringerModeInternal = orig.ringerMode
+            orig.ownsRingerMode = false
+            persistRecovery(orig)
+        }
+        orig.appliedRingerMode = 3
+        if (orig.ownsPulseBassHaptics) {
+            systemSettings.pulseBassHaptics = orig.pulseBassHaptics
+            orig.ownsPulseBassHaptics = false
+            persistRecovery(orig)
+        }
+        restoreDnd(orig)
+        orig.ownsDnd = false
+        persistRecovery(orig)
+    }
+
     fun unregister() {
         val orig = liveState?.copy() ?: state?.copy()
         val savedMode = orig?.let { SessionOptions.savedMode(context, it.packageName) ?: it.preferredMode }
@@ -220,20 +299,13 @@ class GameSession @Inject constructor(
         systemSettings.stayAwake = false
         if (orig == null) return
         check(orig.userId == null || orig.userId == context.userId) { "Session recovery user mismatch" }
-        if (orig.ownsBrightness) {
-            orig.autoBrightness?.let { systemSettings.autoBrightness = it }
-            orig.statusbarBrightness?.let { systemSettings.statusbarBrightness = it }
-        }
-        if (orig.ownsHeadsup) orig.headsup?.let { systemSettings.headsup = it }
-        if (orig.ownsThreeScreenshot) systemSettings.threeScreenshot = orig.threeScreenshot
-        if (orig.ownsRingerMode) audioManager.ringerModeInternal = orig.ringerMode
-        if (orig.ownsPulseBassHaptics) systemSettings.pulseBassHaptics = orig.pulseBassHaptics
-        restoreDnd(orig)
+        releaseEffects(orig)
         savedMode?.let {
             io.github.miner7222.gamespace.library.ModePreferences.publish(context, orig.packageName, it)
-            if (!GameModeUtils(context).applyRuntimeModeForUser(orig.packageName, it,
-                    orig.userId ?: context.userId)) return
         }
+        // Recovery and full end only release runtime interventions. A live start applies its mode.
+        if (!GameModeUtils(context).applyRuntimeModeForUser(orig.packageName, 0,
+                orig.userId ?: context.userId)) return
         state = null
     }
 
