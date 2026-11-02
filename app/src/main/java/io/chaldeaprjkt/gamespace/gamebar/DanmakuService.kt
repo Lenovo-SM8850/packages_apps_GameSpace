@@ -76,7 +76,7 @@ class DanmakuService @Inject constructor(
     private val screenSampler: GameScreenSampler
 ) : DanmakuServiceInterface {
 
-    private lateinit var notificationListener: DanmakuServiceListener
+    private var notificationListener: DanmakuServiceListener? = null
 
     /** A horizontal track that holds one line of moving text at a time. */
     private class Lane(val top: Int)
@@ -162,10 +162,16 @@ class DanmakuService @Inject constructor(
     private val drainRunnable = Runnable { drainPending() }
 
     fun init() {
-        notificationListener = DanmakuServiceListener()
-        notificationListener.danmakuServiceInterface = this
         updateParams()
-        registerListener()
+    }
+
+    fun setSessionActive(active: Boolean) {
+        if (sessionActive == active) return
+        sessionActive = active
+        if (active) registerListener() else {
+            setGameVisible(false)
+            unregisterListener()
+        }
     }
 
     fun setGameVisible(visible: Boolean) {
@@ -211,24 +217,37 @@ class DanmakuService @Inject constructor(
     }
 
     private fun registerListener() {
+        if (destroyed || !sessionActive || notificationListener != null) return
+        val listener = DanmakuServiceListener()
+        listener.danmakuServiceInterface = this
+        listener.isActiveListener = { !destroyed && sessionActive && notificationListener === listener }
+        notificationListener = listener
         val componentName = ComponentName(context, DanmakuService::class.java)
-        try {
-            notificationListener.registerAsSystemService(
-                context,
-                componentName,
-                UserHandle.USER_CURRENT
-            )
-        } catch (e: RemoteException) {
-            Log.e(TAG, "RemoteException while registering danmaku service")
-        }
+        if (!updateListenerRegistration {
+                listener.registerAsSystemService(context, componentName, UserHandle.USER_CURRENT)
+            }) unregisterListener()
     }
 
     private fun unregisterListener() {
-        try {
-            notificationListener.unregisterAsSystemService()
-        } catch (e: RemoteException) {
-            Log.e(TAG, "RemoteException while registering danmaku service")
-        }
+        val listener = notificationListener ?: return
+        notificationListener = null
+        listener.isActiveListener = { false }
+        listener.danmakuServiceInterface = null
+        updateListenerRegistration { listener.unregisterAsSystemService() }
+    }
+
+    private fun updateListenerRegistration(action: () -> Unit): Boolean = try {
+        action()
+        true
+    } catch (e: RemoteException) {
+        Log.e(TAG, "RemoteException while registering danmaku service")
+        false
+    } catch (e: SecurityException) {
+        Log.w(TAG, "Notification listener registration is no longer available", e)
+        false
+    } catch (e: IllegalStateException) {
+        Log.w(TAG, "Notification listener registration is no longer available", e)
+        false
     }
 
     private fun createTextView(text: String): TextView = TextView(context).apply {

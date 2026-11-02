@@ -20,6 +20,8 @@
 package io.chaldeaprjkt.gamespace.gamebar
 
 import android.app.Notification
+import android.os.RemoteException
+import android.util.Log
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 
@@ -30,10 +32,25 @@ class DanmakuServiceListener : NotificationListenerService() {
     private val appLabelsCache = mutableMapOf<String, String?>()
 
     var danmakuServiceInterface: DanmakuServiceInterface? = null
+    var isActiveListener: () -> Boolean = { false }
 
     override fun onListenerConnected() {
         super.onListenerConnected()
-        getActiveNotifications()?.forEach { sbn ->
+        if (!isActiveListener()) return
+        val notifications = try {
+            getActiveNotifications()
+        } catch (e: SecurityException) {
+            Log.w(TAG, "Notification listener is no longer available", e)
+            return
+        } catch (e: RemoteException) {
+            Log.w(TAG, "Notification listener is no longer available", e)
+            return
+        } catch (e: IllegalStateException) {
+            Log.w(TAG, "Notification listener is no longer available", e)
+            return
+        }
+        notifications?.forEach { sbn ->
+            if (!isActiveListener()) return
             if (sbn.isClearable && !sbn.isOngoing) {
                 val danmakuText = extractDanmakuText(sbn)
                 if (danmakuText.isNotBlank()) {
@@ -44,7 +61,9 @@ class DanmakuServiceListener : NotificationListenerService() {
     }
 
     override fun onNotificationPosted(sbn: StatusBarNotification) {
-        val notificationMode = danmakuServiceInterface?.danmakuNotificationMode ?: return
+        if (!isActiveListener()) return
+        val service = danmakuServiceInterface ?: return
+        val notificationMode = service.danmakuNotificationMode
         if (!notificationMode || !sbn.isClearable || sbn.isOngoing) return
         if (!isAllowedByInterruptionFilter(sbn)) return
 
@@ -53,12 +72,13 @@ class DanmakuServiceListener : NotificationListenerService() {
         if (danmakuText.isNotBlank()) {
             if (!postedNotifications.containsKey(danmakuText)) {
                 postedNotifications[danmakuText] = System.currentTimeMillis()
-                danmakuServiceInterface?.showNotificationAsOverlay(danmakuText)
+                if (isActiveListener()) service.showNotificationAsOverlay(danmakuText)
             }
         }
     }
 
     override fun onNotificationRemoved(sbn: StatusBarNotification) {
+        if (!isActiveListener()) return
         val danmakuText = extractDanmakuText(sbn)
         if (danmakuText.isNotBlank()) {
             postedNotifications.remove(danmakuText)
@@ -66,6 +86,7 @@ class DanmakuServiceListener : NotificationListenerService() {
     }
 
     private fun isAllowedByInterruptionFilter(sbn: StatusBarNotification): Boolean {
+        if (!isActiveListener()) return false
         val ranking = Ranking()
         val rankingMap = currentRanking ?: return true
         if (!rankingMap.getRanking(sbn.key, ranking)) return true
@@ -103,6 +124,7 @@ class DanmakuServiceListener : NotificationListenerService() {
     }
 
     companion object {
+        private const val TAG = "DanmakuServiceListener"
         private const val NOTIFICATIONS_MAX_CACHED = 99
     }
 }
