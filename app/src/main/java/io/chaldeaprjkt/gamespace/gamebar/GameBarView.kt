@@ -80,12 +80,13 @@ internal const val MINI_RECORDING_HEIGHT_DP = 184
 internal fun miniWidthDp(showStats: Boolean) =
     if (showStats) 76 else MINI_WIDTH_DP
 
-internal fun miniHeightDp(showStats: Boolean, recording: Boolean) =
-    if (showStats) {
-        if (recording) MINI_HEIGHT_DP else 68
-    } else {
-        if (recording) MINI_RECORDING_HEIGHT_DP else MINI_HEIGHT_DP
-    }
+internal fun miniDashboardOnly(showStats: Boolean, recording: Boolean) = showStats && !recording
+
+internal fun miniHeightDp(showStats: Boolean, recording: Boolean) = when {
+    miniDashboardOnly(showStats, recording) -> 68
+    recording && !showStats -> MINI_RECORDING_HEIGHT_DP
+    else -> MINI_HEIGHT_DP
+}
 
 @Composable
 fun GameBarView(
@@ -174,7 +175,8 @@ fun GameBarView(
     }, content = {
         SceneTransitionLayout(state = state, swipeDetector = noSwipe) {
             scene(GameBarScenes.Handle) {
-                EdgeHandle(isLocked, dockedOnLeft, animatedAlpha, onExpanded,
+                EdgeHandle(isLocked, dockedOnLeft, animatedAlpha,
+                    miniDashboardOnly(showFps, recording.phase == RecordingPhase.ACTIVE), onExpanded,
                     Modifier.element(GameBarElements.HandleContent).then(dragModifier))
             }
             scene(GameBarScenes.MiniBar) {
@@ -202,16 +204,18 @@ private fun EdgeHandle(
     locked: Boolean,
     onLeft: Boolean,
     alpha: Float,
+    opensDashboard: Boolean,
     onTap: () -> Unit,
     modifier: Modifier,
 ) {
-    val description = stringResource(R.string.gamebar_open_controls)
+    val description = stringResource(if (opensDashboard) R.string.gamebar_open_dashboard else R.string.gamebar_open_controls)
     val lockState = if (locked) stringResource(R.string.dashboard_gesture_on) else null
     Box(modifier.size(HANDLE_WIDTH_DP.dp, HANDLE_HEIGHT_DP.dp).alpha(alpha)
         .semantics {
             contentDescription = description
             if (lockState != null) stateDescription = lockState
-        }.clickable(role = Role.Button, onClick = onTap)
+        }.clickable(interactionSource = remember { MutableInteractionSource() }, indication = null,
+            role = Role.Button, onClickLabel = description, onClick = onTap)
         .padding(horizontal = 4.dp),
         contentAlignment = if (onLeft) Alignment.CenterStart else Alignment.CenterEnd) {
         val shape = RoundedCornerShape(6.dp)

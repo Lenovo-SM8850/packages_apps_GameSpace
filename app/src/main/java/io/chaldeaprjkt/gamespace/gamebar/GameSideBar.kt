@@ -56,6 +56,7 @@ import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.ui.input.pointer.pointerInput
 import io.github.miner7222.gamespace.gamebar.MediaVolumeController
 import io.github.miner7222.gamespace.gamebar.OverlayTheme
+import io.github.miner7222.gamespace.gamebar.RecordingPhase
 import io.github.miner7222.gamespace.gamebar.StatsOverlay
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.unit.IntOffset
@@ -300,6 +301,11 @@ class GameSidebar(
                     setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
                     setContent {
                         val recording by tileRepository.recordingState.collectAsState()
+                        LaunchedEffect(showFpsState.value, recording.phase) {
+                            if (miniDashboardOnly(showFpsState.value, recording.phase == RecordingPhase.ACTIVE)) {
+                                setPillExpanded(false)
+                            }
+                        }
                         LaunchedEffect(showFpsState.value) {
                             if (!sessionActive) return@LaunchedEffect
                             updateFpsTracking()
@@ -770,6 +776,11 @@ class GameSidebar(
 
     private fun setPillExpanded(expanded: Boolean) {
         if (expanded && (!sessionActive || !gameVisible || !barReady || shouldClose || panelShowing || gameTaskHidden)) return
+        if (expanded && miniDashboardOnly(showFpsState.value,
+                tileRepository.recordingState.value.phase == RecordingPhase.ACTIVE)) {
+            showPanel()
+            return
+        }
         if (pillExpanded == expanded) return
         handler.removeCallbacks(miniCollapseRunnable)
         handler.removeCallbacks(idleRunnable)
