@@ -376,10 +376,10 @@ private fun DashboardAuxButton(compact: Boolean, secondRow: Boolean, selected: B
     val context = LocalContext.current
     val outerOffset = if (!compact) 0.dp else if (secondRow) 2.dp else (-2).dp
     val innerOffset = -outerOffset
-    val shape = RoundedCornerShape(if (selected == true) 22.dp else if (compact) 14.dp else 16.dp)
-    Box(Modifier.size(if (compact) 40.dp else 48.dp)) {
+    val shape = RoundedCornerShape(if (selected == true) 20.dp else 14.dp)
     // The 48dp touch target stays square, but the press feedback follows the visible shape.
     val interaction = remember { MutableInteractionSource() }
+    Box(Modifier.size(44.dp, if (compact) 40.dp else 48.dp)) {
         Box(Modifier.requiredSize(48.dp).offset(y = outerOffset)
             .then(if (selected != null) Modifier.toggleable(value = selected, interactionSource = interaction,
                     indication = null, enabled = enabled, role = Role.Switch, onValueChange = { onClick() })
@@ -389,9 +389,11 @@ private fun DashboardAuxButton(compact: Boolean, secondRow: Boolean, selected: B
                 contentDescription = label
                 if (selected != null) stateDescription = context.getString(if (selected) R.string.dashboard_on else R.string.dashboard_off)
             }, contentAlignment = Alignment.Center) {
-            Box(Modifier.offset(y = innerOffset).size(if (compact) 40.dp else 48.dp).clip(shape)
-                .background(if (selected == true) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHighest),
+            Box(Modifier.offset(y = innerOffset).size(44.dp, if (compact) 32.dp else 40.dp).clip(shape)
+                .background(if (selected == true) MaterialTheme.colorScheme.primaryContainer
+                    else MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = overlayInnerAlpha()))
                 .indication(interaction, LocalIndication.current)
+                .then(if (selected == true) Modifier else Modifier.border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape)),
                 contentAlignment = Alignment.Center) {
                 Icon(icon, null, Modifier.size(22.dp),
                     tint = (if (selected == true) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant)
@@ -436,6 +438,7 @@ private fun DashboardSliders(brightness: BrightnessInteractor, media: MediaVolum
 private fun DashboardSlider(value: Float, enabled: Boolean, label: String, icon: ImageVector,
     compact: Boolean, modifier: Modifier, onValue: (Float) -> Unit) {
     val color = MaterialTheme.colorScheme
+    val inner = overlayInnerAlpha()
     val currentValue by rememberUpdatedState(onValue)
     val density = LocalDensity.current
     val leading = with(density) { (if (compact) 34.dp else 40.dp).toPx() }
@@ -463,7 +466,7 @@ private fun DashboardSlider(value: Float, enabled: Boolean, label: String, icon:
             val track = (if (compact) 28.dp else 40.dp).toPx()
             val top = (size.height - track) / 2
             val active = if (enabled) color.primary else color.onSurface.copy(alpha = 0.38f)
-            drawRoundRect(color.surfaceContainerHighest, Offset(0f, top), Size(size.width, track), CornerRadius(track / 2))
+            drawRoundRect(color.surfaceContainerHighest.copy(alpha = inner), Offset(0f, top), Size(size.width, track), CornerRadius(track / 2))
             drawRoundRect(active, Offset(0f, top), Size((knob - 6.dp.toPx()).coerceAtLeast(0f), track), CornerRadius(track / 2))
             drawRoundRect(active, Offset(knob - 2.dp.toPx(), 0f), Size(4.dp.toPx(), size.height), CornerRadius(2.dp.toPx()))
         }
