@@ -44,6 +44,7 @@ import androidx.compose.foundation.*
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.scrollBy
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
@@ -345,7 +346,8 @@ private fun DashboardModes(selected: GameMode, compact: Boolean, modifier: Modif
     val explanation = stringResource(R.string.dashboard_modes_off)
     val inner = overlayInnerAlpha()
     Row(modifier.fillMaxWidth().height(if (compact) 40.dp else 48.dp)
-        .then(if (none) Modifier.semantics(mergeDescendants = true) { stateDescription = explanation }
+        .then(if (none) Modifier.clip(RoundedCornerShape(24.dp))
+            .semantics(mergeDescendants = true) { stateDescription = explanation }
             .clickable(role = Role.Button, onClickLabel = explanation, onClick = onNone) else Modifier.selectableGroup()),
         horizontalArrangement = Arrangement.spacedBy(2.dp)) {
         modes.forEachIndexed { index, mode ->
@@ -356,7 +358,7 @@ private fun DashboardModes(selected: GameMode, compact: Boolean, modifier: Modif
                 else -> RoundedCornerShape(8.dp)
             }
             Surface(Modifier.weight(1f).fillMaxHeight().then(if (!none)
-                Modifier.selectable(checked, role = Role.RadioButton, onClick = { onMode(mode) }) else Modifier), shape = shape,
+                Modifier.clip(shape).selectable(checked, role = Role.RadioButton, onClick = { onMode(mode) }) else Modifier), shape = shape,
                 color = when { none -> MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = inner)
                     checked -> MaterialTheme.colorScheme.primary
                     else -> MaterialTheme.colorScheme.secondaryContainer.copy(alpha = inner) },
@@ -376,10 +378,14 @@ private fun DashboardAuxButton(compact: Boolean, secondRow: Boolean, selected: B
     val outerOffset = if (!compact) 0.dp else if (secondRow) 2.dp else (-2).dp
     val innerOffset = -outerOffset
     val shape = RoundedCornerShape(if (selected == true) 20.dp else 14.dp)
+    // The 48dp touch target stays square, but the press feedback follows the visible shape.
+    val interaction = remember { MutableInteractionSource() }
     Box(Modifier.size(44.dp, if (compact) 40.dp else 48.dp)) {
         Box(Modifier.requiredSize(48.dp).offset(y = outerOffset)
-            .then(if (selected != null) Modifier.toggleable(selected, enabled, Role.Switch) { onClick() }
-                else Modifier.clickable(enabled = enabled, role = Role.Button, onClick = onClick))
+            .then(if (selected != null) Modifier.toggleable(value = selected, interactionSource = interaction,
+                    indication = null, enabled = enabled, role = Role.Switch, onValueChange = { onClick() })
+                else Modifier.clickable(interactionSource = interaction, indication = null, enabled = enabled,
+                    role = Role.Button, onClick = onClick))
             .semantics {
                 contentDescription = label
                 if (selected != null) stateDescription = context.getString(if (selected) R.string.dashboard_on else R.string.dashboard_off)
@@ -387,6 +393,7 @@ private fun DashboardAuxButton(compact: Boolean, secondRow: Boolean, selected: B
             Box(Modifier.offset(y = innerOffset).size(44.dp, if (compact) 32.dp else 40.dp).clip(shape)
                 .background(if (selected == true) MaterialTheme.colorScheme.primaryContainer
                     else MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = overlayInnerAlpha()))
+                .indication(interaction, LocalIndication.current)
                 .then(if (selected == true) Modifier else Modifier.border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape)),
                 contentAlignment = Alignment.Center) {
                 Icon(icon, null, Modifier.size(22.dp),
