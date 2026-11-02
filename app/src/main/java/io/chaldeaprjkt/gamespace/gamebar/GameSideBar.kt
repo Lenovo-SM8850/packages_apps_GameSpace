@@ -120,6 +120,7 @@ class GameSidebar(
 
     private var sessionActive = false
     private val firstPaint = Runnable { initActions() }
+    private var attachFailures = 0
     private val attachGameBar = Runnable {
         if (sessionActive && !shouldClose && gamePackage != null && ::gameBarView.isInitialized) {
             runCatching {
@@ -131,7 +132,17 @@ class GameSidebar(
                 }
                 handler.removeCallbacks(firstPaint)
                 handler.postDelayed(firstPaint, 500)
+            }.onSuccess { attachFailures = 0 }.onFailure {
+                attachFailures++
+                scheduleAttachRetry()
             }
+        }
+    }
+
+    private fun scheduleAttachRetry() {
+        if (sessionActive && !shouldClose && gamePackage != null && attachFailures < 10) {
+            handler.removeCallbacks(attachGameBar)
+            handler.postDelayed(attachGameBar, TASK_RECHECK_DELAY_MS)
         }
     }
 
@@ -434,6 +445,7 @@ class GameSidebar(
         handler.removeCallbacks(attachGameBar)
         handler.removeCallbacks(firstPaint)
         sessionActive = active
+        attachFailures = 0
         sessionUserId = context.userId
         shouldClose = false
         barReady = false
@@ -483,7 +495,10 @@ class GameSidebar(
     }
 
     fun setSessionActive(active: Boolean) {
-        if (sessionActive == active) return
+        if (sessionActive == active) {
+            if (active && !gameBarView.isAttachedToWindow) scheduleAttachRetry()
+            return
+        }
         sessionActive = active
         handler.removeCallbacks(attachGameBar)
         handler.removeCallbacks(firstPaint)
