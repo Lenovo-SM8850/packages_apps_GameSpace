@@ -60,12 +60,14 @@ import com.android.compose.animation.scene.SceneTransitionLayout
 import com.android.compose.animation.scene.SwipeDetector
 import com.android.compose.animation.scene.rememberMutableSceneTransitionLayoutState
 import io.chaldeaprjkt.gamespace.R
+import io.github.miner7222.gamespace.FitLabel
 import io.github.miner7222.gamespace.gamebar.RecordingPhase
 import io.github.miner7222.gamespace.gamebar.RecordingState
 import io.github.miner7222.gamespace.gamebar.overlayBlur
 import io.github.miner7222.gamespace.gamebar.overlayBorder
 import io.github.miner7222.gamespace.gamebar.overlayInnerAlpha
 import io.github.miner7222.gamespace.gamebar.overlayPanelAlpha
+import io.github.miner7222.gamespace.shortLabelResource
 import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -277,7 +279,8 @@ private fun MiniBar(
                 ReadoutCell(stringResource(R.string.dashboard_temperature, battery.temperatureC.roundToInt()),
                     stringResource(R.string.gamebar_temperature_label)) { onShowPanel(false) }
                 ReadoutCell(if (battery.level >= 0) "${battery.level}%" else "–",
-                    stringResource(R.string.gamebar_battery_label)) { onShowPanel(false) }
+                    stringResource(R.string.gamebar_battery_label),
+                    shortLabelResource(R.string.gamebar_battery_label_short)) { onShowPanel(false) }
             }
         }
         if (recording.phase == RecordingPhase.ACTIVE) {
@@ -326,7 +329,7 @@ private fun DashboardCell(onLeft: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
-private fun ReadoutCell(value: String, label: String, onClick: () -> Unit) {
+private fun ReadoutCell(value: String, label: String, shortLabel: String? = null, onClick: () -> Unit) {
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     val corner by animateDpAsState(if (pressed) 24.dp else 20.dp, label = "readoutCorner")
@@ -338,7 +341,7 @@ private fun ReadoutCell(value: String, label: String, onClick: () -> Unit) {
         horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
         Text(value, color = MaterialTheme.colorScheme.onSurface, fontSize = 17.sp, lineHeight = 20.sp,
             fontWeight = FontWeight.Bold, style = TextStyle(fontFeatureSettings = "tnum"))
-        Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, lineHeight = 14.sp,
+        FitLabel(label, shortLabel, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, lineHeight = 14.sp,
             fontWeight = FontWeight.SemiBold, letterSpacing = 0.3.sp)
     }
 }

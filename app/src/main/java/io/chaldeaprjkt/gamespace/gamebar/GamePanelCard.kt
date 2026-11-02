@@ -81,6 +81,7 @@ import io.chaldeaprjkt.gamespace.gamebar.fps.FpsInteractor
 import io.chaldeaprjkt.gamespace.gamebar.tiles.*
 import io.chaldeaprjkt.gamespace.settings.SettingsActivity
 import io.chaldeaprjkt.gamespace.utils.GameModeUtils
+import io.github.miner7222.gamespace.FitLabel
 import io.github.miner7222.gamespace.GameAspectRatioTile
 import io.github.miner7222.gamespace.gamebar.MediaVolumeController
 import io.github.miner7222.gamespace.gamebar.RecordingPhase
@@ -90,6 +91,7 @@ import io.github.miner7222.gamespace.gamebar.overlayBorder
 import io.github.miner7222.gamespace.gamebar.overlayInnerAlpha
 import io.github.miner7222.gamespace.gamebar.overlayPanelAlpha
 import io.github.miner7222.gamespace.library.*
+import io.github.miner7222.gamespace.shortLabelResource
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.collect
 import java.text.SimpleDateFormat
@@ -361,7 +363,10 @@ private fun DashboardModes(selected: GameMode, compact: Boolean, modifier: Modif
                 contentColor = when { none -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.42f)
                     checked -> MaterialTheme.colorScheme.onPrimary; else -> MaterialTheme.colorScheme.onSecondaryContainer },
                 border = if (none) BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant) else null) {
-                Box(contentAlignment = Alignment.Center) { Text(context.getString(mode.displayNameRes), fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1) }
+                Box(Modifier.padding(horizontal = 6.dp), contentAlignment = Alignment.Center) {
+                    FitLabel(context.getString(mode.displayNameRes), shortLabelResource(mode.shortNameRes),
+                        fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                }
             }
         }
     }
@@ -511,6 +516,7 @@ fun TileButton(tile: TileAction, modifier: Modifier = Modifier, tablet: Boolean 
     } else if (tile.kind == TileKind.CYCLE || tile.kind == TileKind.DIALOG) tile.valueLine else null
     val label = if (record) stringResource(R.string.dashboard_recording)
         else tile.label
+    val shortLabel = if (record) null else tile.shortLabel
     val actionLabel = if (record) stringResource(R.string.dashboard_stop_recording) else null
     val context = LocalContext.current
     val defaultLabel = stringResource(R.string.dashboard_game_default)
@@ -528,10 +534,10 @@ fun TileButton(tile: TileAction, modifier: Modifier = Modifier, tablet: Boolean 
         val text: @Composable () -> Unit = {
             Column(horizontalAlignment = if (tablet) Alignment.Start else Alignment.CenterHorizontally) {
                 // The name leads and the state line stays a step smaller and lighter.
-                Text(label, fontSize = if (compact) 11.sp else if (tablet) 13.sp else 12.sp,
+                FitLabel(label, shortLabel, fontSize = if (compact) 11.sp else if (tablet) 13.sp else 12.sp,
                     lineHeight = if (compact) 13.sp else if (tablet) 16.sp else 14.sp,
                     color = foreground, fontWeight = if (active || record) FontWeight.SemiBold else FontWeight.Medium,
-                    maxLines = 2, overflow = TextOverflow.Ellipsis,
+                    maxLines = 2,
                     // Wrap Korean names between words, never inside one.
                     style = LocalTextStyle.current.copy(lineBreak = LineBreak.Heading),
                     textAlign = if (tablet) TextAlign.Start else TextAlign.Center)
@@ -737,13 +743,13 @@ fun TileEditPanel(repository: TileRepository, apps: List<AppInfo>, mainCount: In
                                         Icon(Icons.Rounded.DragIndicator, stringResource(R.string.dashboard_drag), Modifier.size(18.dp),
                                             tint = MaterialTheme.colorScheme.onSurfaceVariant)
                                         Icon(painterResource(tile.icon), null, Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurface)
-                                        Text(title, Modifier.weight(1f).padding(4.dp), fontSize = 12.sp,
-                                            lineHeight = 14.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                        FitLabel(title, repository.tiles.firstOrNull { it.id == tile.id }?.shortLabel, Modifier.weight(1f).padding(4.dp), fontSize = 12.sp,
+                                            lineHeight = 14.sp, maxLines = 2)
                                     } else {
                                         Column(Modifier.padding(horizontal = 3.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                                             Icon(painterResource(tile.icon), null, Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurface)
-                                            Text(title, fontSize = 11.sp, lineHeight = 14.sp, maxLines = 2,
-                                                overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
+                                            FitLabel(title, repository.tiles.firstOrNull { it.id == tile.id }?.shortLabel, fontSize = 11.sp, lineHeight = 14.sp, maxLines = 2,
+                                                textAlign = TextAlign.Center)
                                         }
                                         Icon(Icons.Rounded.DragIndicator, stringResource(R.string.dashboard_drag),
                                             Modifier.align(Alignment.TopStart).padding(3.dp).size(16.dp),
@@ -791,7 +797,7 @@ fun TileEditPanel(repository: TileRepository, apps: List<AppInfo>, mainCount: In
                                 drag.addTile(DragTileData(tile.id, title, tile.icon)); save()
                                 onMessage(context.getString(if (drag.tiles.size <= mainCount) R.string.dashboard_added_main
                                     else R.string.dashboard_added_more, title))
-                            }, label = { Text(title, maxLines = 1) },
+                            }, label = { FitLabel(title, repository.tiles.firstOrNull { it.id == tile.id }?.shortLabel) },
                                 leadingIcon = { Icon(Icons.Rounded.Add, null, Modifier.size(16.dp)) })
                         }
                     }
@@ -1028,11 +1034,11 @@ private fun getPercentage(value: Double, min: Float, max: Float): Double {
     return ((value - min) / (max - min)).coerceIn(0.0, 1.0)
 }
 
-enum class GameMode(@StringRes val displayNameRes: Int, val icon: ImageVector) {
+enum class GameMode(@StringRes val displayNameRes: Int, val icon: ImageVector, @StringRes val shortNameRes: Int = 0) {
     None(R.string.game_mode_none, Icons.Filled.Block),
-    Balanced(R.string.game_mode_balanced, Icons.Filled.SportsEsports),
-    PowerSave(R.string.game_mode_battery, Icons.Filled.EnergySavingsLeaf),
-    Performance(R.string.game_mode_performance, Icons.Filled.ElectricBolt)
+    Balanced(R.string.game_mode_balanced, Icons.Filled.SportsEsports, R.string.game_mode_balanced_short),
+    PowerSave(R.string.game_mode_battery, Icons.Filled.EnergySavingsLeaf, R.string.game_mode_battery_short),
+    Performance(R.string.game_mode_performance, Icons.Filled.ElectricBolt, R.string.game_mode_performance_short)
 }
 
 fun GameMode.toSystemGameMode(): Int = when (this) {

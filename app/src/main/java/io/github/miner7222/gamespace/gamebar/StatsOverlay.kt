@@ -38,6 +38,8 @@ import com.android.axion.compose.lifecycle.repeatWhenAttached
 import io.chaldeaprjkt.gamespace.R
 import io.chaldeaprjkt.gamespace.data.AppSettings
 import io.chaldeaprjkt.gamespace.gamebar.rememberBatteryInfo
+import io.github.miner7222.gamespace.FitLabel
+import io.github.miner7222.gamespace.shortLabelResource
 import kotlin.math.roundToInt
 
 /** A touch-bounded window whose position and lifetime are independent of the handle. */
@@ -250,18 +252,19 @@ private fun StatsStrip(fpsText: String, idle: Boolean) {
             StatValue(stringResource(R.string.dashboard_temperature, battery.temperatureC.roundToInt()),
                 stringResource(R.string.gamebar_temperature_label), Modifier.weight(1f))
             StatValue(if (battery.level >= 0) "${battery.level}%" else "–",
-                stringResource(R.string.gamebar_battery_label), Modifier.weight(1f))
+                stringResource(R.string.gamebar_battery_label), Modifier.weight(1f),
+                shortLabelResource(R.string.gamebar_battery_label_short))
         }
     }
 }
 
 @Composable
-private fun StatValue(value: String, label: String, modifier: Modifier) {
+private fun StatValue(value: String, label: String, modifier: Modifier, shortLabel: String? = null) {
     Column(modifier, horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center) {
         Text(value, color = MaterialTheme.colorScheme.onSurface, fontSize = 17.sp, lineHeight = 20.sp,
             fontWeight = FontWeight.Bold, style = TextStyle(fontFeatureSettings = "tnum"))
-        Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, lineHeight = 14.sp,
+        FitLabel(label, shortLabel, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, lineHeight = 14.sp,
             fontWeight = FontWeight.SemiBold, letterSpacing = 0.3.sp)
     }
 }

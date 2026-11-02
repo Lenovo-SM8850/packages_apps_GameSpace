@@ -260,5 +260,24 @@
     <string name="status_sidebar_hidden">Sidebar hidden</string>
     <string name="status_memory_cleaned">Memory cleaned</string>
     <string name="status_session_applied">Session options applied: %1$s. Opens the dashboard.</string>
+
+    <!-- Short forms: shown only where the full label does not fit; each is a shorter, well-known form of the string named in its key. -->
+    <string name="game_mode_balanced_short">Balance</string>
+    <string name="game_mode_performance_short">Perf</string>
+    <string name="game_mode_battery_short">Saver</string>
+    <string name="bypass_charge_enabled_title_short">Bypass</string>
+    <string name="wifi_low_latency_title_short">Low-lat Wi-Fi</string>
+    <string name="tile_danmaku_short">Bullet alerts</string>
+    <string name="tile_stay_awake_short">Awake</string>
+    <string name="tile_fps_info_short">Stats</string>
+    <string name="tile_boost_memory_short">Memory</string>
+    <string name="tile_heads_up_short">Pop-ups</string>
+    <string name="tile_caffeine_short">Screen on 5 min</string>
+    <string name="tile_aspect_ratio_short">Ratio</string>
+    <string name="tile_gesture_lock_short">Gestures</string>
+    <string name="tile_touch_response_short">Touch</string>
+    <string name="status_do_not_disturb_short">DND</string>
+    <string name="status_sidebar_hidden_short">Sidebar off</string>
+    <string name="gamebar_battery_label_short">Batt</string>
     <string name="game_performance">Game performance</string>
 </resources>
