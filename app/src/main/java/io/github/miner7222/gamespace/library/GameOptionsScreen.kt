@@ -5,6 +5,10 @@
 
 package io.github.miner7222.gamespace.library
 
+import android.database.ContentObserver
+import android.os.Handler
+import android.os.Looper
+import android.provider.Settings
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -45,11 +49,24 @@ internal fun rememberGameOptions(store: InGameOptions, packageName: String): Gam
     var revision by remember(store, packageName) { mutableIntStateOf(0) }
     DisposableEffect(store, packageName) {
         val observer = store.observe { revision++ }
-        onDispose { observer.close() }
+        val gestureObserver = object : ContentObserver(Handler(Looper.getMainLooper())) {
+            override fun onChange(selfChange: Boolean) { revision++ }
+        }
+        context.contentResolver.registerContentObserver(Settings.Secure.getUriFor("ax_gaming_gesture_lock"),
+            false, gestureObserver, context.userId)
+        onDispose {
+            observer.close()
+            context.contentResolver.unregisterContentObserver(gestureObserver)
+        }
     }
     return remember(store, packageName, revision) {
         val overrides = store.overrides(packageName)
-        GameOptionsSnapshot(GameOption.entries.associateWith { overrides[it] ?: store.global(it) }, overrides.keys, store.availableOptions(),
+        val currentGame = SessionOptions.packageName(context) == packageName
+        GameOptionsSnapshot(GameOption.entries.associateWith {
+            if (it == GameOption.GESTURES && currentGame) Settings.Secure.getIntForUser(
+                context.contentResolver, "ax_gaming_gesture_lock", 0, context.userId)
+            else overrides[it] ?: store.global(it)
+        }, overrides.keys, store.availableOptions(),
             if (SessionOptions.packageName(context) == packageName) SessionOptions.mode(context) else null)
     }
 }

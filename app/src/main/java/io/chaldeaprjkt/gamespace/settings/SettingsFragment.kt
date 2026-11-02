@@ -89,6 +89,7 @@ class SettingsFragment : Hilt_SettingsFragment(),
     }
 
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
+        appSettings.inGameOptions.ensureMigrated()
         setPreferencesFromResource(R.xml.root_preferences, rootKey)
         updatePreferences()
     }

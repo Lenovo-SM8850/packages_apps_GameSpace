@@ -249,6 +249,18 @@ class SessionService : Hilt_SessionService() {
         }
     }
 
+    private val gestureLockObserver = object : ContentObserver(mainHandler) {
+        override fun onChange(selfChange: Boolean) {
+            // Suspension clears the request temporarily; retain the choice for resume.
+            if (currentPackage == null || suspended) return
+            val locked = settings.gestureLock
+            if (locked != (appSettings.inGameOptions.current(GameOption.GESTURES) == 1)) {
+                session.setOption(GameOption.GESTURES, if (locked) 1 else 0)
+                sidebar.setGestureLock(locked)
+            }
+        }
+    }
+
     private val statusObserver = object : ContentObserver(mainHandler) {
         override fun onChange(selfChange: Boolean) { publishSessionStatus() }
     }
@@ -353,6 +365,8 @@ class SessionService : Hilt_SessionService() {
         listOf(SidebarVisibility.HIGH_TOUCH, SidebarVisibility.HIDDEN, "ax_gaming_gesture_lock").forEach { key ->
             contentResolver.registerContentObserver(Settings.Secure.getUriFor(key), false, statusObserver, userId)
         }
+        contentResolver.registerContentObserver(Settings.Secure.getUriFor("ax_gaming_gesture_lock"),
+            false, gestureLockObserver, userId)
         optionsObservation = appSettings.inGameOptions.observe { refreshInGameOptions() }
         try {
             taskManager.registerTaskStackListener(taskListener)
@@ -380,6 +394,11 @@ class SessionService : Hilt_SessionService() {
                     suspensionReasons.add(SuspensionReason.FRAMEWORK)
                     suspendGameSession()
                 } else stopGameSession()
+            }
+        } else if (intent?.action == ACTION_GESTURE_LOCK_OFF) {
+            if (matchesSession(intent)) {
+                session.setOption(GameOption.GESTURES, 0)
+                sidebar.setGestureLock(false)
             }
         } else if (intent?.action == ACTION_RESUME) {
             val packageName = intent.getStringExtra(EXTRA_PACKAGE_NAME)
@@ -759,6 +778,7 @@ class SessionService : Hilt_SessionService() {
         wifiNetworks.clear()
         contentResolver.unregisterContentObserver(bypassObserver)
         contentResolver.unregisterContentObserver(statusObserver)
+        contentResolver.unregisterContentObserver(gestureLockObserver)
         stopGameSession()
         aspectRatioGesture.release()
         unregisterReceiver(dndReceiver)
@@ -796,6 +816,7 @@ class SessionService : Hilt_SessionService() {
         const val ACTION_SUSPEND = "game_suspend"
         const val ACTION_RESUME = "game_resume"
         const val ACTION_END = "game_end"
+        const val ACTION_GESTURE_LOCK_OFF = "game_gesture_lock_off"
         const val ACTION_VISIBILITY = "game_visibility"
         const val EXTRA_GAME_TASK_ID = "game_task_id"
         const val EXTRA_GAME_PROCESS_ID = "game_process_id"
