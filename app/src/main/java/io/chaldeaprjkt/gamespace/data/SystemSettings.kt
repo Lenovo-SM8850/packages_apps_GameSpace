@@ -48,6 +48,14 @@ class SystemSettings @Inject constructor(
             )
         }
 
+    var disableWindowBlurs: Int?
+        get() = Settings.Global.getString(resolver, Settings.Global.DISABLE_WINDOW_BLURS)?.toIntOrNull()
+        set(value) {
+            check(Settings.Global.putString(resolver, Settings.Global.DISABLE_WINDOW_BLURS, value?.toString())) {
+                "Cannot update window blur setting"
+            }
+        }
+
     var autoBrightness
         get() =
             Settings.System.getIntForUser(
