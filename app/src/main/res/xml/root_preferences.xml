@@ -39,8 +39,7 @@
     <PreferenceCategory android:title="@string/library_game_icons">
         <io.github.miner7222.gamespace.library.HideGamesPreference
             android:key="gamespace_hide_games"
-            android:title="@string/library_hide_title"
-            android:summary="@string/library_hide_summary" />
+            android:title="@string/library_hide_title" />
     </PreferenceCategory>
 
     <PreferenceCategory
@@ -77,7 +76,6 @@
         <SwitchPreferenceCompat
             android:key="gamespace_show_status_at_game_start"
             android:title="@string/show_status_at_game_start_title"
-            android:summary="@string/show_status_at_game_start_summary"
             android:defaultValue="true" />
 
         <SwitchPreferenceCompat
@@ -95,7 +93,6 @@
         <SwitchPreferenceCompat
             android:key="gamespace_hide_sidebar"
             android:title="@string/library_hide_sidebar_title"
-            android:summary="@string/library_hide_sidebar_summary"
             android:defaultValue="true" />
 
         <SwitchPreferenceCompat
