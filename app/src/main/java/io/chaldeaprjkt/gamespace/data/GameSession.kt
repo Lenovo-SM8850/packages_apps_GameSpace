@@ -50,6 +50,37 @@ class GameSession @Inject constructor(
         liveState?.takeUnless { it.suspended }?.let { applyHeadsup(it) }
     }
 
+    // Window blurs stay on until the game has held the fullscreen foreground for a while.
+    private var gameBlursOff = false
+
+    fun setWindowBlursDisabled(disabled: Boolean) {
+        if (gameBlursOff == disabled) return
+        gameBlursOff = disabled
+        liveState?.takeUnless { it.suspended }?.let { applyWindowBlurs(it) }
+    }
+
+    private fun applyWindowBlurs(orig: SessionState) {
+        if (gameBlursOff) {
+            val current = systemSettings.disableWindowBlurs
+            if (current != 1) {
+                if (!orig.ownsWindowBlurs) {
+                    orig.disableWindowBlurs = current
+                    orig.ownsWindowBlurs = true
+                    persistRecovery(orig)
+                }
+                systemSettings.disableWindowBlurs = 1
+            }
+        } else if (orig.ownsWindowBlurs) {
+            restoreWindowBlurs(orig)
+        }
+    }
+
+    private fun restoreWindowBlurs(orig: SessionState) {
+        systemSettings.disableWindowBlurs = orig.disableWindowBlurs
+        orig.ownsWindowBlurs = false
+        persistRecovery(orig)
+    }
+
     private fun applyHeadsup(orig: SessionState) {
         val headsup = appSettings.inGameOptions.current(GameOption.DANMAKU) == 1 && !gameWindowed
         if (headsup != orig.ownsHeadsup) {
@@ -127,6 +158,7 @@ class GameSession @Inject constructor(
     /** Recovery metadata is written before taking ownership and after releasing it. */
     fun applyOptions() {
         val orig = liveState?.takeUnless { it.suspended } ?: return
+        applyWindowBlurs(orig)
         val options = appSettings.inGameOptions
         val brightness = options.current(GameOption.BRIGHTNESS) == 1
         val panelAuto = SessionOptions.autoBrightness(context)
@@ -283,6 +315,7 @@ class GameSession @Inject constructor(
     }
 
     private fun releaseEffects(orig: SessionState) {
+        if (orig.ownsWindowBlurs) restoreWindowBlurs(orig)
         systemSettings.gestureLock = false
         systemSettings.bypassChargeEnabled = false
         systemSettings.stayAwake = false
@@ -323,6 +356,7 @@ class GameSession @Inject constructor(
         val orig = liveState?.copy() ?: state?.copy()
         val savedMode = orig?.let { SessionOptions.savedMode(context, it.packageName) ?: it.preferredMode }
         liveState = null
+        gameBlursOff = false
         SessionOptions.end(context)
         // These are session requests, never saved user defaults. Clear even without a journal.
         systemSettings.gestureLock = false

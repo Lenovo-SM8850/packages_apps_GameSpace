@@ -145,6 +145,8 @@ class SessionService : Hilt_SessionService() {
     private val mainHandler = Handler(Looper.getMainLooper())
     private var pendingStart: Intent? = null
     private var pendingStartDeadline = 0L
+    private var blurFullscreen = false
+    private val disableWindowBlurs = Runnable { session.setWindowBlursDisabled(true) }
     private val retryStart = Runnable {
         val pending = pendingStart
         if (pending != null) onStartCommand(pending, 0, 0)
@@ -490,6 +492,25 @@ class SessionService : Hilt_SessionService() {
             !suspended && sidebar.gameTaskFullscreen
         session.setGameWindowed(!fullscreen)
         danmakuService.setGameVisible(fullscreen)
+        updateWindowBlurs(fullscreen)
+    }
+
+    private fun cancelWindowBlurs() {
+        mainHandler.removeCallbacks(disableWindowBlurs)
+        blurFullscreen = false
+    }
+
+    // Blur is turned off only after the game stays in the fullscreen foreground for a
+    // while. Leaving it, or a window mode, turns blur back on and drops the wait.
+    private fun updateWindowBlurs(fullscreen: Boolean) {
+        if (fullscreen == blurFullscreen) return
+        blurFullscreen = fullscreen
+        mainHandler.removeCallbacks(disableWindowBlurs)
+        if (fullscreen) {
+            mainHandler.postDelayed(disableWindowBlurs, WINDOW_BLUR_OFF_DELAY_MS)
+        } else {
+            session.setWindowBlursDisabled(false)
+        }
     }
 
     private fun publishTouchPolicy() {
@@ -562,6 +583,7 @@ class SessionService : Hilt_SessionService() {
         gameProcessId = processId
         gameTaskIds = tasks ?: if (taskId != -1) setOf(taskId) else emptySet()
         bypassChargeActive = false
+        cancelWindowBlurs()
         session.unregister()
         session.register(packageName, active = false)
         deferredGameStart = true
@@ -633,6 +655,7 @@ class SessionService : Hilt_SessionService() {
         screenOffSession.onGameStop()
         sidebar.onGameLeave()
         restoreAutoDnd()
+        cancelWindowBlurs()
         session.unregister()
         gameModeUtils.activeGame = null
         callListener.destroy()
@@ -834,6 +857,7 @@ class SessionService : Hilt_SessionService() {
         contentResolver.unregisterContentObserver(statusObserver)
         contentResolver.unregisterContentObserver(gestureLockObserver)
         stopGameSession()
+        cancelWindowBlurs()
         aspectRatioGesture.release()
         unregisterReceiver(dndReceiver)
         brightnessInteractor.onToggleAutoMode = null
@@ -866,6 +890,7 @@ class SessionService : Hilt_SessionService() {
 
     companion object {
         const val TAG = "SessionService"
+        private const val WINDOW_BLUR_OFF_DELAY_MS = 5000L
         const val ACTION_START = "game_start"
         const val ACTION_SUSPEND = "game_suspend"
         const val ACTION_RESUME = "game_resume"
