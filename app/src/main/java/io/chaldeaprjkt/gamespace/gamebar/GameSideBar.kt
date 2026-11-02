@@ -58,6 +58,8 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.ui.input.pointer.pointerInput
 import io.github.miner7222.gamespace.gamebar.MediaVolumeController
+import io.github.miner7222.gamespace.gamebar.LocalOverlayFade
+import io.github.miner7222.gamespace.gamebar.OverlayTheme
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.*
@@ -298,10 +300,7 @@ class GameSidebar(
                             LocalOnBackPressedDispatcherOwner provides noOpBackDispatcherOwner,
                             LocalLayoutDirection provides LayoutDirection.Ltr,
                         ) {
-                            MaterialExpressiveTheme(
-                            colorScheme = if (isSystemInDarkTheme()) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context),
-                            motionScheme = MotionScheme.expressive(),
-                        ) {
+                            OverlayTheme(context) {
                             GameBarView(
                                 showFps = showFpsState.value,
                                 fpsText = fpsTextState.value,
@@ -582,10 +581,7 @@ class GameSidebar(
                 repeatOnLifecycle(Lifecycle.State.STARTED) {
                     setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
                     setContent {
-                        MaterialExpressiveTheme(
-                            colorScheme = if (isSystemInDarkTheme()) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context),
-                            motionScheme = MotionScheme.expressive(),
-                        ) {
+                        OverlayTheme(context) {
                             PanelContent(initialGraphExpanded)
                         }
                     }
@@ -617,11 +613,13 @@ class GameSidebar(
             },
         )
 
-        val panelAlpha by animateFloatAsState(
+        val panelAlphaState = animateFloatAsState(
             targetValue = if (show) 1f else 0f,
             animationSpec = tween(if (show) 280 else 180),
             label = "panel_alpha",
         )
+        val panelAlpha by panelAlphaState
+        val panelFade = remember { { panelAlphaState.value } }
 
         val panelScale by animateFloatAsState(
             targetValue = if (show) 1f else 0.88f,
@@ -648,7 +646,7 @@ class GameSidebar(
             else if (landscape) 340.dp else safeWidth, (safeWidth - 24.dp).coerceAtLeast(0.dp))
         var editingPanel by remember { mutableStateOf(false) }
         val primaryRows = (minOf(8, tileRepository.tiles.size) + 3) / 4
-        val portraitContentHeight = 242.dp + 72.dp * primaryRows + 8.dp * (primaryRows - 1).coerceAtLeast(0) +
+        val portraitContentHeight = 249.dp + 72.dp * primaryRows + 8.dp * (primaryRows - 1).coerceAtLeast(0) +
             (if (tileRepository.tiles.size > 8) 55.dp else 0.dp) + (if (apps.isNotEmpty()) 62.dp else 0.dp) + 12.dp
         val height = when {
             phonePortrait && editingPanel -> (safeHeightDp - 72.dp).coerceAtLeast(0.dp)
@@ -686,11 +684,13 @@ class GameSidebar(
                     }, onHorizontalDrag = { change, amount -> swipe += amount; change.consume() })
                 }
                 .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {}) {
-                GamePanelCard(interactor = brightnessInteractor, fpsInteractor = fpsInteractor, apps = apps,
-                    gameModeUtils = gameModeUtils, systemSettings = settings, tileRepository = tileRepository,
-                    mediaVolume = mediaVolume, gamePackage = packageName,
-                    onDismiss = { forceRemovePanel() }, panelWidth = width, maxHeight = height,
-                    onEditingChanged = { editingPanel = it }, initialGraphExpanded = initialGraphExpanded)
+                CompositionLocalProvider(LocalOverlayFade provides panelFade) {
+                    GamePanelCard(interactor = brightnessInteractor, fpsInteractor = fpsInteractor, apps = apps,
+                        gameModeUtils = gameModeUtils, systemSettings = settings, tileRepository = tileRepository,
+                        mediaVolume = mediaVolume, gamePackage = packageName,
+                        onDismiss = { forceRemovePanel() }, panelWidth = width, maxHeight = height,
+                        onEditingChanged = { editingPanel = it }, initialGraphExpanded = initialGraphExpanded)
+                }
             }
         }
     }
