@@ -687,7 +687,13 @@ fun TileEditPanel(repository: TileRepository, apps: List<AppInfo>, mainCount: In
         }
         Column(Modifier.weight(1f).onGloballyPositioned { viewport = it.boundsInRoot() }
             .verticalScroll(editorScroll).padding(horizontal = px).padding(bottom = 16.dp)) {
-            Text(stringResource(R.string.dashboard_in_dashboard), style = MaterialTheme.typography.titleSmall)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(stringResource(R.string.dashboard_in_dashboard), Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
+                Surface(shape = CircleShape, color = MaterialTheme.colorScheme.secondaryContainer) {
+                    Text(drag.tiles.size.toString(), Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                        style = MaterialTheme.typography.labelSmall)
+                }
+            }
             Text(stringResource(R.string.dashboard_drag), style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
             Column(Modifier.fillMaxWidth().padding(top = 8.dp).onGloballyPositioned { gridOrigin = it.positionInRoot() }
@@ -725,16 +731,22 @@ fun TileEditPanel(repository: TileRepository, apps: List<AppInfo>, mainCount: In
                                     .clip(RoundedCornerShape(16.dp))
                                     .background(MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = overlayInnerAlpha()))
                                     .dragAndDropTileSource(tile, drag), contentAlignment = Alignment.Center) {
-                                    if (tablet) Row(Modifier.padding(horizontal = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    if (tablet) Row(Modifier.padding(horizontal = 6.dp), verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                                         Icon(Icons.Rounded.DragIndicator, stringResource(R.string.dashboard_drag), Modifier.size(18.dp),
                                             tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        Icon(painterResource(tile.icon), null, Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurface)
                                         Text(title, Modifier.weight(1f).padding(4.dp), fontSize = 12.sp,
                                             lineHeight = 14.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                                    } else Column(Modifier.padding(horizontal = 3.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                                        Icon(Icons.Rounded.DragIndicator, stringResource(R.string.dashboard_drag), Modifier.size(20.dp),
+                                    } else {
+                                        Column(Modifier.padding(horizontal = 3.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                            Icon(painterResource(tile.icon), null, Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurface)
+                                            Text(title, fontSize = 11.sp, lineHeight = 14.sp, maxLines = 2,
+                                                overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
+                                        }
+                                        Icon(Icons.Rounded.DragIndicator, stringResource(R.string.dashboard_drag),
+                                            Modifier.align(Alignment.TopStart).padding(3.dp).size(16.dp),
                                             tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                                        Text(title, fontSize = 11.sp, lineHeight = 14.sp, maxLines = 2,
-                                            overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
                                     }
                                 }
                                 CompositionLocalProvider(LocalViewConfiguration provides removeConfiguration) {
@@ -766,23 +778,15 @@ fun TileEditPanel(repository: TileRepository, apps: List<AppInfo>, mainCount: In
             }
             Text(stringResource(R.string.dashboard_add), Modifier.padding(top = 20.dp, bottom = 4.dp), style = MaterialTheme.typography.titleSmall)
             TileCategory.entries.forEach { category ->
-                val available = repository.allAvailableTiles.filter { it.category == category }
+                val added = drag.tileIds().toSet()
+                val available = repository.addableTiles.filter { it.category == category && it.id !in added }
                 if (available.isNotEmpty()) {
                     Text(stringResource(category.labelRes), Modifier.padding(top = 12.dp, bottom = 4.dp),
                         style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         available.forEach { tile ->
-                            val added = drag.tileIds().contains(tile.id)
                             val title = if (tile.id == "screen_aspect_ratio") stringResource(R.string.tile_aspect_ratio) else tile.label
-                            if (added) Surface(Modifier.padding(vertical = 4.dp).height(34.dp)
-                                .semantics(mergeDescendants = true) { contentDescription = context.getString(R.string.dashboard_already_added, title) },
-                                color = MaterialTheme.colorScheme.secondaryContainer, shape = RoundedCornerShape(10.dp)) {
-                                Row(Modifier.padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                    Icon(Icons.Rounded.Check, null, Modifier.size(16.dp))
-                                    Text(title, fontSize = 13.sp, maxLines = 1)
-                                }
-                            } else InputChip(selected = false, onClick = {
+                            InputChip(selected = false, onClick = {
                                 drag.addTile(DragTileData(tile.id, tile.label, tile.icon)); save()
                                 onMessage(context.getString(if (drag.tiles.size <= mainCount) R.string.dashboard_added_main
                                     else R.string.dashboard_added_more, title))

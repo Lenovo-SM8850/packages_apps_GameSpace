@@ -246,7 +246,6 @@
     <string name="dashboard_min">Min</string>
     <string name="dashboard_average">Avg</string>
     <string name="dashboard_max">Max</string>
-    <string name="dashboard_already_added">%1$s, already added</string>
     <string name="dashboard_recording">Recording</string>
     <string name="dashboard_stop_recording">Stop recording</string>
     <string name="gamebar_open_controls">Open game controls</string>

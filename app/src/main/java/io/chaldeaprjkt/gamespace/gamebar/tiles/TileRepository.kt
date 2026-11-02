@@ -393,6 +393,10 @@ class TileRepository @Inject constructor(
     val allAvailableTiles: List<TileAction>
         get() = _availableTiles
 
+    /** Controls the editor offers; the timed screen-on control repeats the game-long one. */
+    val addableTiles: List<TileAction>
+        get() = _availableTiles.filter { it.id != AxPlatformClient.FEATURE_CAFFEINE }
+
     private val _tiles = mutableStateListOf<TileAction>()
     val tiles: SnapshotStateList<TileAction> get() = _tiles
 
