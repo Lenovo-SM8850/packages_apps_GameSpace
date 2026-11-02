@@ -4,16 +4,10 @@
 package io.github.miner7222.gamespace.library
 
 import android.content.Context
-import android.content.Intent
-import android.content.pm.ShortcutInfo
-import android.content.pm.ShortcutManager
-import android.graphics.drawable.Icon
 import android.util.AttributeSet
 import android.view.ContextThemeWrapper
 import android.view.LayoutInflater
-import android.view.View
 import android.view.ViewGroup
-import android.widget.CheckBox
 import androidx.preference.SwitchPreferenceCompat
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import io.chaldeaprjkt.gamespace.R
@@ -46,13 +40,8 @@ class HideGamesPreference @JvmOverloads constructor(context: Context, attrs: Att
     fun refresh() { isChecked = settings.libraryHideGames }
 
     private fun confirmHiding() {
-        val shortcuts = context.getSystemService(ShortcutManager::class.java)
-        val offerPin = shortcuts.isRequestPinShortcutSupported && shortcuts.pinnedShortcuts.isEmpty()
         val dialogContext = ContextThemeWrapper(context, R.style.LibraryTheme)
         val content = LayoutInflater.from(dialogContext).inflate(R.layout.library_hide_confirmation, null)
-        val pin = content.findViewById<CheckBox>(R.id.library_pin_shortcut)
-        pin.visibility = if (offerPin) View.VISIBLE else View.GONE
-        pin.isChecked = true
         MaterialAlertDialogBuilder(dialogContext)
             .setTitle(R.string.library_hide_confirmation_title)
             .setView(content)
@@ -61,14 +50,6 @@ class HideGamesPreference @JvmOverloads constructor(context: Context, attrs: Att
                 settings.libraryHideGames = true
                 LauncherVisibility.sync(context, context.userId)
                 refresh()
-                if (offerPin && pin.isChecked) {
-                    val shortcut = ShortcutInfo.Builder(context, "gamespace_library")
-                        .setShortLabel(context.getString(R.string.settings_title))
-                        .setIcon(Icon.createWithResource(context, R.mipmap.ic_launcher))
-                        .setIntent(Intent(context, LibraryActivity::class.java).setAction(Intent.ACTION_MAIN))
-                        .build()
-                    shortcuts.requestPinShortcut(shortcut, null)
-                }
             }.show().apply {
                 val width = minOf(context.resources.configuration.screenWidthDp - 48, 560)
                 window?.setLayout((width * context.resources.displayMetrics.density).toInt(),
