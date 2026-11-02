@@ -148,15 +148,8 @@
             android:defaultValue="3" />
 
         <SwitchPreferenceCompat
-            android:key="gamespace_tfgesture_disabled"
-            android:title="@string/three_screenshot_disabled_title"
-            android:summary="@string/three_screenshot_disabled_summary"
-            android:defaultValue="false" />
-
-        <SwitchPreferenceCompat
             android:key="gamespace_lock_gesture"
-            android:title="@string/lock_gesture_title"
-            android:summary="@string/lock_gesture_summary"
+            android:title="@string/tile_gesture_lock"
             android:defaultValue="false" />
 
         <SwitchPreferenceCompat

@@ -444,7 +444,7 @@ class TileRepository @Inject constructor(
             Settings.Secure.NIGHT_DISPLAY_ACTIVATED,
             Settings.Secure.ACCESSIBILITY_DISPLAY_INVERSION_ENABLED,
             Settings.Secure.ACCESSIBILITY_DISPLAY_DALTONIZER_ENABLED,
-            Settings.Secure.REDUCE_BRIGHT_COLORS_ACTIVATED
+            Settings.Secure.REDUCE_BRIGHT_COLORS_ACTIVATED, "ax_gaming_gesture_lock"
         ).forEach { key ->
             context.contentResolver.registerContentObserver(
                 Settings.Secure.getUriFor(key), false, settingsObserver, UserHandle.USER_ALL
@@ -488,7 +488,7 @@ class TileRepository @Inject constructor(
         ) == 1
         bypassChargeState.value = systemSettings.bypassChargeEnabled
         isFpsInfoVisible.value = appSettings.showFps
-        gestureState.value = appSettings.inGameOptions.current(GameOption.GESTURES) == 1
+        gestureState.value = systemSettings.gestureLock
         touchResponseState.value = appSettings.inGameOptions.current(GameOption.TOUCH) == 1
         wifiLowLatencyState.value = appSettings.wifiLowLatency
         ringerState.value = audioManager.ringerModeInternal

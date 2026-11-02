@@ -59,9 +59,6 @@ class SettingsViewModel @Inject constructor(
     var noAutoBrightness by mutableStateOf(appSettings.inGameOptions.current(GameOption.BRIGHTNESS) == 1)
         private set
 
-    var noThreeScreenshot by mutableStateOf(appSettings.inGameOptions.current(GameOption.SCREENSHOT) == 1)
-        private set
-
     var stayAwake by mutableStateOf(systemSettings.stayAwake)
         private set
 
@@ -103,7 +100,6 @@ class SettingsViewModel @Inject constructor(
         callsMode = options.current(GameOption.CALLS)
         ringerMode = options.current(GameOption.RINGER)
         noAutoBrightness = options.current(GameOption.BRIGHTNESS) == 1
-        noThreeScreenshot = options.current(GameOption.SCREENSHOT) == 1
         autoDnd = options.current(GameOption.DND) == 1
         stayAwake = systemSettings.stayAwake
         bypassChargeEnabled = systemSettings.bypassChargeEnabled
@@ -137,11 +133,6 @@ class SettingsViewModel @Inject constructor(
     fun updateNoAutoBrightness(disabled: Boolean) {
         noAutoBrightness = disabled
         updateOption(GameOption.BRIGHTNESS, if (disabled) 1 else 0)
-    }
-
-    fun updateNoThreeScreenshot(disabled: Boolean) {
-        noThreeScreenshot = disabled
-        updateOption(GameOption.SCREENSHOT, if (disabled) 1 else 0)
     }
 
     fun updateStayAwake(enabled: Boolean) {

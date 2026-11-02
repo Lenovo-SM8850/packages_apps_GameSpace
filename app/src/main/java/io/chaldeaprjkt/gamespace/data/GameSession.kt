@@ -130,19 +130,6 @@ class GameSession @Inject constructor(
                 persistRecovery(orig)
             }
         }
-        val screenshot = options.current(GameOption.SCREENSHOT) == 1
-        if (screenshot != orig.ownsThreeScreenshot) {
-            if (screenshot) {
-                orig.threeScreenshot = systemSettings.threeScreenshot
-                orig.ownsThreeScreenshot = true
-                persistRecovery(orig)
-                systemSettings.threeScreenshot = 0
-            } else {
-                systemSettings.threeScreenshot = orig.threeScreenshot
-                orig.ownsThreeScreenshot = false
-                persistRecovery(orig)
-            }
-        }
         val ringer = options.current(GameOption.RINGER)
         if (ringer != orig.appliedRingerMode) {
             if (ringer != 3) {

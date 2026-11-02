@@ -71,10 +71,6 @@ class AppSettings @Inject constructor(private val context: Context) {
         get() = db.getBoolean(KEY_AUTO_BRIGHTNESS_DISABLE, true)
         set(it) = db.edit().putBoolean(KEY_AUTO_BRIGHTNESS_DISABLE, it).apply()
 
-    var noThreeScreenshot
-        get() = db.getBoolean(KEY_3SCREENSHOT_DISABLE, false)
-        set(it) = db.edit().putBoolean(KEY_3SCREENSHOT_DISABLE, it).apply()
-
     // Runs the Boost Memory tile's cleanup when a game session starts.
     var autoBoostMemory
         get() = db.getBoolean(KEY_AUTO_BOOST_MEMORY, false)
@@ -188,7 +184,6 @@ class AppSettings @Inject constructor(private val context: Context) {
     companion object {
         const val KEY_BYPASS_CHARGE_GAMES = "bypass_charge_games"
         const val KEY_AUTO_BRIGHTNESS_DISABLE = "gamespace_auto_brightness_disabled"
-        const val KEY_3SCREENSHOT_DISABLE = "gamespace_tfgesture_disabled"
         const val KEY_STAY_AWAKE = "gamespace_stay_awake"
         const val KEY_DANMAKU_NOTIFICATION_MODE = "gamespace_danmaku_notification_mode"
         const val KEY_AUTO_BOOST_MEMORY = "game_memory_management"
