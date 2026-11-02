@@ -26,6 +26,7 @@ import android.content.*
 import android.content.res.Configuration
 import android.graphics.PixelFormat
 import android.graphics.Rect
+import android.graphics.Region
 import android.os.Handler
 import android.os.Process
 import android.os.UserHandle
@@ -53,7 +54,6 @@ import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
-import io.github.miner7222.gamespace.gamebar.RecordingPhase
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.ui.input.pointer.pointerInput
@@ -162,7 +162,15 @@ class GameSidebar(
     private var pillExpanded = false
     private val pillSnapState = mutableStateOf(false)
     private val pillExpandedState = mutableStateOf(false)
-    private val barTopState = mutableIntStateOf(0)
+    private val barAnchorState = mutableIntStateOf(0)
+    private val barTouchBounds = Rect()
+    private val syncBarTouchRegion = Runnable {
+        if (::gameBarView.isInitialized && gameBarView.isAttachedToWindow) {
+            // Compose can place scenes during drawing, after ViewRoot computed internal insets.
+            // Publish on the next traversal without changing the native surface bounds.
+            gameBarView.viewRootImpl?.setTouchableRegion(Region(barTouchBounds))
+        }
+    }
     private var handleCenterY = 0
     private val taskManager by lazy { ActivityTaskManager.getService() }
 
@@ -318,6 +326,7 @@ class GameSidebar(
                                 onStopRecording = { if (sessionActive) tileRepository.stopRecording() },
                                 pillExpanded = pillExpandedState.value,
                                 collapseInstantly = pillSnapState.value,
+                                anchorY = barAnchorState.intValue,
                                 onExpanded = { handler.post { setPillExpanded(true) } },
                                 onCollapsed = { handler.post { setPillExpanded(false) } },
                                 onInteraction = { pressed ->
@@ -337,12 +346,14 @@ class GameSidebar(
                                     gameBarLayoutParam.x = loc[0]
                                     gameBarLayoutParam.y = loc[1]
                                     runCatching { wm.updateViewLayout(gameBarView, gameBarLayoutParam) }
-                                    Pair(loc[0], loc[1])
+                                    Pair(loc[0] + if (circleOnLeft) 0 else gameBarLayoutParam.width - px(HANDLE_WIDTH_DP),
+                                        handleCenterY - px(HANDLE_HEIGHT_DP) / 2)
                                 },
                                 onDragUpdate = dragUpdate@{ x, y ->
                                     if (!sessionActive) return@dragUpdate
-                                    gameBarLayoutParam.x = x
-                                    gameBarLayoutParam.y = y
+                                    gameBarLayoutParam.x = x -
+                                        if (circleOnLeft) 0 else gameBarLayoutParam.width - px(HANDLE_WIDTH_DP)
+                                    positionGameBar(y)
                                     runCatching { wm.updateViewLayout(gameBarView, gameBarLayoutParam) }
                                 },
                                 onDragEnd = dragEnd@{ x, y ->
@@ -350,14 +361,18 @@ class GameSidebar(
                                     circleOnLeft = x < halfWidth
                                     dockedOnLeftState.value = circleOnLeft
                                     appSettings.x = if (circleOnLeft) -1 else 1
-                                    gameBarLayoutParam.y = y
-                                    dockGameBar()
-                                    appSettings.y = gameBarLayoutParam.y
+                                    dockGameBar(y)
+                                    appSettings.y = handleCenterY - px(HANDLE_HEIGHT_DP) / 2
                                     runCatching { wm.updateViewLayout(gameBarView, gameBarLayoutParam) }
                                     scheduleIdle()
                                 },
-                                onMiniBarSizeChanged = { width, height ->
-                                    if (sessionActive && pillExpanded) updateMiniBarLayout(width, height)
+                                onContentBoundsChanged = { bounds ->
+                                    if (barTouchBounds != bounds) {
+                                        barTouchBounds.set(bounds)
+                                        updateGestureExclusions()
+                                        gameBarView.removeCallbacks(syncBarTouchRegion)
+                                        gameBarView.post(syncBarTouchRegion)
+                                    }
                                 },
                             )
                         }
@@ -365,11 +380,19 @@ class GameSidebar(
                     }
                 }
             }
-            addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
-                updateGestureExclusions()
-            }
+            // Reapply the content-only region when a session attaches a new ViewRoot.
+            addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
+                override fun onViewAttachedToWindow(view: View) {
+                    view.post(syncBarTouchRegion)
+                }
+
+                override fun onViewDetachedFromWindow(view: View) {
+                    view.removeCallbacks(syncBarTouchRegion)
+                }
+            })
             setOnTouchListener { _, event ->
-                if (event.actionMasked == MotionEvent.ACTION_OUTSIDE && pillExpanded) {
+                if (event.actionMasked == MotionEvent.ACTION_OUTSIDE && pillExpanded &&
+                    !barTouchBounds.contains(event.x.toInt(), event.y.toInt())) {
                     setPillExpanded(false)
                     true
                 } else false
@@ -712,56 +735,23 @@ class GameSidebar(
         if (pillExpanded == expanded) return
         handler.removeCallbacks(miniCollapseRunnable)
         handler.removeCallbacks(idleRunnable)
-        if (expanded) {
-            barTopState.intValue = gameBarLayoutParam.y
-            val location = IntArray(2).also { gameBarView.getLocationOnScreen(it) }
-            handleCenterY = location[1] + gameBarView.height / 2
-        }
         pillExpanded = expanded
         if (expanded) pillSnapState.value = false
         pillExpandedState.value = expanded
         notifyUiBlocking()
         isIdleState.value = false
-        if (expanded) {
-            updateMiniBarLayout()
-            scheduleMiniCollapse()
-        } else {
-            gameBarLayoutParam.width = px(HANDLE_WIDTH_DP)
-            gameBarLayoutParam.height = px(HANDLE_HEIGHT_DP)
-            gameBarLayoutParam.y = barTopState.intValue
-            dockGameBar()
-            runCatching { wm.updateViewLayout(gameBarView, gameBarLayoutParam) }
-            updateGestureExclusions()
-            scheduleIdle()
-        }
+        if (expanded) scheduleMiniCollapse() else scheduleIdle()
         updateFpsTracking()
-    }
-
-    private fun updateMiniBarLayout(width: Int? = null, height: Int? = null) {
-        if (!sessionActive || !pillExpanded) return
-        val recording = tileRepository.recordingState.value.phase == RecordingPhase.ACTIVE
-        gameBarLayoutParam.width = width ?: px(miniWidthDp(showFpsState.value, recording))
-        gameBarLayoutParam.height = height ?: px(miniHeightDp(showFpsState.value, recording))
-        gameBarLayoutParam.gravity = Gravity.TOP or (if (circleOnLeft) Gravity.LEFT else Gravity.RIGHT)
-        gameBarLayoutParam.x = if (circleOnLeft) safeLeft else safeRight
-        // Keep the handle anchor across expansion, recording-row changes and collapse.
-        gameBarLayoutParam.y = (handleCenterY - gameBarLayoutParam.height / 2).coerceIn(safeArea,
-            (safeHeight - gameBarLayoutParam.height).coerceAtLeast(safeArea))
-        runCatching { wm.updateViewLayout(gameBarView, gameBarLayoutParam) }
-        updateGestureExclusions()
     }
 
     private fun updateGestureExclusions() {
         if (!::gameBarView.isInitialized) return
-        if (!sessionActive) {
-            gameBarView.systemGestureExclusionRects = emptyList()
-            return
+        val bounds = Rect(barTouchBounds)
+        if (pillExpanded) {
+            if (circleOnLeft) bounds.left += px(8) else bounds.right -= px(8)
         }
-        val width = gameBarLayoutParam.width.coerceAtLeast(0)
-        val height = gameBarLayoutParam.height.coerceAtLeast(0)
-        val inset = if (pillExpanded) px(8) else 0
-        gameBarView.systemGestureExclusionRects = listOf(Rect(
-            if (circleOnLeft) inset else 0, 0, width - if (circleOnLeft) 0 else inset, height))
+        gameBarView.systemGestureExclusionRects =
+            if (sessionActive && !bounds.isEmpty) listOf(bounds) else emptyList()
     }
 
     private fun collapseVerticalPill() {
@@ -812,8 +802,7 @@ class GameSidebar(
         gameBarView.animate().alpha(1f).setDuration(300).start()
         circleOnLeft = appSettings.x < 0
         dockedOnLeftState.value = circleOnLeft
-        gameBarLayoutParam.y = appSettings.y
-        dockGameBar()
+        dockGameBar(appSettings.y)
         runCatching { wm.updateViewLayout(gameBarView, gameBarLayoutParam) }
         tileRepository.setFpsInfoEnabled(appSettings.showFps)
         updateFpsTracking()
@@ -821,13 +810,22 @@ class GameSidebar(
         scheduleIdle()
     }
 
-    private fun dockGameBar() {
+    private fun dockGameBar(handleTop: Int = handleCenterY - px(HANDLE_HEIGHT_DP) / 2) {
+        gameBarLayoutParam.width = px(MINI_WIDTH_DP)
+        gameBarLayoutParam.height = px(MINI_RECORDING_HEIGHT_DP)
         gameBarLayoutParam.gravity = Gravity.TOP or (if (circleOnLeft) Gravity.LEFT else Gravity.RIGHT)
         gameBarLayoutParam.x = if (circleOnLeft) safeLeft else safeRight
-        gameBarLayoutParam.y = gameBarLayoutParam.y.coerceIn(safeArea,
+        positionGameBar(handleTop)
+    }
+
+    private fun positionGameBar(handleTop: Int) {
+        val top = handleTop.coerceIn(safeArea,
             (safeHeight - px(HANDLE_HEIGHT_DP)).coerceAtLeast(safeArea))
-        handleCenterY = gameBarLayoutParam.y + px(HANDLE_HEIGHT_DP) / 2
-        updateGestureExclusions()
+        handleCenterY = top + px(HANDLE_HEIGHT_DP) / 2
+        // Keep the native surface stable; only the scene inside it changes size.
+        gameBarLayoutParam.y = (handleCenterY - gameBarLayoutParam.height / 2).coerceIn(safeArea,
+            (safeHeight - gameBarLayoutParam.height).coerceAtLeast(safeArea))
+        barAnchorState.intValue = handleCenterY - gameBarLayoutParam.y
     }
 
     private val idleRunnable = Runnable {
@@ -890,8 +888,8 @@ class GameSidebar(
         PixelFormat.TRANSLUCENT
     ).apply {
         setFitInsetsTypes(0)
-        width = px(HANDLE_WIDTH_DP)
-        height = px(HANDLE_HEIGHT_DP)
+        width = px(MINI_WIDTH_DP)
+        height = px(MINI_RECORDING_HEIGHT_DP)
         layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
         preferMinimalPostProcessing = true
         gravity = Gravity.TOP or Gravity.END
