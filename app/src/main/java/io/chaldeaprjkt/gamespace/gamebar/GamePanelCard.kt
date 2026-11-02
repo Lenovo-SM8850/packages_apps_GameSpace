@@ -492,7 +492,6 @@ fun TileButton(tile: TileAction, modifier: Modifier = Modifier, tablet: Boolean 
     val enabled by tile.observeEnabled()
     val changed = tile.differsFromSaved
     // Toggles, a set aspect ratio and a ringer that can make sound read as on.
-    val ratio = tile.id == "screen_aspect_ratio"
     val active = enabled
     val record = tile.id == "screen_record" && recording.phase == RecordingPhase.ACTIVE
     val color = MaterialTheme.colorScheme
@@ -506,7 +505,7 @@ fun TileButton(tile: TileAction, modifier: Modifier = Modifier, tablet: Boolean 
             ?: stringResource(R.string.dashboard_elapsed_unknown)
         RecordingPhase.STARTING -> stringResource(R.string.dashboard_record_starting)
         else -> null
-    } else if (!ratio && (tile.kind == TileKind.CYCLE || tile.kind == TileKind.DIALOG)) tile.valueLine else null
+    } else if (tile.kind == TileKind.CYCLE || tile.kind == TileKind.DIALOG) tile.valueLine else null
     val label = if (record) stringResource(R.string.dashboard_recording)
         else tile.label
     val actionLabel = if (record) stringResource(R.string.dashboard_stop_recording) else null
