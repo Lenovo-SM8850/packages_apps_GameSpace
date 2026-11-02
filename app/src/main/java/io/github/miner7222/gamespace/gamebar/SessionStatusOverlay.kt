@@ -60,7 +60,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.ComposeView
@@ -417,7 +416,7 @@ private fun StatusPill(status: SessionStartStatus, maxWidth: Dp, maxHeight: Dp,
             drag += amount
             if (!dismissed && drag < -threshold) { dismissed = true; onDismiss() }
         })
-    }.shadow(6.dp, shape).clip(shape)
+    }.clip(shape)
         .background(MaterialTheme.colorScheme.surfaceContainer.copy(alpha = overlayPanelAlpha()))
         .border(overlayBorder(), shape)
         .clickable(role = Role.Button, onClick = onOpen)

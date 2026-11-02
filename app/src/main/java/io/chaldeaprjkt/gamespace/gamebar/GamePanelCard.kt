@@ -181,7 +181,7 @@ fun GamePanelCard(
     CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides Dp.Unspecified) {
         Surface(Modifier.width(panelWidth).height(maxHeight), shape = RoundedCornerShape(28.dp),
             color = MaterialTheme.colorScheme.surfaceContainer.copy(alpha = overlayPanelAlpha()),
-            contentColor = MaterialTheme.colorScheme.onSurface, border = overlayBorder(), shadowElevation = 2.dp) {
+            contentColor = MaterialTheme.colorScheme.onSurface, border = overlayBorder()) {
             Box(Modifier.fillMaxSize()) {
                 if (editing) {
                     TileEditPanel(tileRepository, apps, mainCount, columns, tablet, compact,
