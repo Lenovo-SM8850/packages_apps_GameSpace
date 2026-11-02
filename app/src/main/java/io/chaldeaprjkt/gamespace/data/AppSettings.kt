@@ -93,7 +93,10 @@ class AppSettings @Inject constructor(private val context: Context) {
         set(value) = db.edit().putString(KEY_RINGER_MODE, value.toString()).apply()
 
     var menuOpacity: Int
-        get() = db.getInt(KEY_MENU_OPACITY, 100)
+        get() {
+            migrateHandleOpacity()
+            return db.getInt(KEY_MENU_OPACITY, 100)
+        }
         set(value) = db.edit().putInt(KEY_MENU_OPACITY, value).apply()
 
     var tileOrder: List<String>
@@ -141,9 +144,15 @@ class AppSettings @Inject constructor(private val context: Context) {
         get() = db.getBoolean(KEY_CALL_OVERLAY_ENABLED, true)
         set(point) = db.edit().putBoolean(KEY_CALL_OVERLAY_ENABLED, point).apply()
 
+    fun migrateHandleOpacity() {
+        if (!db.contains(KEY_MENU_OPACITY) && db.contains(KEY_ICON_IDLE_ALPHA)) {
+            db.edit().putInt(KEY_MENU_OPACITY, db.getInt(KEY_ICON_IDLE_ALPHA, 25)).apply()
+        }
+    }
+
     var iconIdleAlpha: Int
-        get() = db.getInt(KEY_ICON_IDLE_ALPHA, 25)
-        set(value) = db.edit().putInt(KEY_ICON_IDLE_ALPHA, value).apply()
+        get() = menuOpacity
+        set(value) { menuOpacity = value }
 
     val showStatusAtGameStart: Boolean
         get() = inGameOptions.current(GameOption.START_STATUS) == 1

@@ -18,6 +18,7 @@ package io.chaldeaprjkt.gamespace.gamebar
 
 import android.graphics.Rect
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -127,7 +128,8 @@ fun GameBarView(
         else state.setTargetScene(target, scope)
     }
     val animatedAlpha by animateFloatAsState(
-        targetValue = if (isIdle && !pillExpanded) idleAlpha else 1f,
+        targetValue = if (isIdle && !pillExpanded) idleAlpha.coerceIn(0.2f, 1f) else 1f,
+        animationSpec = if (isIdle && !pillExpanded) MaterialTheme.motionScheme.fastEffectsSpec() else snap(),
         label = "handleAlpha",
     )
     var startWindowX by remember { mutableIntStateOf(0) }
