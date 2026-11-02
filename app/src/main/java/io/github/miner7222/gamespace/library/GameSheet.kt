@@ -32,7 +32,9 @@ import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import io.github.miner7222.gamespace.FitLabel
 import io.github.miner7222.gamespace.GameSplitAspectRatio
+import io.github.miner7222.gamespace.shortLabelResource
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Shape
@@ -227,6 +229,7 @@ private fun GameSheetContent(game: LibraryGame, state: LibraryState, library: Li
 private fun PreferredModeGroup(model: PerAppSettingsViewModel, modifier: Modifier = Modifier, onModeChanged: (Int) -> Unit) {
     val options = model.gameModeOptions.sortedBy { listOf(0, 3, 1, 2).indexOf(it.mode) }
     val labels = options.map { stringResource(it.labelRes) }
+    val shortLabels = options.map { shortLabelResource(it.shortRes) }
     val weights = options.map {
         animateFloatAsState(if (it.mode == model.preferredMode) 1.15f else 1f,
             animationSpec = MaterialTheme.motionScheme.defaultSpatialSpec(), label = "preferredModeWidth").value
@@ -252,7 +255,7 @@ private fun PreferredModeGroup(model: PerAppSettingsViewModel, modifier: Modifie
                     if (model.preferredMode == option.mode) {
                         Icon(Icons.Rounded.Check, null, Modifier.size(16.dp)); Spacer(Modifier.width(4.dp))
                     }
-                    Text(labels[index], fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    FitLabel(labels[index], shortLabels[index], fontSize = 14.sp)
                 }
             }, menuContent = { menu ->
                 DropdownMenuItem(text = { Text(labels[index]) }, onClick = {

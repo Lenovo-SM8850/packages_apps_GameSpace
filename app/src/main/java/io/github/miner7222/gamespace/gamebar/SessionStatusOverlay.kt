@@ -85,21 +85,27 @@ import androidx.lifecycle.repeatOnLifecycle
 import com.android.axion.compose.lifecycle.repeatWhenAttached
 import io.chaldeaprjkt.gamespace.R
 import io.chaldeaprjkt.gamespace.gamebar.fromSystemGameMode
+import io.github.miner7222.gamespace.shortLabelResource
 import kotlin.math.roundToInt
 
 /** Only confirmed persistent states are supplied by the session owner. */
-enum class SessionStatusChip(val label: Int, val icon: ImageVector) {
-    DND(R.string.status_do_not_disturb, Icons.Rounded.DoNotDisturbOn),
-    BYPASS_CHARGING(R.string.bypass_charge_enabled_title, Icons.Rounded.BatteryChargingFull),
+enum class SessionStatusChip(val label: Int, val icon: ImageVector, val short: Int = 0) {
+    DND(R.string.status_do_not_disturb, Icons.Rounded.DoNotDisturbOn, R.string.status_do_not_disturb_short),
+    BYPASS_CHARGING(R.string.bypass_charge_enabled_title, Icons.Rounded.BatteryChargingFull,
+        R.string.bypass_charge_enabled_title_short),
     BYPASS_READY(R.string.status_bypass_ready, Icons.Rounded.BatteryChargingFull),
-    TOUCH(R.string.tile_touch_response, Icons.Rounded.TouchApp),
-    WIFI(R.string.wifi_low_latency_title, Icons.Rounded.Wifi),
-    SIDEBAR_HIDDEN(R.string.status_sidebar_hidden, Icons.Rounded.VisibilityOff),
-    GESTURES(R.string.tile_gesture_lock, Icons.Rounded.Lock),
+    TOUCH(R.string.tile_touch_response, Icons.Rounded.TouchApp, R.string.tile_touch_response_short),
+    WIFI(R.string.wifi_low_latency_title, Icons.Rounded.Wifi, R.string.wifi_low_latency_title_short),
+    SIDEBAR_HIDDEN(R.string.status_sidebar_hidden, Icons.Rounded.VisibilityOff, R.string.status_sidebar_hidden_short),
+    GESTURES(R.string.tile_gesture_lock, Icons.Rounded.Lock, R.string.tile_gesture_lock_short),
     RINGER_SOUND(R.string.tile_ringer_sound, Icons.Rounded.VolumeUp),
     RINGER_VIBRATE(R.string.tile_ringer_vibrate, Icons.Rounded.Vibration),
     RINGER_MUTE(R.string.tile_ringer_mute, Icons.Rounded.VolumeOff),
 }
+
+/** One way to lay the pill out; a higher [rank] shows more of it. */
+private class PillPlan(val modeText: String, val texts: List<String>, val count: Int, val iconOnly: Boolean,
+    val modeMaxPx: Int, val rank: Int)
 
 data class SessionStartStatus(val mode: Int, val chips: List<SessionStatusChip>, val memoryCleaned: Boolean) {
     val modeOnly: Boolean get() = chips.isEmpty() && !memoryCleaned
@@ -308,49 +314,70 @@ private fun StatusPill(status: SessionStartStatus, maxWidth: Dp, maxHeight: Dp,
     val height = minOf(52.dp, maxHeight)
     val mode = fromSystemGameMode(status.mode)
     val modeLabel = stringResource(mode.displayNameRes)
+    val modeShort = shortLabelResource(mode.shortNameRes) ?: modeLabel
     val labels = status.chips.map { stringResource(it.label) }
+    val shortLabels = status.chips.mapIndexed { index, chip -> shortLabelResource(chip.short) ?: labels[index] }
     val memoryLabel = stringResource(R.string.status_memory_cleaned)
     val openLabel = stringResource(R.string.gamebar_open_dashboard)
     val summary = (listOf(modeLabel) + labels + if (status.memoryCleaned) listOf(memoryLabel) else emptyList()).joinToString(", ")
     val description = stringResource(R.string.status_session_applied, summary)
     val modeStyle = TextStyle(fontSize = if (tablet) 16.sp else 15.sp, fontWeight = FontWeight.SemiBold)
     val chipStyle = TextStyle(fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-    val measurer = rememberTextMeasurer()
+    val measurer = rememberTextMeasurer(cacheSize = 32)
     fun textPx(text: String, style: TextStyle): Int = measurer.measure(text, style, maxLines = 1).size.width
     val gap = 8.dp
     // The layout rounds every dimension to whole pixels, so the budget is summed in pixels too.
     fun px(value: Dp): Int = with(density) { value.roundToPx() }
     val budget = (px(width) - px(height) - px(gap)).coerceAtLeast(0)
     val gapPx = px(gap)
-    val modePx = px(22.dp) + px(6.dp) + textPx(modeLabel, modeStyle)
-    fun chipPx(index: Int, icons: Boolean): Int =
-        if (icons) px(36.dp)
-        else px(8.dp) + px(18.dp) + px(6.dp) + minOf(textPx(labels[index], chipStyle), px(132.dp)) + px(12.dp)
-    // Start and end padding, the mode, divider, "+N" counter and result badge never shrink, so they
-    // are counted first, with the gap between every pair of neighbours.
-    fun totalPx(count: Int, icons: Boolean): Int {
-        var sum = px(16.dp) + px(8.dp) + modePx
-        var items = 1
-        if (status.chips.isNotEmpty() || status.memoryCleaned) { sum += px(1.dp); items++ }
-        repeat(count) { sum += chipPx(it, icons); items++ }
-        if (count < status.chips.size) {
-            sum += maxOf(px(36.dp), 2 * px(10.dp) + textPx("+${status.chips.size - count}", chipStyle)); items++
+    val chipCap = px(132.dp)
+    fun plan(modeText: String, texts: List<String>): PillPlan {
+        val modePx = px(22.dp) + px(6.dp) + textPx(modeText, modeStyle)
+        fun chipPx(index: Int, icons: Boolean): Int =
+            if (icons) px(36.dp)
+            else px(8.dp) + px(18.dp) + px(6.dp) + minOf(textPx(texts[index], chipStyle), chipCap) + px(12.dp)
+        // Start and end padding, the mode, divider, "+N" counter and result badge never shrink, so they
+        // are counted first, with the gap between every pair of neighbours.
+        fun totalPx(count: Int, icons: Boolean): Int {
+            var sum = px(16.dp) + px(8.dp) + modePx
+            var items = 1
+            if (status.chips.isNotEmpty() || status.memoryCleaned) { sum += px(1.dp); items++ }
+            repeat(count) { sum += chipPx(it, icons); items++ }
+            if (count < status.chips.size) {
+                sum += maxOf(px(36.dp), 2 * px(10.dp) + textPx("+${status.chips.size - count}", chipStyle)); items++
+            }
+            if (status.memoryCleaned) { sum += px(36.dp); items++ }
+            return sum + gapPx * (items - 1)
         }
-        if (status.memoryCleaned) { sum += px(36.dp); items++ }
-        return sum + gapPx * (items - 1)
+        // Chips fold into +N from the third one; icons alone are the last resort for two labelled chips.
+        var iconOnly = false
+        var count = minOf(3, status.chips.size)
+        while (count > 0 && totalPx(count, false) > budget) count--
+        if (count < minOf(2, status.chips.size)) {
+            iconOnly = true
+            count = minOf(3, status.chips.size)
+            while (count > 0 && totalPx(count, true) > budget) count--
+        }
+        val modeWidth = textPx(modeText, modeStyle)
+        val modeMax = (budget - totalPx(count, iconOnly) + modeWidth).coerceAtLeast(0)
+        val cut = if (iconOnly) 0 else (0 until count).count { textPx(texts[it], chipStyle) > chipCap }
+        return PillPlan(modeText, texts, count, iconOnly, modeMax,
+            rank = (if (iconOnly) 0 else 1) * 100000 + count * 10000 + (99 - minOf(cut, 99)) * 100 +
+                (if (modeMax >= modeWidth) 1 else 0))
     }
-    // Chips fold into +N from the third one; icons alone are the last resort for two labelled chips.
-    var iconOnly = false
-    var count = minOf(3, status.chips.size)
-    while (count > 0 && totalPx(count, false) > budget) count--
-    if (count < minOf(2, status.chips.size)) {
-        iconOnly = true
-        count = minOf(3, status.chips.size)
-        while (count > 0 && totalPx(count, true) > budget) count--
+    // The full labels win unless a short form shows more chips, cuts fewer labels or spares the mode.
+    val plans = buildList {
+        add(plan(modeLabel, labels))
+        if (modeShort != modeLabel) add(plan(modeShort, labels))
+        if (shortLabels != labels) {
+            add(plan(modeLabel, shortLabels))
+            if (modeShort != modeLabel) add(plan(modeShort, shortLabels))
+        }
     }
-    val modeTextMaxWidth = with(density) {
-        (budget - totalPx(count, iconOnly) + textPx(modeLabel, modeStyle)).coerceAtLeast(0).toDp()
-    }
+    val chosen = plans.fold(plans.first()) { best, candidate -> if (candidate.rank > best.rank) candidate else best }
+    val iconOnly = chosen.iconOnly
+    val count = chosen.count
+    val modeTextMaxWidth = with(density) { chosen.modeMaxPx.toDp() }
     val shape = RoundedCornerShape(26.dp)
     val context = LocalContext.current
     val gameIcon = remember(context) {
@@ -406,7 +433,7 @@ private fun StatusPill(status: SessionStartStatus, maxWidth: Dp, maxHeight: Dp,
         horizontalArrangement = Arrangement.spacedBy(gap), verticalAlignment = Alignment.CenterVertically) {
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(mode.icon, null, Modifier.size(22.dp), tint = MaterialTheme.colorScheme.primary)
-            Text(modeLabel, Modifier.widthIn(max = modeTextMaxWidth), style = modeStyle,
+            Text(chosen.modeText, Modifier.widthIn(max = modeTextMaxWidth), style = modeStyle,
                 color = MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         if (status.chips.isNotEmpty() || status.memoryCleaned) {
@@ -419,7 +446,7 @@ private fun StatusPill(status: SessionStartStatus, maxWidth: Dp, maxHeight: Dp,
                 horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
                 verticalAlignment = Alignment.CenterVertically) {
                 Icon(status.chips[index].icon, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSecondaryContainer)
-                if (!iconOnly) Text(labels[index], Modifier.widthIn(max = 132.dp), style = chipStyle,
+                if (!iconOnly) Text(chosen.texts[index], Modifier.widthIn(max = 132.dp), style = chipStyle,
                     color = MaterialTheme.colorScheme.onSecondaryContainer, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
