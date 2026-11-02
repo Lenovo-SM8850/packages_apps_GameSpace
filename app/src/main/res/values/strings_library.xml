@@ -37,7 +37,6 @@
     <string name="library_hide_confirmation_title">Hide games?</string>
     <string name="library_hide_confirmation_body">Games in your library will be hidden from the Home screen and app list. You can still open them from Game Space, notifications, the store and Recents.</string>
     <string name="library_hide_confirmation_restore">If you turn this off later, games come back, but not to their old places on the Home screen.</string>
-    <string name="library_pin_shortcut">Add Game Space to Home screen</string>
     <string name="library_hide_action">Hide</string>
     <plurals name="library_game_count">
         <item quantity="one">%d game</item>
