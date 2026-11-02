@@ -102,6 +102,15 @@ class GameSession @Inject constructor(
     /** Recovery metadata is written before taking ownership and after releasing it. */
     fun applyOptions() {
         val orig = liveState?.takeUnless { it.suspended } ?: return
+        val disableWindowBlurs = systemSettings.disableWindowBlurs
+        if (disableWindowBlurs != 1) {
+            if (!orig.ownsWindowBlurs) {
+                orig.disableWindowBlurs = disableWindowBlurs
+                orig.ownsWindowBlurs = true
+                persistRecovery(orig)
+            }
+            systemSettings.disableWindowBlurs = 1
+        }
         val options = appSettings.inGameOptions
         val brightness = options.current(GameOption.BRIGHTNESS) == 1
         val panelAuto = SessionOptions.autoBrightness(context)
@@ -286,6 +295,11 @@ class GameSession @Inject constructor(
         systemSettings.stayAwake = false
         if (orig == null) return
         check(orig.userId == null || orig.userId == context.userId) { "Session recovery user mismatch" }
+        if (orig.ownsWindowBlurs) {
+            systemSettings.disableWindowBlurs = orig.disableWindowBlurs
+            orig.ownsWindowBlurs = false
+            persistRecovery(orig)
+        }
         releaseEffects(orig)
         savedMode?.let {
             io.github.miner7222.gamespace.library.ModePreferences.publish(context, orig.packageName, it)
