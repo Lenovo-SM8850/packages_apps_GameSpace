@@ -69,6 +69,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.LineBreak
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.*
@@ -506,12 +507,18 @@ fun TileButton(tile: TileAction, modifier: Modifier = Modifier, tablet: Boolean 
         }, contentAlignment = Alignment.Center) {
         val text: @Composable () -> Unit = {
             Column(horizontalAlignment = if (tablet) Alignment.Start else Alignment.CenterHorizontally) {
-                Text(label, fontSize = if (compact) 11.sp else 12.sp, lineHeight = if (compact) 13.sp else if (tablet) 16.sp else 14.sp,
+                // The name leads and the state line stays a step smaller and lighter.
+                Text(label, fontSize = if (compact) 11.sp else if (tablet) 13.sp else 12.sp,
+                    lineHeight = if (compact) 13.sp else if (tablet) 16.sp else 14.sp,
                     color = foreground, fontWeight = if (active || record) FontWeight.SemiBold else FontWeight.Medium,
                     maxLines = 2, overflow = TextOverflow.Ellipsis,
+                    // Wrap Korean names between words, never inside one.
+                    style = LocalTextStyle.current.copy(lineBreak = LineBreak.Heading),
                     textAlign = if (tablet) TextAlign.Start else TextAlign.Center)
-                if (!value.isNullOrBlank()) Text(value, fontSize = if (compact && height < 55.dp) 10.sp else 12.sp,
-                    lineHeight = if (compact && height < 55.dp) 12.sp else 16.sp, color = if (record) foreground else color.onSurfaceVariant,
+                if (!value.isNullOrBlank()) Text(value, fontSize = if (compact && height < 55.dp) 9.sp
+                    else if (compact || !tablet) 10.sp else 11.sp, fontWeight = FontWeight.Normal,
+                    lineHeight = if (compact && height < 55.dp) 11.sp else if (compact || !tablet) 12.sp else 14.sp,
+                    color = if (record) foreground else color.onSurfaceVariant,
                     style = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = if (record) "tnum" else null),
                     maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
