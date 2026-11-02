@@ -20,9 +20,12 @@ package io.chaldeaprjkt.gamespace.gamebar
 import io.github.miner7222.gamespace.ScreenOffSessionController
 
 import android.annotation.SuppressLint
+import android.app.ActivityManager
+import android.app.ActivityTaskManager
 import android.app.GameManager
 import android.app.NotificationManager
 import android.app.Service
+import android.app.TaskStackListener
 import android.content.BroadcastReceiver
 import android.content.IntentFilter
 import android.content.Context
@@ -87,6 +90,29 @@ class SessionService : Hilt_SessionService() {
     @Inject lateinit var gson: Gson
 
     private var currentPackage: String? = null
+    private var gameTaskIds = emptySet<Int>()
+    private val removingTaskIds = mutableSetOf<Int>()
+    private var taskListenerRegistered = false
+    private val taskManager by lazy { ActivityTaskManager.getService() }
+    private val taskListener = object : TaskStackListener() {
+        override fun onTaskRemovalStarted(taskInfo: ActivityManager.RunningTaskInfo) {
+            mainHandler.post {
+                if (taskInfo.userId == sessionUserId && currentPackage != null &&
+                    (taskInfo.baseActivity?.packageName == currentPackage ||
+                        taskInfo.topActivity?.packageName == currentPackage)) {
+                    removingTaskIds.add(taskInfo.taskId)
+                    onGameTaskRemoved(taskInfo.taskId)
+                }
+            }
+        }
+
+        override fun onTaskRemoved(taskId: Int) {
+            mainHandler.post {
+                onGameTaskRemoved(taskId)
+                removingTaskIds.remove(taskId)
+            }
+        }
+    }
     private var sessionUserId = android.os.UserHandle.myUserId()
     private val sessionBinder = Binder()
     private var bypassChargeActive = false
@@ -249,13 +275,19 @@ class SessionService : Hilt_SessionService() {
             contentResolver.registerContentObserver(Settings.Secure.getUriFor(key), false, statusObserver, userId)
         }
         optionsObservation = appSettings.inGameOptions.observe { refreshInGameOptions() }
+        try {
+            taskManager.registerTaskStackListener(taskListener)
+            taskListenerRegistered = true
+        } catch (e: Exception) {
+            Log.w(TAG, "Unable to observe game task removal", e)
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_START) {
             val packageName = intent.getStringExtra(EXTRA_PACKAGE_NAME)
             if (packageName != null) {
-                startGameSession(packageName)
+                if (!startGameSession(packageName)) return START_NOT_STICKY
                 // Framework acknowledgement reuses ACTION_START; it updates, never rearms, the pill.
                 bypassChargeActive = intent.getBooleanExtra("bypass_charge_active", false)
                 publishSessionStatus()
@@ -291,10 +323,35 @@ class SessionService : Hilt_SessionService() {
         startStatus.onConfigurationChanged()
     }
 
-    private fun startGameSession(packageName: String) {
-        if (currentPackage == packageName) {
+    private fun gameTasks(packageName: String): Set<Int>? = try {
+        ActivityTaskManager.getInstance().getTasks(Int.MAX_VALUE).filter {
+            it.taskId !in removingTaskIds && it.userId == userId &&
+                (it.baseActivity?.packageName == packageName ||
+                    it.topActivity?.packageName == packageName)
+        }.map { it.taskId }.toSet()
+    } catch (e: Exception) {
+        Log.w(TAG, "Unable to query game tasks", e)
+        null
+    }
+
+    private fun onGameTaskRemoved(taskId: Int) {
+        if (currentPackage == null || taskId !in gameTaskIds) return
+        gameTaskIds = gameTaskIds - taskId
+        if (gameTaskIds.isEmpty()) {
+            // End choices and restore owned settings even while the framework still binds us.
+            stopGameSession()
+        }
+    }
+
+    private fun startGameSession(packageName: String): Boolean {
+        val tasks = gameTasks(packageName)
+        // A delayed framework acknowledgement must not restart a removed game's session.
+        if (tasks != null && tasks.isEmpty()) return false
+        if (currentPackage == packageName && (tasks == null || gameTaskIds.isEmpty() ||
+                tasks.any { it in gameTaskIds })) {
+            if (tasks != null) gameTaskIds = tasks
             Log.d(TAG, "Session already active for $packageName")
-            return
+            return true
         }
         
         if (currentPackage != null) {
@@ -304,6 +361,7 @@ class SessionService : Hilt_SessionService() {
         Log.i(TAG, "Starting game session for $packageName")
         sessionUserId = userId
         currentPackage = packageName
+        gameTaskIds = tasks.orEmpty()
         bypassChargeActive = false
         
         session.unregister()
@@ -323,6 +381,7 @@ class SessionService : Hilt_SessionService() {
         // All synchronous session options and startup cleanup have completed before arming.
         startStatus.beginSession(appSettings.showStatusAtGameStart)
         publishSessionStatus()
+        return true
     }
 
     private fun stopGameSession() {
@@ -343,6 +402,7 @@ class SessionService : Hilt_SessionService() {
         callListener.destroy()
 
         currentPackage = null
+        gameTaskIds = emptySet()
         bypassChargeActive = false
     }
 
@@ -496,6 +556,10 @@ class SessionService : Hilt_SessionService() {
 
     override fun onDestroy() {
         Log.d(TAG, "SessionService destroyed")
+        if (taskListenerRegistered) {
+            runCatching { taskManager.unregisterTaskStackListener(taskListener) }
+            taskListenerRegistered = false
+        }
         SidebarVisibility.setGame(this, null)
         optionsObservation?.close()
         optionsObservation = null
