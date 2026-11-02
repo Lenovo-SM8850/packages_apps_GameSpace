@@ -268,7 +268,7 @@ class GameSidebar(
 
     private fun updateStatsOverlayVisibility() {
         statsOverlay.setVisible(showFpsState.value && sessionActive && gameVisible && barReady &&
-            !shouldClose && !gameTaskHidden && !screenshotInProgress && !mapperEditing)
+            !shouldClose && !gameTaskHidden && !screenshotInProgress && !mapperEditing && !panelShowing)
     }
 
     private val taskFpsCallback = object : TaskFpsCallback() {
@@ -590,7 +590,6 @@ class GameSidebar(
             wm.addView(pv, panelLayoutParam)
             gameBarView.visibility = View.GONE
             updateStatsOverlayVisibility()
-            statsOverlay.raiseAbovePanel()
         } catch (_: Exception) {
             brightnessInteractor.dispose()
             fpsInteractor.dispose()
