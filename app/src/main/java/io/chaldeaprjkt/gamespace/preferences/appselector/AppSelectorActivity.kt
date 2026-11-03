@@ -28,6 +28,17 @@ class AppSelectorActivity : Hilt_AppSelectorActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setTitle(R.string.app_selector_label)
+        findViewById<android.view.View>(com.android.settingslib.collapsingtoolbar.R.id.content_frame)?.apply {
+            val params = layoutParams
+            val maxWidth = if (resources.configuration.screenWidthDp >= 840) 840 else 640
+            params.width = (minOf(resources.configuration.screenWidthDp, maxWidth) * resources.displayMetrics.density).toInt()
+            when (params) {
+                is android.widget.FrameLayout.LayoutParams -> params.gravity = android.view.Gravity.CENTER_HORIZONTAL
+                is android.widget.LinearLayout.LayoutParams -> params.gravity = android.view.Gravity.CENTER_HORIZONTAL
+                is androidx.coordinatorlayout.widget.CoordinatorLayout.LayoutParams -> params.gravity = android.view.Gravity.CENTER_HORIZONTAL
+            }
+            layoutParams = params
+        }
         if (savedInstanceState == null) {
             supportFragmentManager
                 .beginTransaction()

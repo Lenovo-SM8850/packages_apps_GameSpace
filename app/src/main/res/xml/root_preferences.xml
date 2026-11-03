@@ -20,11 +20,6 @@
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
-    <Preference
-        android:key="library_open"
-        android:title="@string/library_open"
-        android:persistent="false" />
-
     <PreferenceCategory
         android:key="library_preferences"
         android:title="@string/game_list_title">
@@ -34,9 +29,11 @@
             android:summary="@string/auto_game_detect_summary"
             android:defaultValue="true"
             android:persistent="false" />
-    </PreferenceCategory>
+        <Preference
+            android:key="library_open"
+            android:title="@string/library_open"
+            android:persistent="false" />
 
-    <PreferenceCategory android:title="@string/library_game_icons">
         <io.github.miner7222.gamespace.library.HideGamesPreference
             android:key="gamespace_hide_games"
             android:title="@string/library_hide_title" />
@@ -61,121 +58,34 @@
             android:summary="@string/game_memory_management_summary"
             android:defaultValue="false" />
 
-    </PreferenceCategory>
-
-    <PreferenceCategory
-        android:key="in_game_preferences"
-        android:title="@string/in_game_preferences_title">
-
-        <Preference
-            android:key="library_options_note"
-            android:summary="@string/library_options_note"
-            android:selectable="false"
-            android:persistent="false" />
-
-        <SwitchPreferenceCompat
-            android:key="gamespace_show_status_at_game_start"
-            android:title="@string/show_status_at_game_start_title"
-            android:defaultValue="true" />
-
         <SwitchPreferenceCompat
             android:key="gamespace_wifi_low_latency"
             android:title="@string/wifi_low_latency_title"
             android:summary="@string/wifi_low_latency_summary"
             android:defaultValue="true" />
 
-        <SwitchPreferenceCompat
-            android:key="gamespace_high_touch_polling_enabled"
-            android:title="@string/library_high_touch_title"
-            android:summary="@string/library_high_touch_summary"
-            android:defaultValue="true" />
-
-        <SwitchPreferenceCompat
-            android:key="gamespace_hide_sidebar"
-            android:title="@string/library_hide_sidebar_title"
-            android:defaultValue="true" />
-
-        <SwitchPreferenceCompat
-            android:key="gamespace_auto_brightness_disabled"
-            android:title="@string/auto_brightness_disabled_title"
-            android:summary="@string/auto_brightness_disabled_summary"
-            android:defaultValue="true" />
-
-        <SwitchPreferenceCompat
-            android:key="gamespace_stay_awake"
-            android:title="@string/stay_awake_title"
-            android:summary="@string/stay_awake_summary"
-            android:defaultValue="false" />
-
-        <SwitchPreferenceCompat
-            android:key="gamespace_danmaku_notification_mode"
-            android:title="@string/danmaku_notification_mode_title"
-            android:summary="@string/danmaku_notification_mode_summary"
-            android:defaultValue="true" />
-
-        <SwitchPreferenceCompat
-            android:key="gamespace_pulse_bass_haptics_disabled"
-            android:title="@string/pulse_bass_haptics_disabled_title"
-            android:summary="@string/pulse_bass_haptics_disabled_summary"
-            android:defaultValue="true" />
-
-        <SwitchPreferenceCompat
-            android:key="gamespace_auto_dnd"
-            android:title="@string/auto_dnd_title"
-            android:summary="@string/auto_dnd_summary"
-            android:defaultValue="false" />
-
-        <SwitchPreferenceCompat
-            android:key="call_overlay_enabled"
-            android:title="@string/call_overlay_enabled_title"
-            android:summary="@string/call_overlay_enabled_summary"
-            android:defaultValue="true" />
-
-        <ListPreference
-            android:key="gamespace_calls_mode"
-            android:title="@string/in_game_calls_title"
-            android:summary="%s"
-            android:entries="@array/in_game_calls_entries"
-            android:entryValues="@array/in_game_calls_values"
-            android:defaultValue="0" />
-
-        <ListPreference
-            android:key="gamespace_ringer_mode"
-            android:title="@string/ringer_mode_title"
-            android:summary="%s"
-            android:entries="@array/ringer_mode_entries"
-            android:entryValues="@array/ringer_mode_values"
-            android:defaultValue="3" />
-
-        <SwitchPreferenceCompat
-            android:key="gamespace_lock_gesture"
-            android:title="@string/tile_gesture_lock"
-            android:defaultValue="false" />
-
-        <SwitchPreferenceCompat
-            android:persistent="false"
-            android:key="bypass_charge_enabled"
-            android:title="@string/bypass_charge_enabled_title"
-            android:summary="@string/bypass_charge_enabled_summary"
-            android:defaultValue="false" />
-
-        <com.crdroid.settings.preferences.CustomSeekBarPreference
-            android:key="gamespace_icon_idle_alpha"
-            android:title="@string/icon_idle_opacity_title"
-            android:defaultValue="25"
-            android:max="100"
-            app:min="5"
-            app:units="%" />
-
     </PreferenceCategory>
 
+    <Preference
+        android:key="global_in_game_options"
+        android:title="@string/global_in_game_options_title"
+        android:persistent="false" />
+
     <PreferenceCategory
-        android:key="quick_start_apps_category">
+        android:key="global_preferences"
+        android:title="@string/options_other">
+
+        <com.crdroid.settings.preferences.CustomSeekBarPreference
+            android:key="gamespace_menu_opacity"
+            android:title="@string/icon_idle_opacity_title"
+            android:defaultValue="100"
+            android:max="100"
+            app:min="0"
+            app:units="%" />
 
         <io.chaldeaprjkt.gamespace.preferences.QuickStartAppPreference
             android:key="quick_start_apps"
-            android:title="@string/quick_start_apps_title"
-            android:summary="@string/quick_start_apps_summary" />
+            android:title="@string/quick_start_apps_title" />
 
     </PreferenceCategory>
 

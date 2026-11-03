@@ -13,6 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+@file:OptIn(androidx.compose.material3.ExperimentalMaterial3ExpressiveApi::class)
+
 package io.chaldeaprjkt.gamespace.preferences.appselector
 
 import android.app.Activity
@@ -21,6 +23,16 @@ import android.content.pm.PackageManager
 import android.content.pm.ResolveInfo
 import android.os.Bundle
 import android.view.View
+import android.view.ViewGroup
+import android.view.LayoutInflater
+import android.widget.LinearLayout
+import androidx.compose.ui.platform.ComposeView
+import androidx.compose.runtime.*
+import androidx.compose.material3.MaterialExpressiveTheme
+import androidx.compose.material3.dynamicDarkColorScheme
+import androidx.compose.material3.dynamicLightColorScheme
+import androidx.compose.foundation.isSystemInDarkTheme
+import io.github.miner7222.gamespace.library.AppSearchField
 
 import androidx.lifecycle.lifecycleScope
 import androidx.preference.Preference
@@ -44,6 +56,35 @@ class AppSelectorFragment : Hilt_AppSelectorFragment() {
     @Inject
     lateinit var systemSettings: SystemSettings
 
+    private var apps: List<AppEntry> = emptyList()
+    private var query by mutableStateOf("")
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        query = savedInstanceState?.getString("query").orEmpty()
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        outState.putString("query", query)
+        super.onSaveInstanceState(outState)
+    }
+
+    override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
+        val list = super.onCreateView(inflater, container, savedInstanceState)
+        return LinearLayout(requireContext()).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(ComposeView(context).apply {
+                setContent {
+                    MaterialExpressiveTheme(colorScheme = if (isSystemInDarkTheme()) dynamicDarkColorScheme(context)
+                        else dynamicLightColorScheme(context)) {
+                        AppSearchField(query) { query = it; showApps() }
+                    }
+                }
+            }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            addView(list, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+        }
+    }
+
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
         preferenceScreen = preferenceManager.createPreferenceScreen(requireContext())
     }
@@ -60,7 +101,7 @@ class AppSelectorFragment : Hilt_AppSelectorFragment() {
         val registered = systemSettings.userGames.map { it.packageName }.toSet()
 
         viewLifecycleOwner.lifecycleScope.launch {
-            val apps = withContext(Dispatchers.IO) {
+            apps = withContext(Dispatchers.IO) {
                 val intent = Intent(Intent.ACTION_MAIN).apply {
                     addCategory(Intent.CATEGORY_LAUNCHER)
                 }
@@ -89,28 +130,29 @@ class AppSelectorFragment : Hilt_AppSelectorFragment() {
                     .toList()
             }
 
-            val screen = preferenceScreen ?: return@launch
-            screen.removeAll()
-            apps.forEach { app ->
-                val pref = Preference(requireContext()).apply {
-                    key = app.packageName
-                    title = app.label
-                    summary = app.packageName
-                    icon = app.icon
-                    isPersistent = false
-                    setOnPreferenceClickListener {
-                        requireActivity().setResult(
-                            Activity.RESULT_OK,
-                            Intent().apply {
-                                putExtra(AppListPreferences.EXTRA_APP, app.packageName)
-                            }
-                        )
-                        requireActivity().finish()
-                        true
-                    }
+            showApps()
+        }
+    }
+
+    private fun showApps() {
+        val screen = preferenceScreen ?: return
+        val duplicates = apps.groupingBy { it.label.lowercase() }.eachCount()
+        screen.removeAll()
+        apps.filter { it.label.contains(query, true) || it.packageName.contains(query, true) }.forEach { app ->
+            screen.addPreference(Preference(requireContext()).apply {
+                key = app.packageName
+                title = app.label
+                summary = app.packageName.takeIf { (duplicates[app.label.lowercase()] ?: 0) > 1 }
+                icon = app.icon
+                isPersistent = false
+                setOnPreferenceClickListener {
+                    requireActivity().setResult(Activity.RESULT_OK, Intent().apply {
+                        putExtra(AppListPreferences.EXTRA_APP, app.packageName)
+                    })
+                    requireActivity().finish()
+                    true
                 }
-                screen.addPreference(pref)
-            }
+            })
         }
     }
 
