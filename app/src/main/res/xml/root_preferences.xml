@@ -32,7 +32,8 @@
         <Preference
             android:key="library_open"
             android:title="@string/library_open"
-            android:persistent="false" />
+            android:persistent="false"
+            app:isPreferenceVisible="false" />
 
         <io.github.miner7222.gamespace.library.HideGamesPreference
             android:key="gamespace_hide_games"
