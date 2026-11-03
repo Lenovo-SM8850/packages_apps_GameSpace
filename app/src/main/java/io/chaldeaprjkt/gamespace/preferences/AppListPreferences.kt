@@ -39,7 +39,7 @@ import io.chaldeaprjkt.gamespace.settings.PerAppSettingsActivity
 import io.chaldeaprjkt.gamespace.utils.GameModeUtils.Companion.describeGameMode
 import io.chaldeaprjkt.gamespace.utils.di.ServiceViewEntryPoint
 import io.chaldeaprjkt.gamespace.utils.entryPointOf
-import io.github.miner7222.gamespace.GameSplitAspectRatio
+import io.github.miner7222.gamespace.library.InGameOptions
 
 class AppListPreferences @JvmOverloads constructor(context: Context, attrs: AttributeSet? = null) :
     PreferenceCategory(context, attrs), Preference.OnPreferenceClickListener {
@@ -178,6 +178,7 @@ class AppListPreferences @JvmOverloads constructor(context: Context, attrs: Attr
             apps.add(UserGame(packageName))
         }
         systemSettings.userGames = apps
+        InGameOptions(context).syncSplitAspectRatio()
         gameModeUtils.setIntervention(packageName, GameConfig.ModeBuilder.build())
         updateAppList()
     }
@@ -189,9 +190,9 @@ class AppListPreferences @JvmOverloads constructor(context: Context, attrs: Attr
             if (denied.add(packageName)) writeDeniedList(denied)
         }
 
-        GameSplitAspectRatio.setEnabled(context.contentResolver, packageName, false)
         apps.removeIf { it.packageName == packageName }
         systemSettings.userGames = apps
+        InGameOptions(context).clearSplitAspectRatio(packageName)
         gameModeUtils.setIntervention(packageName, null)
         updateAppList()
     }

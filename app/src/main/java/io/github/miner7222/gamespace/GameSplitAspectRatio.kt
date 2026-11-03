@@ -8,18 +8,14 @@ object GameSplitAspectRatio {
     private const val SETTING = "game_split_keep_ratio_packages"
 
     fun isEnabled(resolver: ContentResolver, packageName: String): Boolean =
-        packageName in readPackages(resolver)
+        packageName in readPackages(resolver, resolver.userId)
 
-    fun setEnabled(resolver: ContentResolver, packageName: String, enabled: Boolean): Boolean {
-        val packages = readPackages(resolver)
-        if (enabled) packages.add(packageName) else packages.remove(packageName)
-        return Settings.Secure.putString(resolver, SETTING, packages.joinToString(","))
+    internal fun readPackages(resolver: ContentResolver, userId: Int): Set<String> =
+        Settings.Secure.getStringForUser(resolver, SETTING, userId)
+            .orEmpty().split(',').map { it.trim() }.filter { it.isNotEmpty() }.toSet()
+
+    internal fun publish(resolver: ContentResolver, userId: Int, packages: Set<String>): Boolean {
+        if (packages == readPackages(resolver, userId)) return true
+        return Settings.Secure.putStringForUser(resolver, SETTING, packages.sorted().joinToString(","), userId)
     }
-
-    private fun readPackages(resolver: ContentResolver): MutableSet<String> =
-        Settings.Secure.getString(resolver, SETTING)
-            ?.split(',')
-            ?.map { it.trim() }
-            ?.filter { it.isNotEmpty() }
-            ?.toMutableSet() ?: mutableSetOf()
 }

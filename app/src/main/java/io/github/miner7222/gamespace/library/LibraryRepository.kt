@@ -14,7 +14,6 @@ import io.chaldeaprjkt.gamespace.data.GameConfig
 import io.chaldeaprjkt.gamespace.data.SystemSettings
 import io.chaldeaprjkt.gamespace.data.UserGame
 import io.chaldeaprjkt.gamespace.utils.GameModeUtils
-import io.github.miner7222.gamespace.GameSplitAspectRatio
 import javax.inject.Inject
 
 /** Library registration mirrors the legacy preference rules. */
@@ -41,12 +40,13 @@ class LibraryRepository @Inject constructor(
         modes.applyRuntimeMode(packageName,
             games.first { it.packageName == packageName }.mode)
         LauncherVisibility.sync(context, context.userId)
+        InGameOptions(context).syncSplitAspectRatio()
     }
 
     fun unregister(packageName: String): RemovedGame? {
         val game = settings.userGames.firstOrNull { it.packageName == packageName } ?: UserGame(packageName)
         val denied = readDenied()
-        val removed = RemovedGame(game, GameSplitAspectRatio.isEnabled(context.contentResolver, packageName),
+        val removed = RemovedGame(game, InGameOptions(context).overrides(packageName)[GameOption.SPLIT_RATIO],
             packageName in settings.libraryHomeExceptions, packageName in denied)
         val isGame = try {
             context.packageManager.getApplicationInfo(packageName,
@@ -54,8 +54,8 @@ class LibraryRepository @Inject constructor(
                 .category == ApplicationInfo.CATEGORY_GAME
         } catch (_: PackageManager.NameNotFoundException) { false }
         if (isGame && denied.add(packageName)) writeDenied(denied)
-        GameSplitAspectRatio.setEnabled(context.contentResolver, packageName, false)
         settings.userGames = settings.userGames.filter { it.packageName != packageName }
+        InGameOptions(context).clearSplitAspectRatio(packageName)
         modes.setIntervention(packageName, null)
         settings.libraryHomeExceptions = settings.libraryHomeExceptions - packageName
         LauncherVisibility.sync(context, context.userId)
@@ -67,7 +67,7 @@ class LibraryRepository @Inject constructor(
         if (removed.showOnHome) settings.libraryHomeExceptions = settings.libraryHomeExceptions + pkg
         register(pkg)
         modes.setGameModeFor(pkg, settings, removed.game.mode)
-        GameSplitAspectRatio.setEnabled(context.contentResolver, pkg, removed.keepAspectRatio)
+        removed.keepAspectRatio?.let { InGameOptions(context).set(pkg, GameOption.SPLIT_RATIO, it) }
         if (removed.wasDenied) writeDenied(readDenied().apply { add(pkg) })
         LauncherVisibility.sync(context, context.userId)
     }
@@ -78,7 +78,7 @@ class LibraryRepository @Inject constructor(
         try { context.startActivity(intent) } catch (_: Exception) { }
     }
 
-    data class RemovedGame(val game: UserGame, val keepAspectRatio: Boolean,
+    data class RemovedGame(val game: UserGame, val keepAspectRatio: Int?,
         val showOnHome: Boolean, val wasDenied: Boolean)
 
     companion object { private const val DENIED_LIST = "gamespace_denied_list" }

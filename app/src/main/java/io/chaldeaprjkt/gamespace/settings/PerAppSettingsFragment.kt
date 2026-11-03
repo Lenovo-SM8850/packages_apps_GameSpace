@@ -30,7 +30,6 @@ import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.lifecycleScope
 import androidx.preference.ListPreference
 import androidx.preference.Preference
-import androidx.preference.SwitchPreferenceCompat
 
 import com.android.settingslib.widget.LayoutPreference
 import com.android.settingslib.widget.SettingsBasePreferenceFragment
@@ -39,7 +38,6 @@ import dagger.hilt.android.AndroidEntryPoint
 
 import io.chaldeaprjkt.gamespace.R
 import io.chaldeaprjkt.gamespace.ui.viewmodel.PerAppSettingsViewModel
-import io.github.miner7222.gamespace.GameSplitAspectRatio
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -111,11 +109,6 @@ class PerAppSettingsFragment : Hilt_PerAppSettingsFragment(),
             }
         }
 
-        findPreference<SwitchPreferenceCompat>(PREF_KEEP_ASPECT_RATIO)?.apply {
-            isChecked = GameSplitAspectRatio.isEnabled(context.contentResolver, viewModel.packageName)
-            onPreferenceChangeListener = this@PerAppSettingsFragment
-        }
-
         findPreference<Preference>(PREF_UNREGISTER)?.apply {
             summary = context.getString(R.string.per_app_unregister, viewModel.gameLabel)
             setOnPreferenceClickListener {
@@ -185,9 +178,6 @@ class PerAppSettingsFragment : Hilt_PerAppSettingsFragment(),
                 viewModel.updateAngleDriverChoice(newValue as String)
                 true
             }
-            PREF_KEEP_ASPECT_RATIO -> GameSplitAspectRatio.setEnabled(
-                preference.context.contentResolver, viewModel.packageName, newValue as Boolean
-            )
             else -> false
         }
     }
@@ -196,7 +186,6 @@ class PerAppSettingsFragment : Hilt_PerAppSettingsFragment(),
         const val PREF_HEADERS = "headers"
         const val PREF_PREFERRED_MODE = "per_app_preferred_mode"
         const val PREF_ANGLE_DRIVER = "per_app_angle_driver"
-        const val PREF_KEEP_ASPECT_RATIO = "per_app_keep_aspect_ratio"
         const val PREF_PERFORMANCE = "per_app_performance"
         const val PREF_UNREGISTER = "per_app_unregister"
         private const val ACTION_GAME_TUNING = "io.github.miner7222.gametuning.action.GAME_TUNING"
