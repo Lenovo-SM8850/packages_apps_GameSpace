@@ -284,4 +284,5 @@
     <string name="options_session">This session</string>
     <string name="game_performance">Game performance</string>
     <string name="options_other">Other options</string>
+    <string name="global_in_game_options_title">Global in-game options</string>
 </resources>

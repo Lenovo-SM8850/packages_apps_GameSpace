@@ -17,18 +17,15 @@ package com.crdroid.settings.preferences;
 
 import android.content.Context;
 import android.content.res.TypedArray;
-import android.graphics.drawable.Drawable;
 import android.util.AttributeSet;
 import android.view.View;
-import android.view.MotionEvent;
 import android.view.ViewGroup;
 import android.widget.ImageView;
+import android.widget.ImageButton;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
-import androidx.core.content.res.ResourcesCompat;
-import androidx.core.view.ViewCompat;
 import androidx.preference.Preference;
 import androidx.preference.PreferenceViewHolder;
 
@@ -323,43 +320,33 @@ public class CustomSeekBarPreference extends SliderPreference {
     }
 
     private void attachResetIcon(TextView tv) {
-        if (!mDefaultValueExists) {
-            tv.setCompoundDrawablesRelativeWithIntrinsicBounds(null, null, null, null);
-            tv.setOnTouchListener(null);
-            tv.setClickable(false);
-            return;
+        tv.setCompoundDrawablesRelativeWithIntrinsicBounds(null, null, null, null);
+        tv.setOnTouchListener(null);
+        tv.setOnClickListener(null);
+        tv.setClickable(false);
+        tv.setFocusable(false);
+        if (!(tv.getParent() instanceof ViewGroup)) return;
+        ViewGroup parent = (ViewGroup) tv.getParent();
+        ImageButton reset = parent.findViewWithTag("seekbar_reset");
+        if (reset == null) {
+            reset = new ImageButton(tv.getContext());
+            reset.setTag("seekbar_reset");
+            reset.setImageResource(R.drawable.ic_custom_seekbar_reset);
+            reset.setImageTintList(tv.getTextColors());
+            reset.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+            reset.setPadding(dp(tv, 12), dp(tv, 12), dp(tv, 12), dp(tv, 12));
+            TypedArray background = tv.getContext().obtainStyledAttributes(
+                    new int[] { android.R.attr.selectableItemBackgroundBorderless });
+            reset.setBackground(background.getDrawable(0));
+            background.recycle();
+            parent.addView(reset, new ViewGroup.LayoutParams(dp(tv, 48), dp(tv, 48)));
         }
-
-        final Drawable icon = ResourcesCompat.getDrawable(
-                tv.getResources(), R.drawable.ic_custom_seekbar_reset, tv.getContext().getTheme());
-        if (icon == null) return;
-
-        tv.setCompoundDrawablesRelativeWithIntrinsicBounds(null, null, icon, null);
-        tv.setCompoundDrawablePadding(dp(tv, 6));
-        tv.setClickable(isEnabled());
-        tv.setFocusable(isEnabled());
-
-        final int tapSlop = dp(tv, 8);
-
-        tv.setOnTouchListener((v, ev) -> {
-            if (!isEnabled() || ev.getAction() != MotionEvent.ACTION_UP) return false;
-
-            final boolean isRtl = ViewCompat.getLayoutDirection(tv) == ViewCompat.LAYOUT_DIRECTION_RTL;
-            final Drawable[] drs = tv.getCompoundDrawablesRelative();
-            final Drawable end = drs[2];
-            if (end == null) return false;
-
-            final int iconW = end.getIntrinsicWidth();
-            final int x = (int) ev.getX();
-
-            if (!isRtl) {
-                final int left = tv.getWidth() - ViewCompat.getPaddingEnd(tv) - iconW - tapSlop;
-                if (x >= left) { performReset(); return true; }
-            } else {
-                final int right = ViewCompat.getPaddingStart(tv) + iconW + tapSlop;
-                if (x <= right) { performReset(); return true; }
-            }
-            return false;
+        reset.setVisibility(mDefaultValueExists ? View.VISIBLE : View.GONE);
+        reset.setContentDescription(tv.getContext().getString(R.string.tile_reset_to_default));
+        reset.setEnabled(isEnabled());
+        reset.setFocusable(true);
+        reset.setOnClickListener(v -> {
+            if (isEnabled()) performReset();
         });
     }
 

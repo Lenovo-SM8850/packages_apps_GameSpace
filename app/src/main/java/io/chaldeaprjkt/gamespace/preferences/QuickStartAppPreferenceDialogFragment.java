@@ -32,6 +32,7 @@ import java.util.HashSet;
 import java.util.Set;
 
 import io.chaldeaprjkt.gamespace.R;
+import io.github.miner7222.gamespace.library.AppPickerView;
 
 public class QuickStartAppPreferenceDialogFragment extends PreferenceDialogFragmentCompat {
 
@@ -43,6 +44,8 @@ public class QuickStartAppPreferenceDialogFragment extends PreferenceDialogFragm
     private Set<String> selectedPackages = new HashSet<>();
 
     private QuickStartAppListener listener;
+    private boolean restoredSelection;
+    private String query = "";
 
     public void setListener(QuickStartAppListener listener) {
         this.listener = listener;
@@ -59,6 +62,12 @@ public class QuickStartAppPreferenceDialogFragment extends PreferenceDialogFragm
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        if (savedInstanceState != null) {
+            restoredSelection = true;
+            ArrayList<String> saved = savedInstanceState.getStringArrayList("selected_packages");
+            if (saved != null) selectedPackages.addAll(saved);
+            query = savedInstanceState.getString("query", "");
+        }
         if (listener == null && getTargetFragment() instanceof QuickStartAppListener) {
             listener = (QuickStartAppListener) getTargetFragment();
         }
@@ -72,7 +81,7 @@ public class QuickStartAppPreferenceDialogFragment extends PreferenceDialogFragm
             return;
         }
 
-        String savedApps = listener.getSavedQuickStartApps();
+        String savedApps = restoredSelection ? null : listener.getSavedQuickStartApps();
         if (savedApps != null && !savedApps.isEmpty()) {
             String[] savedAppsArray = savedApps.split(",");
             for (String app : savedAppsArray) {
@@ -80,24 +89,22 @@ public class QuickStartAppPreferenceDialogFragment extends PreferenceDialogFragm
             }
         }
 
-        boolean[] checkedItems = new boolean[preference.getAppNames().length];
-        String[] appPackageNames = preference.getAppPackageNames();
-
-        for (int i = 0; i < appPackageNames.length; i++) {
-            checkedItems[i] = selectedPackages.contains(appPackageNames[i]);
-        }
-
         builder.setTitle(R.string.quick_start_apps_title)
-            .setMultiChoiceItems(preference.getAppNames(), checkedItems, (dialog, which, isChecked) -> {
-                String selectedApp = appPackageNames[which];
-                if (isChecked) {
-                    selectedPackages.add(selectedApp);
-                } else {
-                    selectedPackages.remove(selectedApp);
-                }
-            })
+            .setView(AppPickerView.create(context, preference.getAppNames(),
+                preference.getAppPackageNames(), preference.getAppIcons(), selectedPackages,
+                query, value -> query = value, (packageName, checked) -> {
+                    if (checked) selectedPackages.add(packageName);
+                    else selectedPackages.remove(packageName);
+                }))
             .setPositiveButton(android.R.string.ok, (dialog, which) -> saveSelectedApps())
             .setNegativeButton(android.R.string.cancel, null);
+    }
+
+    @Override
+    public void onSaveInstanceState(@NonNull Bundle outState) {
+        outState.putStringArrayList("selected_packages", new ArrayList<>(selectedPackages));
+        outState.putString("query", query);
+        super.onSaveInstanceState(outState);
     }
 
     @Override

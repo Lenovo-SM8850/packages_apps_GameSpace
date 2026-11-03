@@ -57,6 +57,7 @@ public class QuickStartAppPreference extends DialogPreference {
             ActivityInfo activityInfo = resolveInfo.activityInfo;
             if (activityInfo != null) {
                 String packageName = activityInfo.packageName;
+                if (packageNames.contains(packageName)) continue;
                 try {
                     ApplicationInfo appInfo = pm.getApplicationInfo(packageName, 0);
                     packageNames.add(packageName);
