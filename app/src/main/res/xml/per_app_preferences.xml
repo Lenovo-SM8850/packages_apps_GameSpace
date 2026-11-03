@@ -41,13 +41,6 @@
         android:summary="%s"
         android:title="@string/per_app_angle_title" />
 
-    <SwitchPreferenceCompat
-        android:defaultValue="false"
-        android:key="per_app_keep_aspect_ratio"
-        android:persistent="false"
-        android:summary="@string/per_app_keep_aspect_ratio_summary"
-        android:title="@string/per_app_keep_aspect_ratio_title" />
-
     <Preference
         android:icon="@drawable/ic_remove"
         android:key="per_app_unregister"

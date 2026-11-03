@@ -33,7 +33,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import io.github.miner7222.gamespace.FitLabel
-import io.github.miner7222.gamespace.GameSplitAspectRatio
 import io.github.miner7222.gamespace.shortLabelResource
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -138,9 +137,6 @@ private fun GameSheetContent(game: LibraryGame, state: LibraryState, library: Li
     val options = remember(context) { InGameOptions(context) }
     val snapshot = rememberGameOptions(options, game.packageName)
     val effectiveMode = snapshot.runtimeMode ?: model.preferredMode
-    var keepAspectRatio by remember(game.packageName, resumeGeneration) {
-        mutableStateOf(GameSplitAspectRatio.isEnabled(context.contentResolver, game.packageName))
-    }
     val tuningIntent = remember(context, game.packageName, resumeGeneration) {
         resolveTuning(context, game.packageName)
     }
@@ -190,13 +186,6 @@ private fun GameSheetContent(game: LibraryGame, state: LibraryState, library: Li
                     else performanceSummary ?: stringResource(R.string.per_app_performance_summary), Icons.Rounded.Speed,
                 shape, enabled = effectiveMode != 0,
                 onClick = { tuningIntent?.let { context.startActivity(it) } })
-        }
-        rows.add { shape ->
-            SheetRow(stringResource(R.string.per_app_keep_aspect_ratio_title),
-                stringResource(R.string.per_app_keep_aspect_ratio_summary), Icons.Rounded.AspectRatio,
-                shape, checked = keepAspectRatio, onCheckedChange = {
-                    if (GameSplitAspectRatio.setEnabled(context.contentResolver, game.packageName, it)) keepAspectRatio = it
-                })
         }
         rows.add { shape ->
             val count = snapshot.changed.size

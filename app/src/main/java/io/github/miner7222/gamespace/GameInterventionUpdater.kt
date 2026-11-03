@@ -14,6 +14,7 @@ import android.os.UserHandle
 import android.os.UserManager
 import android.provider.Settings
 import android.util.Log
+import io.github.miner7222.gamespace.library.InGameOptions
 import io.chaldeaprjkt.gamespace.data.GameConfig
 import io.chaldeaprjkt.gamespace.utils.GameModeUtils
 
@@ -27,12 +28,12 @@ internal class GameInterventionUpdater(
     private val appliedModes = mutableMapOf<Pair<Int, String>, Int>()
 
     fun start() {
-        context.contentResolver.registerContentObserver(
-            Settings.System.getUriFor(GAME_LIST), false,
-            object : ContentObserver(handler) {
-                override fun onChange(selfChange: Boolean) = scheduleUpdate()
-            }, UserHandle.USER_ALL
-        )
+        val observer = object : ContentObserver(handler) {
+            override fun onChange(selfChange: Boolean) = scheduleUpdate()
+        }
+        listOf(Settings.System.getUriFor(GAME_LIST), Settings.Secure.getUriFor(InGameOptions.OVERRIDES)).forEach {
+            context.contentResolver.registerContentObserver(it, false, observer, UserHandle.USER_ALL)
+        }
         val receiver = object : BroadcastReceiver() {
             override fun onReceive(context: Context, intent: Intent) = scheduleUpdate()
         }
@@ -62,6 +63,8 @@ internal class GameInterventionUpdater(
             // GameManagerService only loads settings for started users. Unlock also retries.
             if (!users.isUserRunning(UserHandle.of(user.id))) continue
             try {
+                if (users.isUserUnlocked(UserHandle.of(user.id)) &&
+                    !InGameOptions(context.createContextAsUser(UserHandle.of(user.id), 0)).syncSplitAspectRatio()) retry = true
                 if (!updateUser(user.id)) retry = true
             } catch (e: IllegalArgumentException) {
                 Log.w(TAG, "Game settings not ready for user ${user.id}", e)
