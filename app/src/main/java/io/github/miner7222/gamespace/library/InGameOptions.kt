@@ -19,11 +19,19 @@ import io.chaldeaprjkt.gamespace.R
 import io.chaldeaprjkt.gamespace.data.AppSettings
 import org.json.JSONObject
 
+enum class GameOptionGroup(val title: Int, val options: List<GameOption>) {
+    SCREEN(R.string.options_screen, listOf(GameOption.START_STATUS, GameOption.BRIGHTNESS,
+        GameOption.AWAKE, GameOption.SIDEBAR)),
+    NOTIFICATIONS(R.string.options_notifications, listOf(GameOption.DANMAKU, GameOption.DND,
+        GameOption.CALL_OVERLAY, GameOption.CALLS, GameOption.RINGER)),
+    HARDWARE(R.string.options_hardware, listOf(GameOption.GESTURES, GameOption.TOUCH,
+        GameOption.HAPTICS, GameOption.BYPASS));
+}
+
 enum class GameOption(val key: String, val title: Int, val summary: Int, val default: Int,
     val entries: Int = 0, val values: Int = 0) {
-    BRIGHTNESS("gamespace_auto_brightness_disabled", R.string.auto_brightness_disabled_title,
-        R.string.auto_brightness_disabled_summary, 1),
-    AWAKE("gamespace_stay_awake", R.string.stay_awake_title, R.string.stay_awake_summary, 0),
+    BRIGHTNESS("gamespace_auto_brightness_disabled", R.string.auto_brightness_disabled_title, 0, 1),
+    AWAKE("gamespace_stay_awake", R.string.stay_awake_title, 0, 0),
     DANMAKU("gamespace_danmaku_notification_mode", R.string.danmaku_notification_mode_title,
         R.string.danmaku_notification_mode_summary, 1),
     HAPTICS("gamespace_pulse_bass_haptics_disabled", R.string.pulse_bass_haptics_disabled_title,
@@ -39,12 +47,10 @@ enum class GameOption(val key: String, val title: Int, val summary: Int, val def
         R.string.library_gesture_lock_summary, 0),
     TOUCH("gamespace_high_touch_polling_enabled", R.string.library_high_touch_title,
         R.string.library_high_touch_summary, 1),
-    SIDEBAR("gamespace_hide_sidebar", R.string.library_hide_sidebar_title,
-        0, 1),
+    SIDEBAR("gamespace_hide_sidebar", R.string.library_hide_sidebar_title, 0, 1),
     BYPASS("bypass_charge_enabled", R.string.bypass_charge_enabled_title,
         R.string.library_bypass_summary, 0),
-    START_STATUS("gamespace_show_status_at_game_start", R.string.show_status_at_game_start_title,
-        0, 1);
+    START_STATUS("gamespace_show_status_at_game_start", R.string.show_status_at_game_start_title, 0, 1);
 
     fun accepts(value: Int): Boolean = when (this) {
         CALLS -> value in 0..2
@@ -126,6 +132,13 @@ class InGameOptions(private val context: Context) {
             preferences.getString(option.key, option.default.toString())?.toIntOrNull()
                 ?.takeIf(option::accepts) ?: option.default
         } else if (preferences.getBoolean(option.key, option.default == 1)) 1 else 0
+    }
+
+    fun setGlobal(option: GameOption, value: Int) {
+        require(option.accepts(value))
+        if (option == GameOption.BYPASS) setBypassDefault(value == 1)
+        else if (option.entries != 0) preferences.edit().putString(option.key, value.toString()).apply()
+        else preferences.edit().putBoolean(option.key, value == 1).apply()
     }
 
     fun setBypassDefault(enabled: Boolean) {

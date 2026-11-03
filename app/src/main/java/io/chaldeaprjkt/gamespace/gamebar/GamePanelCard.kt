@@ -34,9 +34,14 @@ import android.util.Log
 import android.widget.Toast
 import com.android.internal.policy.DesktopModeCompatPolicy
 import com.android.settingslib.display.BrightnessUtils.*
+import androidx.activity.compose.BackHandler
 import androidx.annotation.StringRes
 import androidx.collection.LruCache
 import androidx.core.graphics.drawable.toBitmap
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.animation.ExperimentalAnimationApi
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
@@ -128,9 +133,18 @@ fun GamePanelCard(
     var editing by remember { mutableStateOf(false) }
     val editingChanged by rememberUpdatedState(onEditingChanged)
     LaunchedEffect(editing) { editingChanged(editing) }
+    var optionsOpen by remember { mutableStateOf(false) }
     var graphExpanded by remember { mutableStateOf(initialGraphExpanded) }
     var moreExpanded by remember { mutableStateOf(false) }
     var dialogTile by remember { mutableStateOf<TileAction?>(null) }
+    BackHandler {
+        when {
+            dialogTile != null -> dialogTile = null
+            optionsOpen -> optionsOpen = false
+            editing -> editing = false
+            else -> onDismiss()
+        }
+    }
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val store = remember(context) { InGameOptions(context) }
@@ -144,8 +158,11 @@ fun GamePanelCard(
             ?: systemSettings.userGames.firstOrNull { it.packageName == gamePackage }?.mode ?: 1)
     }
     val openSettings: (GameSettingsDestination) -> Unit = { target ->
-        onDismiss()
-        context.startActivity(LibraryActivity.gameSettingsIntent(context, gamePackage, target))
+        if (target == GameSettingsDestination.IN_GAME_OPTIONS) optionsOpen = true
+        else {
+            onDismiss()
+            context.startActivity(LibraryActivity.gameSettingsIntent(context, gamePackage, target))
+        }
     }
     val message: (String) -> Unit = { text -> scope.launch {
         snackbar.currentSnackbarData?.dismiss()
@@ -178,41 +195,57 @@ fun GamePanelCard(
     val tiles = tileRepository.tiles
     val scroll = rememberScrollState()
     val scrolled by remember { derivedStateOf { scroll.value > 0 } }
+    val panelMotion = MaterialTheme.motionScheme.defaultSpatialSpec<IntOffset>()
     CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides Dp.Unspecified) {
         Surface(Modifier.width(panelWidth).height(maxHeight), shape = RoundedCornerShape(28.dp),
             color = MaterialTheme.colorScheme.surfaceContainer.copy(alpha = overlayPanelAlpha()),
             contentColor = MaterialTheme.colorScheme.onSurface, border = overlayBorder()) {
             Box(Modifier.fillMaxSize()) {
-                if (editing) {
-                    TileEditPanel(tileRepository, apps, mainCount, columns, tablet, compact,
-                        onClose = { editing = false }, onMessage = message,
-                        onEditApps = {
-                            onDismiss()
-                            context.startActivity(Intent(context, SettingsActivity::class.java)
-                                .putExtra(SettingsActivity.EXTRA_EDIT_QUICK_APPS, true)
-                                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-                        })
-                } else Column(Modifier.fillMaxSize()) {
-                    if (!tablet && !compact) SheetGrip()
-                    DashboardHeader(gamePackage, fpsInteractor, graphExpanded, compact,
-                        onGraph = { graphExpanded = !graphExpanded }, onEdit = { editing = true },
-                        onSettings = { openSettings(GameSettingsDestination.IN_GAME_OPTIONS) })
-                    DashboardModes(selectedMode, compact, Modifier.padding(horizontal = px).padding(top = if (compact) 4.dp else 8.dp),
-                        onNone = noneAction, onMode = { SessionOptions.chooseMode(context, it.toSystemGameMode()) })
-                    ScrollEdge(scrolled)
-                    Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(scroll)
-                        .padding(horizontal = px).padding(top = 8.dp, bottom = 12.dp)) {
-                        if (graphExpanded) FpsGraph(Modifier.padding(bottom = 10.dp), fpsInteractor)
-                        DashboardSliders(interactor, mediaVolume, compact, onOutput = {
-                            onDismiss()
-                            mediaVolume.openOutputSwitcher()
-                        })
-                        Spacer(Modifier.height(if (compact) 6.dp else 10.dp))
-                        DashboardGrid(tiles.take(mainCount), columns, tablet, compact, tileHeight, recording,
-                            onTile = activateTile,
-                            onDefault = { openSettings(GameSettingsDestination.IN_GAME_OPTIONS) })
-                        if (tiles.size > mainCount) {
-                            HorizontalDivider(Modifier.padding(top = 6.dp))
+                AnimatedContent(targetState = optionsOpen, transitionSpec = {
+                    if (targetState) slideInHorizontally(panelMotion) { it } togetherWith slideOutHorizontally(panelMotion) { -it }
+                    else slideInHorizontally(panelMotion) { -it } togetherWith slideOutHorizontally(panelMotion) { it }
+                }, label = "dashboard_options") { showOptions ->
+                    if (showOptions) {
+                        GameOptionsContent(gamePackage, expanded = false, overlay = true,
+                            onBack = { optionsOpen = false })
+                    } else if (editing) {
+                        TileEditPanel(tileRepository, apps, mainCount, columns, tablet, compact,
+                            onClose = { editing = false }, onMessage = message,
+                            onEditApps = {
+                                onDismiss()
+                                context.startActivity(Intent(context, SettingsActivity::class.java)
+                                    .putExtra(SettingsActivity.EXTRA_EDIT_QUICK_APPS, true)
+                                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                            })
+                    } else Column(Modifier.fillMaxSize()) {
+                        if (!tablet && !compact) SheetGrip()
+                        DashboardHeader(gamePackage, fpsInteractor, graphExpanded, compact,
+                            onGraph = { graphExpanded = !graphExpanded }, onEdit = { editing = true },
+                            onSettings = { openSettings(GameSettingsDestination.IN_GAME_OPTIONS) })
+                        DashboardModes(selectedMode, compact, Modifier.padding(horizontal = px).padding(top = if (compact) 4.dp else 8.dp),
+                            onNone = noneAction, onMode = { SessionOptions.chooseMode(context, it.toSystemGameMode()) })
+                        ScrollEdge(scrolled)
+                        Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(scroll)
+                            .padding(horizontal = px).padding(top = 8.dp, bottom = 12.dp)) {
+                            if (graphExpanded) FpsGraph(Modifier.padding(bottom = 10.dp), fpsInteractor)
+                            DashboardSliders(interactor, mediaVolume, compact, onOutput = {
+                                onDismiss()
+                                mediaVolume.openOutputSwitcher()
+                            })
+                            Spacer(Modifier.height(if (compact) 6.dp else 10.dp))
+                            DashboardGrid(tiles.take(mainCount), columns, tablet, compact, tileHeight, recording,
+                                onTile = activateTile,
+                                onDefault = { openSettings(GameSettingsDestination.IN_GAME_OPTIONS) })
+                            if (moreExpanded && tiles.size > mainCount) {
+                                Spacer(Modifier.height(if (compact) 6.dp else 8.dp))
+                                DashboardGrid(tiles.drop(mainCount), columns, tablet, compact, tileHeight, recording,
+                                    onTile = activateTile,
+                                    onDefault = { openSettings(GameSettingsDestination.IN_GAME_OPTIONS) })
+                            }
+                            if (apps.isNotEmpty()) QuickStartAppSidebar(apps, compact, message, onDismiss)
+                        }
+                        if (tiles.size > mainCount) Column(Modifier.padding(horizontal = px).padding(bottom = 12.dp)) {
+                            HorizontalDivider()
                             Row(Modifier.fillMaxWidth().height(48.dp).clickable { moreExpanded = !moreExpanded }
                                 .semantics { stateDescription = context.getString(if (moreExpanded) R.string.dashboard_expanded else R.string.dashboard_collapsed) }
                                 .padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -225,14 +258,7 @@ fun GamePanelCard(
                                 Spacer(Modifier.weight(1f))
                                 Icon(if (moreExpanded) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore, null)
                             }
-                            if (moreExpanded) {
-                                Spacer(Modifier.height(if (compact) 6.dp else 8.dp))
-                                DashboardGrid(tiles.drop(mainCount), columns, tablet, compact, tileHeight, recording,
-                                    onTile = activateTile,
-                                    onDefault = { openSettings(GameSettingsDestination.IN_GAME_OPTIONS) })
-                            }
                         }
-                        if (apps.isNotEmpty()) QuickStartAppSidebar(apps, compact, message, onDismiss)
                     }
                 }
                 dialogTile?.let { tile -> DashboardOptionSheet(tile, onDismiss = { dialogTile = null }) }
@@ -576,7 +602,7 @@ private fun BoxScope.DashboardOptionSheet(tile: TileAction, onDismiss: () -> Uni
         Column(Modifier.verticalScroll(rememberScrollState()).selectableGroup().padding(16.dp)) {
             Text(stringResource(R.string.tile_aspect_ratio), Modifier.padding(vertical = 12.dp), style = MaterialTheme.typography.titleMedium)
             tile.options.forEach { option ->
-                Row(Modifier.fillMaxWidth().height(44.dp).selectable(option.selected, role = Role.RadioButton,
+                Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).selectable(option.selected, role = Role.RadioButton,
                     onClick = { tile.selectOption(option); onDismiss() }), verticalAlignment = Alignment.CenterVertically) {
                     RadioButton(option.selected, onClick = null)
                     Text(option.label, Modifier.padding(start = 8.dp))
@@ -657,6 +683,7 @@ fun TileEditPanel(repository: TileRepository, apps: List<AppInfo>, mainCount: In
     var gridOrigin by remember { mutableStateOf(Offset.Zero) }
     var viewport by remember { mutableStateOf(Rect.Zero) }
     val editorScroll = rememberScrollState()
+    val scrolled by remember { derivedStateOf { editorScroll.value > 0 } }
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
     val edge = with(density) { 32.dp.toPx() }
@@ -676,12 +703,9 @@ fun TileEditPanel(repository: TileRepository, apps: List<AppInfo>, mainCount: In
     }
     Column(Modifier.fillMaxSize()) {
         if (!tablet && !compact) SheetGrip()
-        Row(Modifier.fillMaxWidth().height(56.dp).padding(horizontal = px), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text(stringResource(R.string.dashboard_edit), fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
-                Text(stringResource(R.string.dashboard_first_tiles, mainCount), fontSize = 11.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
+        Row(Modifier.fillMaxWidth().height(if (compact) 48.dp else 56.dp)
+            .padding(horizontal = px).padding(top = if (compact) 6.dp else 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(stringResource(R.string.dashboard_edit), Modifier.weight(1f), fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
             TextButton(modifier = Modifier.semantics { contentDescription = context.getString(R.string.tile_reset_to_default) }, onClick = {
                 repository.resetToDefault()
                 drag.replaceTiles(repository.tiles.toList())
@@ -691,8 +715,9 @@ fun TileEditPanel(repository: TileRepository, apps: List<AppInfo>, mainCount: In
                 Text(stringResource(R.string.dashboard_done), fontSize = 12.sp)
             }
         }
-        Column(Modifier.weight(1f).onGloballyPositioned { viewport = it.boundsInRoot() }
-            .verticalScroll(editorScroll).padding(horizontal = px).padding(bottom = 16.dp)) {
+        ScrollEdge(scrolled)
+        Column(Modifier.weight(1f).fillMaxWidth().clipToBounds().onGloballyPositioned { viewport = it.boundsInRoot() }
+            .verticalScroll(editorScroll).padding(horizontal = px).padding(top = 8.dp, bottom = 16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(stringResource(R.string.dashboard_in_dashboard), Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
                 Surface(shape = CircleShape, color = MaterialTheme.colorScheme.secondaryContainer) {

@@ -5,7 +5,6 @@
 -->
 <resources>
     <string name="library_open">Open library</string>
-    <string name="library_game_icons">Game icons</string>
     <string name="library_continue">Continue playing</string>
     <string name="library_recent">Recently played</string>
     <string name="library_sort_name">Name</string>
@@ -42,7 +41,6 @@
     <string name="library_option_changed">Changed for this game</string>
     <string name="library_reset_defaults">Reset to defaults</string>
     <string name="library_back">Back</string>
-    <string name="library_options_note">Defaults for all games.</string>
     <plurals name="library_options_count">
         <item quantity="one">%d changed</item>
         <item quantity="other">%d changed</item>
