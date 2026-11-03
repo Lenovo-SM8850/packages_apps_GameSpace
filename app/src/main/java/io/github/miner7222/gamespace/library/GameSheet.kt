@@ -296,7 +296,8 @@ internal fun resolveTuning(context: Context, packageName: String? = null): Inten
     return intent
 }
 
-private fun queryActivePreset(context: Context, packageName: String, mode: Int): String? = try {
+internal fun queryActivePreset(context: Context, packageName: String, mode: Int,
+    includeMode: Boolean = true): String? = try {
     val uri = Uri.Builder().scheme("content").authority("io.github.miner7222.gametuning.presets")
         .appendPath("active").appendQueryParameter("package", packageName)
         .appendQueryParameter("mode", mode.toString()).build()
@@ -304,8 +305,9 @@ private fun queryActivePreset(context: Context, packageName: String, mode: Int):
         if (cursor.moveToFirst()) {
             val modeLabel = cursor.getString(cursor.getColumnIndexOrThrow("mode_label"))
             val presetLabel = cursor.getString(cursor.getColumnIndexOrThrow("preset_label"))
-            if (modeLabel.isNullOrEmpty() || presetLabel.isNullOrEmpty()) null
-            else context.getString(R.string.per_app_performance_active, modeLabel, presetLabel)
+            if (presetLabel.isNullOrEmpty() || (includeMode && modeLabel.isNullOrEmpty())) null
+            else if (includeMode) context.getString(R.string.per_app_performance_active, modeLabel, presetLabel)
+            else presetLabel
         } else null
     }
 } catch (_: Exception) { null }

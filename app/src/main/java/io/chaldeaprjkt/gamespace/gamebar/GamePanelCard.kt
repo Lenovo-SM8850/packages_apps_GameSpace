@@ -224,6 +224,7 @@ fun GamePanelCard(
                             onSettings = { openSettings(GameSettingsDestination.IN_GAME_OPTIONS) })
                         DashboardModes(selectedMode, compact, Modifier.padding(horizontal = px).padding(top = if (compact) 4.dp else 8.dp),
                             onNone = noneAction, onMode = { SessionOptions.chooseMode(context, it.toSystemGameMode()) })
+                        DashboardPreset(gamePackage, selectedMode, revision, onOpen = onDismiss)
                         ScrollEdge(scrolled)
                         Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(scroll)
                             .padding(horizontal = px).padding(top = 8.dp, bottom = 12.dp)) {
@@ -264,6 +265,38 @@ fun GamePanelCard(
                 dialogTile?.let { tile -> DashboardOptionSheet(tile, onDismiss = { dialogTile = null }) }
                 SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).padding(8.dp))
             }
+        }
+    }
+}
+
+@Composable
+private fun DashboardPreset(packageName: String, mode: GameMode, revision: Int, onOpen: () -> Unit) {
+    val context = LocalContext.current
+    val tuning = remember(context, packageName) { resolveTuning(context, packageName) }
+    var name by remember(packageName) { mutableStateOf<String?>(null) }
+    val systemMode = mode.toSystemGameMode()
+    LaunchedEffect(packageName, systemMode, revision) {
+        name = null
+        if (systemMode != 0 && tuning != null) name = withContext(Dispatchers.IO) {
+            queryActivePreset(context, packageName, systemMode, includeMode = false)
+        }
+    }
+    if (tuning != null || systemMode == 0) {
+        Row(Modifier.fillMaxWidth().heightIn(min = 48.dp)
+            .clickable(enabled = systemMode != 0 && tuning != null) {
+                onOpen()
+                context.startActivity(tuning!!.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            }.padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Rounded.Speed, null, Modifier.size(20.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(Modifier.width(12.dp))
+            Text(if (systemMode == 0) stringResource(R.string.library_tuning_off)
+                else name ?: stringResource(R.string.per_app_performance_title),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.weight(1f).alpha(if (systemMode == 0) 0.42f else 1f),
+                maxLines = 2, overflow = TextOverflow.Ellipsis)
         }
     }
 }
