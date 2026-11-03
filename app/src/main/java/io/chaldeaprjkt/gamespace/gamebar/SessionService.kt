@@ -661,6 +661,7 @@ class SessionService : Hilt_SessionService() {
     }
 
     private fun refreshInGameOptions() {
+        appSettings.inGameOptions.syncSplitAspectRatio()
         SidebarVisibility.refresh(this)
         if (currentPackage == null || suspended) return
         session.applyOptions()

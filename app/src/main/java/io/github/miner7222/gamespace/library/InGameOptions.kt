@@ -17,11 +17,12 @@ import android.provider.Settings
 import androidx.preference.PreferenceManager
 import io.chaldeaprjkt.gamespace.R
 import io.chaldeaprjkt.gamespace.data.AppSettings
+import io.github.miner7222.gamespace.GameSplitAspectRatio
 import org.json.JSONObject
 
 enum class GameOptionGroup(val title: Int, val options: List<GameOption>) {
     SCREEN(R.string.options_screen, listOf(GameOption.START_STATUS, GameOption.BRIGHTNESS,
-        GameOption.AWAKE, GameOption.SIDEBAR)),
+        GameOption.AWAKE, GameOption.SPLIT_RATIO, GameOption.SIDEBAR)),
     NOTIFICATIONS(R.string.options_notifications, listOf(GameOption.DANMAKU, GameOption.DND,
         GameOption.CALL_OVERLAY, GameOption.CALLS, GameOption.RINGER)),
     HARDWARE(R.string.options_hardware, listOf(GameOption.GESTURES, GameOption.TOUCH,
@@ -50,7 +51,9 @@ enum class GameOption(val key: String, val title: Int, val summary: Int, val def
     SIDEBAR("gamespace_hide_sidebar", R.string.library_hide_sidebar_title, 0, 1),
     BYPASS("bypass_charge_enabled", R.string.bypass_charge_enabled_title,
         R.string.library_bypass_summary, 0),
-    START_STATUS("gamespace_show_status_at_game_start", R.string.show_status_at_game_start_title, 0, 1);
+    START_STATUS("gamespace_show_status_at_game_start", R.string.show_status_at_game_start_title, 0, 1),
+    SPLIT_RATIO("gamespace_split_keep_ratio", R.string.per_app_keep_aspect_ratio_title,
+        R.string.per_app_keep_aspect_ratio_summary, 0);
 
     fun accepts(value: Int): Boolean = when (this) {
         CALLS -> value in 0..2
@@ -69,6 +72,47 @@ class InGameOptions(private val context: Context) {
         JSONObject(Settings.Secure.getStringForUser(resolver, OVERRIDES, userId).orEmpty().ifEmpty { "{}" })
     } catch (_: RuntimeException) { null }
       catch (_: org.json.JSONException) { null }
+
+    private fun migrateSplitRatio(): Boolean {
+        if (Settings.Secure.getIntForUser(resolver, SPLIT_RATIO_MIGRATED, 0, userId) == 1) return true
+        val map = readMap() ?: return false
+        GameSplitAspectRatio.readPackages(resolver, userId).forEach { pkg ->
+            val game = map.optJSONObject(pkg) ?: JSONObject()
+            if (!game.has(GameOption.SPLIT_RATIO.key)) game.put(GameOption.SPLIT_RATIO.key, 1)
+            map.put(pkg, game)
+        }
+        return Settings.Secure.putStringForUser(resolver, OVERRIDES, map.toString(), userId) &&
+            Settings.Secure.putIntForUser(resolver, SPLIT_RATIO_MIGRATED, 1, userId)
+    }
+
+    /** Publish effective choices through the existing window-manager package-set contract. */
+    fun syncSplitAspectRatio(): Boolean = synchronized(lock) {
+        if (!ensureMigrated()) return@synchronized false
+        val map = readMap() ?: return@synchronized false
+        val packages = Settings.System.getStringForUser(resolver, LibraryKeys.GAMES, userId)
+            .orEmpty().split(';').map { it.substringBefore('=') }.filter { it.isNotEmpty() }.toMutableSet()
+        val keys = map.keys()
+        while (keys.hasNext()) {
+            val pkg = keys.next()
+            if (map.optJSONObject(pkg)?.has(GameOption.SPLIT_RATIO.key) == true) packages.add(pkg)
+        }
+        val fallback = global(GameOption.SPLIT_RATIO)
+        val enabled = packages.filterTo(mutableSetOf()) { pkg ->
+            val value = map.optJSONObject(pkg)?.optInt(GameOption.SPLIT_RATIO.key, -1) ?: -1
+            (value.takeIf(GameOption.SPLIT_RATIO::accepts) ?: fallback) == 1
+        }
+        GameSplitAspectRatio.publish(resolver, userId, enabled)
+    }
+
+    fun clearSplitAspectRatio(packageName: String): Boolean = synchronized(lock) {
+        if (!ensureMigrated()) return@synchronized false
+        val map = readMap() ?: return@synchronized false
+        map.optJSONObject(packageName)?.let { game ->
+            game.remove(GameOption.SPLIT_RATIO.key)
+            if (game.length() == 0) map.remove(packageName)
+        }
+        Settings.Secure.putStringForUser(resolver, OVERRIDES, map.toString(), userId) && syncSplitAspectRatio()
+    }
 
     /** Merge the retired three-finger option once, including inherited per-game values. */
     private fun migrateGestureLock(): Boolean {
@@ -106,7 +150,7 @@ class InGameOptions(private val context: Context) {
 
     /** Only the old enabled set carried information; absent packages inherit defaults. */
     fun ensureMigrated(): Boolean = synchronized(lock) {
-        if (!migrateGestureLock()) return@synchronized false
+        if (!migrateGestureLock() || !migrateSplitRatio()) return@synchronized false
         if (Settings.Secure.getIntForUser(resolver, MIGRATED, 0, userId) == 1) {
             if (preferences.contains(LEGACY_BYPASS)) preferences.edit().remove(LEGACY_BYPASS).apply()
             return@synchronized true
@@ -136,9 +180,11 @@ class InGameOptions(private val context: Context) {
 
     fun setGlobal(option: GameOption, value: Int) {
         require(option.accepts(value))
+        if (option == GameOption.SPLIT_RATIO && !ensureMigrated()) return
         if (option == GameOption.BYPASS) setBypassDefault(value == 1)
         else if (option.entries != 0) preferences.edit().putString(option.key, value.toString()).apply()
         else preferences.edit().putBoolean(option.key, value == 1).apply()
+        if (option == GameOption.SPLIT_RATIO) syncSplitAspectRatio()
     }
 
     fun setBypassDefault(enabled: Boolean) {
@@ -175,7 +221,7 @@ class InGameOptions(private val context: Context) {
         if (saved && option == GameOption.GESTURES && currentPackage() == packageName) {
             SessionOptions.choose(context, option, value)
         }
-        saved
+        if (saved && option == GameOption.SPLIT_RATIO) syncSplitAspectRatio() else saved
     }
 
     fun reset(packageName: String): Boolean = synchronized(lock) {
@@ -186,7 +232,7 @@ class InGameOptions(private val context: Context) {
         if (saved && currentPackage() == packageName) {
             SessionOptions.choose(context, GameOption.GESTURES, global(GameOption.GESTURES))
         }
-        saved
+        if (saved) syncSplitAspectRatio() else false
     }
 
     fun availableOptions(): List<GameOption> = GameOption.entries.filter {
@@ -237,6 +283,7 @@ class InGameOptions(private val context: Context) {
 
     companion object {
         const val OVERRIDES = "gamespace_in_game_overrides"
+        private const val SPLIT_RATIO_MIGRATED = "gamespace_split_keep_ratio_migrated"
         const val MIGRATED = "gamespace_in_game_overrides_migrated"
         const val BYPASS_DEFAULT = "gamespace_bypass_charge_default"
         private const val LEGACY_BYPASS = "bypass_charge_games"
