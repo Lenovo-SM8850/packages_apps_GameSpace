@@ -10,9 +10,7 @@ import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
@@ -25,20 +23,24 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
+import android.net.wifi.WifiManager
+import androidx.preference.PreferenceManager
+import io.chaldeaprjkt.gamespace.data.AppSettings
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.clearAndSetSemantics
-import androidx.compose.ui.semantics.paneTitle
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.DialogWindowProvider
+import androidx.core.view.WindowCompat
 import io.chaldeaprjkt.gamespace.R
 
 internal data class GameOptionsSnapshot(val effective: Map<GameOption, Int>, val changed: Set<GameOption>, val available: List<GameOption>, val runtimeMode: Int?)
@@ -73,93 +75,208 @@ internal fun rememberGameOptions(store: InGameOptions, packageName: String): Gam
 
 @Composable
 internal fun GameOptionsScreen(game: LibraryGame, expanded: Boolean, onBack: () -> Unit) {
-    val context = LocalContext.current
-    val store = remember(context) { InGameOptions(context) }
-    val snapshot = rememberGameOptions(store, game.packageName)
-    var choice by remember { mutableStateOf<GameOption?>(null) }
-    val title = stringResource(R.string.in_game_preferences_title)
-    val available = snapshot.available
-    val scroll = rememberScrollState()
-    val scrolled by remember { derivedStateOf { scroll.value > 0 } }
     Dialog(onDismissRequest = onBack, properties = DialogProperties(usePlatformDefaultWidth = false,
         decorFitsSystemWindows = false)) {
-        BackHandler(onBack = onBack)
-        Box(Modifier.fillMaxSize()) {
-            if (expanded) Box(Modifier.fillMaxSize().background(BottomSheetDefaults.ScrimColor)
-                .clickable(onClick = onBack).clearAndSetSemantics { })
-            Surface(Modifier.align(if (expanded) Alignment.CenterEnd else Alignment.Center)
-                .then(if (expanded) Modifier.windowInsetsPadding(WindowInsets.safeDrawing).width(400.dp)
-                    else Modifier.fillMaxWidth()).fillMaxHeight().semantics { paneTitle = title },
-                shape = if (expanded) RoundedCornerShape(topStart = 28.dp, bottomStart = 28.dp) else RoundedCornerShape(0.dp),
-                color = MaterialTheme.colorScheme.surfaceContainer) {
-                Column(Modifier.then(if (expanded) Modifier else Modifier.windowInsetsPadding(WindowInsets.safeDrawing))) {
-                    TopAppBar(title = {
-                        Column {
-                            Text(title, fontSize = 22.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text(game.label, style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        }
-                    }, navigationIcon = {
-                        FilledTonalIconButton(onClick = onBack, modifier = Modifier.padding(start = 8.dp).size(40.dp)) {
-                            Icon(Icons.AutoMirrored.Rounded.ArrowBack, stringResource(R.string.library_back))
-                        }
-                    }, colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surfaceContainer))
-                    // A line appears under the header once the list scrolls beneath it.
-                    Box(Modifier.fillMaxWidth().height(1.dp).background(
-                        if (scrolled) MaterialTheme.colorScheme.outlineVariant else Color.Transparent))
-                    Column(Modifier.weight(1f).verticalScroll(scroll).padding(start = 16.dp, top = 8.dp, end = 16.dp, bottom = 16.dp),
-                        verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        available.forEachIndexed { index, option ->
-                            val value = snapshot.effective.getValue(option)
-                            val changed = option in snapshot.changed
+        val view = LocalView.current
+        val lightBars = MaterialTheme.colorScheme.surfaceContainer.luminance() > 0.5f
+        SideEffect {
+            (view.parent as? DialogWindowProvider)?.window?.let { window ->
+                WindowCompat.getInsetsController(window, view).apply {
+                    isAppearanceLightStatusBars = lightBars
+                    isAppearanceLightNavigationBars = lightBars
+                }
+            }
+        }
+        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surfaceContainer) {
+            Column(Modifier.windowInsetsPadding(WindowInsets.safeDrawing)) {
+                OptionsHeader(stringResource(R.string.in_game_preferences_title), game.label, onBack)
+                GameOptionsContent(game.packageName, expanded, onBack = onBack)
+            }
+        }
+    }
+}
+
+@Composable
+internal fun OptionsHeader(title: String, subtitle: String? = null, onBack: () -> Unit) {
+    TopAppBar(title = {
+        Column {
+            Text(title, fontSize = 22.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            if (subtitle != null) Text(subtitle, style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+    }, navigationIcon = {
+        IconButton(onClick = onBack, modifier = Modifier.size(48.dp)) {
+            Icon(Icons.AutoMirrored.Rounded.ArrowBack, stringResource(R.string.library_back))
+        }
+    }, colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surfaceContainer))
+}
+
+@Composable
+internal fun OptionsCategories(titles: List<Int>, selected: Int, onSelect: (Int) -> Unit,
+    modifier: Modifier = Modifier) {
+    Column(modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        titles.forEachIndexed { index, title ->
+            Surface(shape = if (selected == index) RoundedCornerShape(50) else groupedShape(index, titles.size),
+                color = if (selected == index) MaterialTheme.colorScheme.secondaryContainer
+                    else MaterialTheme.colorScheme.surfaceContainerHigh) {
+                Row(Modifier.fillMaxWidth().heightIn(min = 64.dp).selectable(selected == index,
+                    role = Role.Tab, onClick = { onSelect(index) }).padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically) {
+                    Text(stringResource(title), style = MaterialTheme.typography.titleMedium)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+internal fun GameOptionsContent(packageName: String?, expanded: Boolean, onBack: () -> Unit,
+    overlay: Boolean = false, selectedGroup: GameOptionGroup? = null,
+    footer: @Composable () -> Unit = {}) {
+    val context = LocalContext.current
+    val store = remember(context) { InGameOptions(context) }
+    val snapshot = rememberGameOptions(store, packageName.orEmpty())
+    var category by rememberSaveable(packageName) { mutableIntStateOf(0) }
+    var choice by remember(packageName) { mutableStateOf<GameOption?>(null) }
+    BackHandler { if (choice != null) choice = null else onBack() }
+    val groups = if (selectedGroup != null) listOf(selectedGroup) else GameOptionGroup.entries
+    val detail: @Composable (List<GameOptionGroup>) -> Unit = { visibleGroups ->
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            visibleGroups.forEach { group ->
+                val options = group.options.filter { it in snapshot.available }
+                if (options.isNotEmpty()) {
+                    Text(stringResource(group.title), style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary)
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        options.forEachIndexed { index, option ->
+                            val value = if (packageName == null) store.global(option) else snapshot.effective.getValue(option)
                             val summary = if (option.entries != 0) {
                                 val values = context.resources.getStringArray(option.values)
                                 context.resources.getStringArray(option.entries)[values.indexOf(value.toString()).coerceAtLeast(0)]
                             } else if (option.summary != 0) stringResource(option.summary) else null
-                            Surface(shape = groupedShape(index, available.size), color = if (isSystemInDarkTheme())
-                                MaterialTheme.colorScheme.surfaceContainerHigh else MaterialTheme.colorScheme.surfaceBright) {
-                                val modifier = if (option.entries == 0) Modifier.toggleable(value == 1, role = Role.Switch,
-                                    onValueChange = { store.set(game.packageName, option, if (it) 1 else 0) })
-                                    else Modifier.clickable(onClick = { choice = option })
-                                Row(Modifier.fillMaxWidth().then(modifier).heightIn(min = 72.dp).padding(16.dp),
-                                    verticalAlignment = Alignment.CenterVertically) {
-                                    Column(Modifier.weight(1f)) {
-                                        Text(stringResource(option.title), style = MaterialTheme.typography.titleMedium)
-                                        if (summary != null) Text(summary, style = MaterialTheme.typography.bodyMedium,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                        if (changed) Text(stringResource(R.string.library_option_changed),
-                                            style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
-                                    }
-                                    if (option.entries == 0) {
-                                        Spacer(Modifier.width(16.dp))
-                                        Switch(checked = value == 1, onCheckedChange = null,
-                                            thumbContent = { if (value == 1) Icon(Icons.Rounded.Check, null, Modifier.size(SwitchDefaults.IconSize)) })
-                                    }
-                                }
-                            }
+                            OptionRow(stringResource(option.title), summary,
+                                if (option.entries == 0) value == 1 else null, groupedShape(index, options.size),
+                                changed = packageName != null && option in snapshot.changed,
+                                onClick = {
+                                    if (option.entries != 0) choice = option
+                                    else if (packageName == null) store.setGlobal(option, 1 - value)
+                                    else store.set(packageName, option, 1 - value)
+                                })
                         }
-                        Spacer(Modifier.height(14.dp))
-                        TextButton(onClick = { store.reset(game.packageName) }, enabled = snapshot.changed.isNotEmpty(),
-                            modifier = Modifier.align(Alignment.End)) { Text(stringResource(R.string.library_reset_defaults)) }
                     }
                 }
             }
+            if (packageName != null && SessionOptions.packageName(context) == packageName) SessionWifiOption()
+            if (packageName != null) TextButton(onClick = { store.reset(packageName) },
+                enabled = snapshot.changed.isNotEmpty(), modifier = Modifier.align(Alignment.End)) {
+                Text(stringResource(R.string.library_reset_defaults))
+            }
+            footer()
         }
-        choice?.let { option ->
-            val labels = context.resources.getStringArray(option.entries)
-            val values = context.resources.getStringArray(option.values)
-            AlertDialog(onDismissRequest = { choice = null }, title = { Text(stringResource(option.title)) },
-                text = { Column(Modifier.selectableGroup()) {
+    }
+    if (overlay) {
+        Column(Modifier.fillMaxSize()) {
+            val selected = choice
+            OptionsHeader(stringResource(selected?.title ?: R.string.in_game_preferences_title),
+                onBack = { if (selected != null) choice = null else onBack() })
+            if (selected != null) {
+                val labels = context.resources.getStringArray(selected.entries)
+                val values = context.resources.getStringArray(selected.values)
+                Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).selectableGroup().padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     labels.forEachIndexed { index, label ->
-                        val selected = snapshot.effective[option].toString() == values[index]
-                        Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).selectable(selected, role = Role.RadioButton,
-                            onClick = { store.set(game.packageName, option, values[index].toInt()); choice = null }),
-                            verticalAlignment = Alignment.CenterVertically) {
-                            RadioButton(selected, onClick = null)
-                            Spacer(Modifier.width(16.dp)); Text(label)
+                        val checked = snapshot.effective[selected].toString() == values[index]
+                        Surface(shape = groupedShape(index, labels.size),
+                            color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+                            Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).selectable(checked,
+                                role = Role.RadioButton, onClick = {
+                                    store.set(requireNotNull(packageName), selected, values[index].toInt())
+                                    choice = null
+                                }).padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                                RadioButton(checked, onClick = null)
+                                Spacer(Modifier.width(16.dp))
+                                Text(label)
+                            }
                         }
                     }
-                } }, confirmButton = { TextButton(onClick = { choice = null }) { Text(stringResource(android.R.string.cancel)) } })
+                }
+            } else detail(groups)
         }
+    } else if (expanded && selectedGroup == null) {
+        Row(Modifier.fillMaxSize().padding(16.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            OptionsCategories(groups.map { it.title }, category, { category = it }, Modifier.width(340.dp))
+            Surface(Modifier.weight(1f).fillMaxHeight(), shape = RoundedCornerShape(28.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerLow) { detail(listOf(groups[category])) }
+        }
+    } else Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+        Box(Modifier.widthIn(max = 640.dp).fillMaxSize()) { detail(groups) }
+    }
+    choice?.takeUnless { overlay }?.let { option ->
+        val value = if (packageName == null) store.global(option) else snapshot.effective.getValue(option)
+        val labels = context.resources.getStringArray(option.entries)
+        val values = context.resources.getStringArray(option.values)
+        AlertDialog(onDismissRequest = { choice = null }, title = { Text(stringResource(option.title)) },
+            text = { Column(Modifier.selectableGroup().verticalScroll(rememberScrollState())) {
+                labels.forEachIndexed { index, label ->
+                    val selected = value.toString() == values[index]
+                    Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).selectable(selected, role = Role.RadioButton,
+                        onClick = {
+                            if (packageName == null) store.setGlobal(option, values[index].toInt())
+                            else store.set(packageName, option, values[index].toInt())
+                            choice = null
+                        }), verticalAlignment = Alignment.CenterVertically) {
+                        RadioButton(selected, onClick = null)
+                        Spacer(Modifier.width(16.dp)); Text(label)
+                    }
+                }
+            } }, confirmButton = { TextButton(onClick = { choice = null }) { Text(stringResource(android.R.string.cancel)) } })
+    }
+}
+
+@Composable
+internal fun OptionRow(title: String, summary: String?, checked: Boolean?,
+    shape: androidx.compose.ui.graphics.Shape, changed: Boolean = false, onClick: () -> Unit) {
+    Surface(shape = shape, color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+        val action = if (checked == null) Modifier.clickable(onClick = onClick)
+            else Modifier.toggleable(checked, role = Role.Switch, onValueChange = { onClick() })
+        Row(Modifier.fillMaxWidth().then(action).heightIn(min = 64.dp).padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(title, style = MaterialTheme.typography.titleMedium)
+                if (summary != null) Text(summary, style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (changed) Text(stringResource(R.string.library_option_changed),
+                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+            }
+            if (checked != null) {
+                Spacer(Modifier.width(16.dp))
+                Switch(checked, onCheckedChange = null,
+                    thumbContent = { if (checked) Icon(Icons.Rounded.Check, null, Modifier.size(SwitchDefaults.IconSize)) })
+            }
+        }
+    }
+}
+
+@Composable
+private fun SessionWifiOption() {
+    val context = LocalContext.current
+    val supported = remember(context) {
+        runCatching { context.getSystemService(WifiManager::class.java)?.isLowLatencyModeSupported == true }.getOrDefault(false)
+    }
+    if (!supported) return
+    val preferences = remember(context) { PreferenceManager.getDefaultSharedPreferences(context) }
+    var revision by remember { mutableIntStateOf(0) }
+    DisposableEffect(context) {
+        val observation = InGameOptions(context).observe { revision++ }
+        onDispose { observation.close() }
+    }
+    val enabled = remember(revision) {
+        SessionOptions.wifi(context, preferences.getBoolean(AppSettings.KEY_WIFI_LOW_LATENCY, true))
+    }
+    Text(stringResource(R.string.options_session), style = MaterialTheme.typography.labelLarge,
+        color = MaterialTheme.colorScheme.primary)
+    OptionRow(stringResource(R.string.wifi_low_latency_title), null, enabled, groupedShape(0, 1)) {
+        SessionOptions.chooseWifi(context, !enabled)
     }
 }
