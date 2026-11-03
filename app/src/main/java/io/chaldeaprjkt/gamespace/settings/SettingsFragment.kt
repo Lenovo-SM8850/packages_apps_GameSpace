@@ -21,13 +21,11 @@ import android.content.IntentFilter
 import android.net.wifi.WifiManager
 import io.chaldeaprjkt.gamespace.data.AppSettings
 import android.content.Intent
-import android.os.Build
 import android.os.Bundle
-import android.os.SystemProperties
-import android.os.Vibrator
 import android.view.View
+import android.view.ViewGroup
+import android.widget.LinearLayout
 import androidx.preference.Preference
-import androidx.preference.PreferenceCategory
 import androidx.preference.SwitchPreferenceCompat
 
 import com.android.settingslib.widget.SettingsBasePreferenceFragment
@@ -54,15 +52,6 @@ class SettingsFragment : Hilt_SettingsFragment(),
         requireContext().entryPointOf<ServiceViewEntryPoint>().appSettings()
     }
 
-    private var sidebarOptionsObservation: AutoCloseable? = null
-
-    private fun updateSidebarPreference() {
-        findPreference<Preference>("gamespace_high_touch_polling_enabled")?.isVisible =
-            io.github.miner7222.gamespace.library.SidebarVisibility.isHighTouchSupported(requireContext())
-        findPreference<Preference>("gamespace_hide_sidebar")?.isVisible =
-            io.github.miner7222.gamespace.library.SidebarVisibility.isAvailable(requireContext())
-    }
-
     private val wifiStateReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             updateWifiPreference()
@@ -76,49 +65,81 @@ class SettingsFragment : Hilt_SettingsFragment(),
 
     override fun onStart() {
         super.onStart()
-        sidebarOptionsObservation = appSettings.inGameOptions.observe { updateSidebarPreference() }
         requireContext().registerReceiver(wifiStateReceiver,
             IntentFilter(WifiManager.WIFI_STATE_CHANGED_ACTION), Context.RECEIVER_EXPORTED)
     }
 
     override fun onStop() {
-        sidebarOptionsObservation?.close()
-        sidebarOptionsObservation = null
         requireContext().unregisterReceiver(wifiStateReceiver)
         super.onStop()
     }
 
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
         appSettings.inGameOptions.ensureMigrated()
+        appSettings.migrateHandleOpacity()
         setPreferencesFromResource(R.xml.root_preferences, rootKey)
         updatePreferences()
+        arguments?.getString("section")?.let { section ->
+            val keep = if (section == "main")
+                setOf("library_preferences", "game_optimization", "global_in_game_options") else setOf(section)
+            for (index in preferenceScreen.preferenceCount - 1 downTo 0) {
+                val preference = preferenceScreen.getPreference(index)
+                if (preference.key !in keep) preferenceScreen.removePreference(preference)
+            }
+        }
     }
 
-    private fun hasVibrator(): Boolean {
-        val vibrator = context?.getSystemService(Vibrator::class.java)
-        return vibrator?.hasVibrator() == true
+    fun setInlineLayout(inline: Boolean) {
+        arguments?.putBoolean("inline", inline)
+        val height = if (inline) ViewGroup.LayoutParams.WRAP_CONTENT else ViewGroup.LayoutParams.MATCH_PARENT
+        view?.let { root ->
+            root.findViewById<View>(android.R.id.list_container)?.let { container ->
+                val params = container.layoutParams
+                params.height = if (inline) ViewGroup.LayoutParams.WRAP_CONTENT
+                    else if (params is LinearLayout.LayoutParams) 0 else ViewGroup.LayoutParams.MATCH_PARENT
+                if (params is LinearLayout.LayoutParams) params.weight = if (inline) 0f else 1f
+                container.layoutParams = params
+            }
+            root.layoutParams?.let { params ->
+                if (params.height != height) {
+                    params.height = height
+                    root.layoutParams = params
+                }
+            }
+        }
+        listView?.apply {
+            isNestedScrollingEnabled = !inline
+            isVerticalScrollBarEnabled = !inline
+            layoutParams?.let { params ->
+                if (params.height != height) {
+                    params.height = height
+                    layoutParams = params
+                }
+            }
+        }
     }
 
     private fun updatePreferences() {
         updateWifiPreference()
-        updateSidebarPreference()
-        val isBypassSupported =
-            Build.MANUFACTURER.equals("Google", ignoreCase = true) ||
-            SystemProperties.getBoolean("persist.sys.battery_bypass_supported", false)
-
-        if (!isBypassSupported) {
-            findPreference<PreferenceCategory>("in_game_preferences")
-                ?.removePreference(findPreference("bypass_charge_enabled")!!)
-        }
-
-        if (!hasVibrator()) {
-            findPreference<PreferenceCategory>("in_game_preferences")
-                ?.removePreference(findPreference("gamespace_pulse_bass_haptics_disabled")!!)
-        }
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+        setInlineLayout(arguments?.getBoolean("inline", false) == true)
+        findPreference<Preference>("global_in_game_options")?.setOnPreferenceClickListener {
+            (activity as? SettingsActivity)?.openGlobalInGameOptions()
+            true
+        }
+        if (savedInstanceState == null &&
+            activity?.intent?.getBooleanExtra(SettingsActivity.EXTRA_EDIT_QUICK_APPS, false) == true) {
+            activity?.intent?.removeExtra(SettingsActivity.EXTRA_EDIT_QUICK_APPS)
+            view.post {
+                findPreference<Preference>(AppSettings.KEY_QUICK_START_APPS)?.let {
+                    scrollToPreference(it)
+                    onDisplayPreferenceDialog(it)
+                }
+            }
+        }
 
         findPreference<SwitchPreferenceCompat>("gamespace_auto_game_detect")?.apply {
             isChecked = systemSettings.autoGameDetect
@@ -131,13 +152,6 @@ class SettingsFragment : Hilt_SettingsFragment(),
             value = systemSettings.libraryDefaultMode.toString()
             setOnPreferenceChangeListener { _, selected ->
                 systemSettings.libraryDefaultMode = (selected as String).toInt()
-                true
-            }
-        }
-        findPreference<SwitchPreferenceCompat>("bypass_charge_enabled")?.apply {
-            isChecked = appSettings.inGameOptions.global(io.github.miner7222.gamespace.library.GameOption.BYPASS) == 1
-            setOnPreferenceChangeListener { _, value ->
-                appSettings.inGameOptions.setBypassDefault(value as Boolean)
                 true
             }
         }
@@ -154,11 +168,8 @@ class SettingsFragment : Hilt_SettingsFragment(),
     override fun onResume() {
         super.onResume()
         updateWifiPreference()
-        updateSidebarPreference()
         findPreference<androidx.preference.ListPreference>("gamespace_default_game_mode")?.value =
             systemSettings.libraryDefaultMode.toString()
-        findPreference<SwitchPreferenceCompat>("bypass_charge_enabled")?.isChecked =
-            appSettings.inGameOptions.global(io.github.miner7222.gamespace.library.GameOption.BYPASS) == 1
         findPreference<SwitchPreferenceCompat>("gamespace_auto_game_detect")?.isChecked =
             systemSettings.autoGameDetect
         findPreference<HideGamesPreference>("gamespace_hide_games")?.refresh()
