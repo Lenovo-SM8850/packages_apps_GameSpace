@@ -227,7 +227,6 @@
     <string name="dashboard_session_changed">Changed for this session</string>
     <string name="dashboard_record_starting">Starting…</string>
     <string name="dashboard_elapsed_unknown">Time unknown</string>
-    <string name="dashboard_first_tiles">First %1$d tiles stay on the main grid</string>
     <string name="dashboard_reset_short">Reset</string>
     <string name="dashboard_reset">Dashboard reset to default</string>
     <string name="dashboard_in_dashboard">In dashboard</string>
@@ -279,5 +278,10 @@
     <string name="status_do_not_disturb_short">DND</string>
     <string name="status_sidebar_hidden_short">Sidebar off</string>
     <string name="gamebar_battery_label_short">Batt</string>
+    <string name="options_screen">Screen and overlay</string>
+    <string name="options_notifications">Notifications and calls</string>
+    <string name="options_hardware">Touch and hardware</string>
+    <string name="options_session">This session</string>
     <string name="game_performance">Game performance</string>
+    <string name="options_other">Other options</string>
 </resources>

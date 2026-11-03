@@ -110,9 +110,14 @@ internal fun GameSheet(game: LibraryGame, expanded: Boolean, state: LibraryState
         ModalBottomSheet(onDismissRequest = onDismiss,
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
             sheetMaxWidth = 640.dp,
-            modifier = Modifier.heightIn(max = LocalConfiguration.current.screenHeightDp.dp * 0.9f),
             shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-            containerColor = MaterialTheme.colorScheme.surfaceContainerLow) { content() }
+            dragHandle = { BottomSheetDefaults.DragHandle() },
+            contentWindowInsets = { WindowInsets.navigationBars.only(WindowInsetsSides.Bottom) },
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow) {
+            Box(Modifier.fillMaxWidth().heightIn(max = LocalConfiguration.current.screenHeightDp.dp * 0.9f)) {
+                content()
+            }
+        }
     }
 }
 
