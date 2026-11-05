@@ -62,6 +62,8 @@ import io.github.miner7222.gamespace.gamebar.RecordingPhase
 import io.github.miner7222.gamespace.gamebar.StatsOverlay
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.*
 import com.android.axion.compose.lifecycle.repeatWhenAttached
@@ -580,6 +582,10 @@ class GameSidebar(
 
         panelLayoutParam.flags = panelLayoutParam.flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE.inv()
         panelLayoutParam.alpha = 1f
+        // The window opens at its final place; moving it afterwards shows as a resize from the left.
+        val density = Density(context)
+        updatePanelWindow(density, panelGeometry(density, context.resources.configuration, false,
+            getQuickStartApps(context).isNotEmpty()))
         val pv = createPanelView(initialGraphExpanded)
         panelView = pv
 
@@ -745,57 +751,18 @@ class GameSidebar(
 
         val density = LocalDensity.current
         val configuration = LocalConfiguration.current
-        val metrics = wm.maximumWindowMetrics
-        val insets = metrics.windowInsets.getInsetsIgnoringVisibility(
-            android.view.WindowInsets.Type.systemBars() or android.view.WindowInsets.Type.displayCutout())
-        val safeLeft = with(density) { insets.left.toDp() }
-        val safeTop = with(density) { insets.top.toDp() }
-        val safeWidth = with(density) { (metrics.bounds.width() - insets.left - insets.right).coerceAtLeast(0).toDp() }
-        val safeHeightDp = with(density) { (metrics.bounds.height() - insets.top - insets.bottom).coerceAtLeast(0).toDp() }
-        val tablet = configuration.smallestScreenWidthDp >= 600
-        val landscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
-        val phonePortrait = !tablet && !landscape
-        val width = minOf(if (tablet) { if (landscape) 420.dp else 400.dp }
-            else if (landscape) 340.dp else safeWidth, (safeWidth - 24.dp).coerceAtLeast(0.dp))
         var editingPanel by remember { mutableStateOf(false) }
-        val primaryRows = (minOf(8, tileRepository.tiles.size) + 3) / 4
-        val portraitContentHeight = 249.dp + 72.dp * primaryRows + 8.dp * (primaryRows - 1).coerceAtLeast(0) +
-            (if (tileRepository.tiles.size > 8) 55.dp else 0.dp) + (if (apps.isNotEmpty()) 62.dp else 0.dp) + 12.dp
-        val height = when {
-            phonePortrait && editingPanel -> (safeHeightDp - 72.dp).coerceAtLeast(0.dp)
-            phonePortrait -> minOf(portraitContentHeight, (safeHeightDp - 24.dp).coerceAtLeast(0.dp))
-            !tablet -> (safeHeightDp - 24.dp).coerceAtLeast(0.dp)
-            else -> minOf(640.dp, (safeHeightDp - 32.dp).coerceAtLeast(0.dp))
-        }
-        // Full-height phone landscapes leave 12dp above/below; other edge panels use 16dp.
-        val margin = minOf(16.dp, ((safeHeightDp - height) / 2).coerceAtLeast(0.dp))
-        val anchor = with(density) { handleCenterY.toDp() }
-        val top = if (phonePortrait) safeTop + safeHeightDp - height - 12.dp
-            else (anchor - height / 2).coerceIn(safeTop + margin,
-                (safeTop + safeHeightDp - height - margin).coerceAtLeast(safeTop + margin))
-        val left = if (phonePortrait || circleOnLeft) safeLeft + 12.dp
-            else safeLeft + safeWidth - width - 12.dp
+        val geometry = panelGeometry(density, configuration, editingPanel, apps.isNotEmpty())
+        val (left, top, width, height, anchor) = geometry
         val transformOriginX = if (circleOnLeft) 0f else 1f
         val transformOriginY = if (height > 0.dp) ((anchor - top) / height).coerceIn(0f, 1f) else 0.5f
         var swipe by remember { mutableFloatStateOf(0f) }
         val threshold = with(density) { 48.dp.toPx() }
         val packageName = gamePackage ?: return
         val panelLeft = with(density) { left.coerceAtLeast(0.dp).roundToPx() }
-        val panelTop = with(density) { top.coerceAtLeast(0.dp).roundToPx() }
-        val panelWidth = with(density) { width.roundToPx().coerceAtLeast(1) }
-        val panelHeight = with(density) { height.roundToPx().coerceAtLeast(1) }
-        // Include only the slide's visible sweep, keeping the panel at its existing screen position.
-        val windowLeft = if (circleOnLeft) (panelLeft - PANEL_SLIDE_PX).coerceAtLeast(0) else panelLeft
-        val windowRight = if (circleOnLeft) panelLeft + panelWidth else
-            (panelLeft + panelWidth + PANEL_SLIDE_PX).coerceAtMost(metrics.bounds.width())
-        val windowWidth = (windowRight - windowLeft).coerceAtLeast(1)
+        val windowLeft = panelWindowLeft(panelLeft)
         SideEffect {
-            if (panelLayoutParam.x != windowLeft || panelLayoutParam.y != panelTop ||
-                panelLayoutParam.width != windowWidth || panelLayoutParam.height != panelHeight) {
-                panelLayoutParam.x = windowLeft
-                panelLayoutParam.y = panelTop
-                panelLayoutParam.width = windowWidth
-                panelLayoutParam.height = panelHeight
+            if (updatePanelWindow(density, geometry)) {
                 panelView?.takeIf { it.isAttachedToWindow }?.let { wm.updateViewLayout(it, panelLayoutParam) }
             }
         }
@@ -993,6 +960,65 @@ class GameSidebar(
         layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
         preferMinimalPostProcessing = true
         gravity = Gravity.TOP or Gravity.END
+    }
+
+    private data class PanelGeometry(val left: Dp, val top: Dp, val width: Dp, val height: Dp,
+        val anchor: Dp)
+
+    private fun panelGeometry(density: Density, configuration: Configuration, editing: Boolean,
+        hasApps: Boolean): PanelGeometry {
+        val metrics = wm.maximumWindowMetrics
+        val insets = metrics.windowInsets.getInsetsIgnoringVisibility(
+            android.view.WindowInsets.Type.systemBars() or android.view.WindowInsets.Type.displayCutout())
+        val safeLeft = with(density) { insets.left.toDp() }
+        val safeTop = with(density) { insets.top.toDp() }
+        val safeWidth = with(density) { (metrics.bounds.width() - insets.left - insets.right).coerceAtLeast(0).toDp() }
+        val safeHeightDp = with(density) { (metrics.bounds.height() - insets.top - insets.bottom).coerceAtLeast(0).toDp() }
+        val tablet = configuration.smallestScreenWidthDp >= 600
+        val landscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+        val phonePortrait = !tablet && !landscape
+        val width = minOf(if (tablet) { if (landscape) 420.dp else 400.dp }
+            else if (landscape) 340.dp else safeWidth, (safeWidth - 24.dp).coerceAtLeast(0.dp))
+        val primaryRows = (minOf(8, tileRepository.tiles.size) + 3) / 4
+        val portraitContentHeight = 249.dp + 72.dp * primaryRows + 8.dp * (primaryRows - 1).coerceAtLeast(0) +
+            (if (tileRepository.tiles.size > 8) 55.dp else 0.dp) + (if (hasApps) 62.dp else 0.dp) + 12.dp
+        val height = when {
+            phonePortrait && editing -> (safeHeightDp - 72.dp).coerceAtLeast(0.dp)
+            phonePortrait -> minOf(portraitContentHeight, (safeHeightDp - 24.dp).coerceAtLeast(0.dp))
+            !tablet -> (safeHeightDp - 24.dp).coerceAtLeast(0.dp)
+            else -> minOf(640.dp, (safeHeightDp - 32.dp).coerceAtLeast(0.dp))
+        }
+        // Full-height phone landscapes leave 12dp above/below; other edge panels use 16dp.
+        val margin = minOf(16.dp, ((safeHeightDp - height) / 2).coerceAtLeast(0.dp))
+        val anchor = with(density) { handleCenterY.toDp() }
+        val top = if (phonePortrait) safeTop + safeHeightDp - height - 12.dp
+            else (anchor - height / 2).coerceIn(safeTop + margin,
+                (safeTop + safeHeightDp - height - margin).coerceAtLeast(safeTop + margin))
+        val left = if (phonePortrait || circleOnLeft) safeLeft + 12.dp
+            else safeLeft + safeWidth - width - 12.dp
+        return PanelGeometry(left, top, width, height, anchor)
+    }
+
+    private fun panelWindowLeft(panelLeft: Int): Int =
+        if (circleOnLeft) (panelLeft - PANEL_SLIDE_PX).coerceAtLeast(0) else panelLeft
+
+    /** Includes only the slide's visible sweep, keeping the panel at its screen position. */
+    private fun updatePanelWindow(density: Density, geometry: PanelGeometry): Boolean {
+        val panelLeft = with(density) { geometry.left.coerceAtLeast(0.dp).roundToPx() }
+        val panelTop = with(density) { geometry.top.coerceAtLeast(0.dp).roundToPx() }
+        val panelWidth = with(density) { geometry.width.roundToPx().coerceAtLeast(1) }
+        val panelHeight = with(density) { geometry.height.roundToPx().coerceAtLeast(1) }
+        val windowLeft = panelWindowLeft(panelLeft)
+        val windowRight = if (circleOnLeft) panelLeft + panelWidth else
+            (panelLeft + panelWidth + PANEL_SLIDE_PX).coerceAtMost(wm.maximumWindowMetrics.bounds.width())
+        val windowWidth = (windowRight - windowLeft).coerceAtLeast(1)
+        if (panelLayoutParam.x == windowLeft && panelLayoutParam.y == panelTop &&
+            panelLayoutParam.width == windowWidth && panelLayoutParam.height == panelHeight) return false
+        panelLayoutParam.x = windowLeft
+        panelLayoutParam.y = panelTop
+        panelLayoutParam.width = windowWidth
+        panelLayoutParam.height = panelHeight
+        return true
     }
 
     private fun createPanelLayoutParam() = WindowManager.LayoutParams(
