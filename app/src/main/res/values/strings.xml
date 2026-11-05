@@ -282,7 +282,7 @@
     <string name="options_notifications">Notifications and calls</string>
     <string name="options_hardware">Touch and hardware</string>
     <string name="options_session">This session</string>
-    <string name="game_performance">Game performance</string>
+    <string name="game_performance">Game Tuner</string>
     <string name="options_other">Other options</string>
     <string name="global_in_game_options_title">Global in-game options</string>
 </resources>
