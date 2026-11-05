@@ -261,9 +261,8 @@ class SessionStatusOverlay(
     private fun scheduleTimeout() {
         handler.removeCallbacks(timeout)
         val enteredAt = shownAt ?: return
-        // A late acknowledgement can extend a mode-only pill, but never reset its clock.
-        val duration = if (status.value?.modeOnly == true) 1500L else 3500L
-        handler.postDelayed(timeout, (enteredAt + duration - SystemClock.uptimeMillis()).coerceAtLeast(0L))
+        // A late acknowledgement never resets the clock of the entered pill.
+        handler.postDelayed(timeout, (enteredAt + 1500L - SystemClock.uptimeMillis()).coerceAtLeast(0L))
     }
 
     private fun fadeOut() {
