@@ -237,27 +237,30 @@ fun GamePanelCard(
                             DashboardGrid(tiles.take(mainCount), columns, tablet, compact, tileHeight, recording,
                                 onTile = activateTile,
                                 onDefault = { openSettings(GameSettingsDestination.IN_GAME_OPTIONS) })
-                            if (moreExpanded && tiles.size > mainCount) {
-                                Spacer(Modifier.height(if (compact) 6.dp else 8.dp))
-                                DashboardGrid(tiles.drop(mainCount), columns, tablet, compact, tileHeight, recording,
-                                    onTile = activateTile,
-                                    onDefault = { openSettings(GameSettingsDestination.IN_GAME_OPTIONS) })
-                            }
                             if (apps.isNotEmpty()) QuickStartAppSidebar(apps, compact, message, onDismiss)
-                        }
-                        if (tiles.size > mainCount) Column(Modifier.padding(horizontal = px).padding(bottom = 12.dp)) {
-                            HorizontalDivider()
-                            Row(Modifier.fillMaxWidth().height(48.dp).clickable { moreExpanded = !moreExpanded }
-                                .semantics { stateDescription = context.getString(if (moreExpanded) R.string.dashboard_expanded else R.string.dashboard_collapsed) }
-                                .padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Text(stringResource(R.string.dashboard_more), style = MaterialTheme.typography.labelLarge)
-                                Spacer(Modifier.width(8.dp))
-                                Surface(shape = CircleShape, color = MaterialTheme.colorScheme.secondaryContainer) {
-                                    Text((tiles.size - mainCount).toString(), Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
-                                        style = MaterialTheme.typography.labelSmall)
+                            if (tiles.size > mainCount) {
+                                HorizontalDivider(Modifier.padding(top = if (compact) 6.dp else 8.dp))
+                                Row(Modifier.fillMaxWidth().height(48.dp).clickable { moreExpanded = !moreExpanded }
+                                    .semantics { stateDescription = context.getString(if (moreExpanded) R.string.dashboard_expanded else R.string.dashboard_collapsed) }
+                                    .padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Text(stringResource(R.string.dashboard_more), style = MaterialTheme.typography.labelLarge)
+                                    Spacer(Modifier.width(8.dp))
+                                    Surface(shape = CircleShape, color = MaterialTheme.colorScheme.secondaryContainer) {
+                                        Text((tiles.size - mainCount).toString(), Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                                            style = MaterialTheme.typography.labelSmall)
+                                    }
+                                    Spacer(Modifier.weight(1f))
+                                    Icon(if (moreExpanded) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore, null)
                                 }
-                                Spacer(Modifier.weight(1f))
-                                Icon(if (moreExpanded) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore, null)
+                                if (moreExpanded) {
+                                    LaunchedEffect(Unit) {
+                                        withFrameNanos { }
+                                        scroll.animateScrollTo(scroll.maxValue)
+                                    }
+                                    DashboardGrid(tiles.drop(mainCount), columns, tablet, compact, tileHeight, recording,
+                                        onTile = activateTile,
+                                        onDefault = { openSettings(GameSettingsDestination.IN_GAME_OPTIONS) })
+                                }
                             }
                         }
                     }
