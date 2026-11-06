@@ -99,6 +99,10 @@ class AppSettings @Inject constructor(private val context: Context) {
         }
         set(value) = db.edit().putInt(KEY_MENU_OPACITY, value).apply()
 
+    var handleAutoHide: Boolean
+        get() = db.getBoolean(KEY_HANDLE_AUTO_HIDE, false)
+        set(value) = db.edit().putBoolean(KEY_HANDLE_AUTO_HIDE, value).apply()
+
     var tileOrder: List<String>
         get() = db.getString(KEY_TILE_ORDER, null)?.split(",")?.filter { it.isNotBlank() } ?: emptyList()
         set(value) = db.edit().putString(KEY_TILE_ORDER, value.joinToString(",")).apply()
@@ -204,6 +208,7 @@ class AppSettings @Inject constructor(private val context: Context) {
         const val KEY_RINGER_MODE = "gamespace_ringer_mode"
         const val KEY_LOCK_GESTURE = "gamespace_lock_gesture"
         const val KEY_MENU_OPACITY = "gamespace_menu_opacity"
+        const val KEY_HANDLE_AUTO_HIDE = "gamespace_handle_auto_hide"
         const val KEY_TILE_ORDER_VERSION = "tile_order_version"
         const val KEY_TILE_ORDER = "tile_order"
         const val KEY_PREFERRED_TILE_ORDER = "preferred_tile_order"

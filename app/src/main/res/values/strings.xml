@@ -138,6 +138,8 @@
 
     <!-- Icon Idle Opacity -->
     <string name="icon_idle_opacity_title">Handle opacity</string>
+    <string name="handle_auto_hide_title">Auto-hide handle</string>
+    <string name="handle_auto_hide_summary">Hide the handle after 3 seconds. Swipe from any screen edge to show it.</string>
 
     <!-- Auto DND -->
     <string name="auto_dnd_title">Auto Do Not Disturb</string>
