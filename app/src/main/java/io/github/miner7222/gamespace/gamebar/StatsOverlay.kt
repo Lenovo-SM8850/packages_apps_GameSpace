@@ -55,7 +55,6 @@ class StatsOverlay(
     private val handler: Handler,
     private val appSettings: AppSettings,
     private val fpsText: State<String>,
-    private val onTap: () -> Unit,
 ) {
     private var view: FrameLayout? = null
     private var landscape = context.resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
@@ -65,10 +64,6 @@ class StatsOverlay(
     private var resizeAnimator: ValueAnimator? = null
     private val gestures = GestureDetector(context, object : GestureDetector.SimpleOnGestureListener() {
         override fun onDown(event: MotionEvent) = true
-        override fun onSingleTapConfirmed(event: MotionEvent): Boolean {
-            view?.performClick()
-            return true
-        }
         override fun onDoubleTap(event: MotionEvent): Boolean {
             toggleCompact()
             return true
@@ -120,13 +115,6 @@ class StatsOverlay(
             override fun onInterceptTouchEvent(event: MotionEvent) = true
             override fun onTouchEvent(event: MotionEvent) = handleTouch(event)
         }.apply {
-            isClickable = true
-            contentDescription = context.getString(R.string.gamebar_open_controls)
-            setOnClickListener {
-                wake()
-                onTap()
-                scheduleIdle()
-            }
             addView(content, FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
             repeatWhenAttached {
