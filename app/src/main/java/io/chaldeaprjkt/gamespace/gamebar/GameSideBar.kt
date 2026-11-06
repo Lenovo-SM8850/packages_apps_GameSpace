@@ -171,9 +171,7 @@ class GameSidebar(
     private val showFpsState = tileRepository.isFpsInfoVisible
     private val fpsTextState = mutableStateOf("")
     private val statsOverlay by lazy {
-        StatsOverlay(context, wm, handler, appSettings, fpsTextState) {
-            setPillExpanded(true)
-        }
+        StatsOverlay(context, wm, handler, appSettings, fpsTextState)
     }
     private val isLockedState = mutableStateOf(false)
     private val isIdleState = mutableStateOf(true)
