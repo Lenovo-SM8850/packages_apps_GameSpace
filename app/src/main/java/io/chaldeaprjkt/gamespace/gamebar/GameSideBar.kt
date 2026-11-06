@@ -57,6 +57,7 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.ui.input.pointer.pointerInput
+import io.github.miner7222.gamespace.gamebar.EdgeSwipeMonitor
 import io.github.miner7222.gamespace.gamebar.MediaVolumeController
 import io.github.miner7222.gamespace.gamebar.OverlayTheme
 import io.github.miner7222.gamespace.gamebar.RecordingPhase
@@ -127,6 +128,8 @@ class GameSidebar(
     private var mapperEditing = false
     private var gameTaskHidden = false
     private var gameVisible = false
+    // Set by the auto-hide timer; only an edge swipe, the panel or a new session ends it.
+    private var handleHidden = false
     private var gamePackage: String? = null
     private var gameTaskId = ActivityTaskManager.INVALID_TASK_ID
     private var taskListenerRegistered = false
@@ -184,6 +187,11 @@ class GameSidebar(
     private val fpsTextState = mutableStateOf("")
     private val statsOverlay by lazy {
         StatsOverlay(context, wm, handler, appSettings, fpsTextState)
+    }
+    private val edgeSwipeMonitor = EdgeSwipeMonitor(context) { revealHandle() }
+    // Held strongly because the preference store keeps its listeners weakly.
+    private val autoHideListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+        if (key == AppSettings.KEY_HANDLE_AUTO_HIDE) onAutoHideChanged()
     }
     private val isLockedState = mutableStateOf(false)
     private val isIdleState = mutableStateOf(true)
@@ -288,18 +296,60 @@ class GameSidebar(
         updateGameBarVisibility()
     }
 
+    private fun canShowHandle() = sessionActive && gameVisible && barReady && !shouldClose && !gameTaskHidden &&
+        !panelShowing && !screenshotInProgress && !mapperEditing
+
     private fun notifyUiBlocking() {
         onUiBlockingChanged?.invoke(panelShowing || pillExpanded || mapperEditing)
     }
 
     private fun updateGameBarVisibility() {
-        gameBarView.visibility = if (sessionActive && gameVisible && barReady && !shouldClose && !gameTaskHidden &&
-            !panelShowing && !screenshotInProgress && !mapperEditing) {
-            View.VISIBLE
-        } else {
-            View.INVISIBLE
-        }
+        // A handle that cannot be brought back must not stay hidden.
+        if (!syncEdgeSwipeMonitor()) handleHidden = false
+        val wasVisible = gameBarView.visibility == View.VISIBLE
+        val show = canShowHandle() && !handleHidden
+        gameBarView.visibility = if (show) View.VISIBLE else View.INVISIBLE
+        // Any path that shows the handle again leaves it with a running hide timer.
+        if (show && !wasVisible && appSettings.handleAutoHide) scheduleIdle()
         updateStatsOverlayVisibility()
+    }
+
+    /** The monitor exists only while the handle is hidden in a live, visible game. */
+    private fun syncEdgeSwipeMonitor(): Boolean {
+        val wanted = handleHidden && sessionActive && gameVisible && !gameTaskHidden && !shouldClose
+        if (!wanted) {
+            edgeSwipeMonitor.stop()
+            return true
+        }
+        return edgeSwipeMonitor.start()
+    }
+
+    private fun hideHandle() {
+        if (handleHidden) return
+        handleHidden = true
+        updateGestureExclusions()
+        updateGameBarVisibility()
+    }
+
+    private fun clearHandleHidden() {
+        if (!handleHidden) return
+        handleHidden = false
+        updateGestureExclusions()
+        updateGameBarVisibility()
+    }
+
+    private fun revealHandle() {
+        if (!handleHidden) return
+        clearHandleHidden()
+        scheduleIdle()
+    }
+
+    private fun onAutoHideChanged() {
+        if (appSettings.handleAutoHide) {
+            if (canShowHandle()) scheduleIdle()
+        } else {
+            clearHandleHidden()
+        }
     }
 
     private fun updateStatsOverlayVisibility() {
@@ -476,6 +526,8 @@ class GameSidebar(
             forceRemovePanel()
             collapseVerticalPill()
             setPillExpanded(false)
+            handleHidden = false
+            updateGestureExclusions()
         }
         updateGameBarVisibility()
         mapperController.setGameVisible(visible && sessionActive)
@@ -497,6 +549,8 @@ class GameSidebar(
         gameTaskHidden = false
         removingTaskIds.clear()
         updateFullscreenVisibility(false)
+        handleHidden = false
+        appSettings.registerPreferenceListener(autoHideListener)
         gamePackage = packageName
         fpsTextState.value = ""
         gameTaskId = ActivityTaskManager.INVALID_TASK_ID
@@ -518,6 +572,9 @@ class GameSidebar(
     fun onGameLeave() {
         sessionActive = false
         updateFullscreenVisibility(false)
+        handleHidden = false
+        edgeSwipeMonitor.stop()
+        appSettings.unregisterPreferenceListener(autoHideListener)
         statsOverlay.setVisible(false)
         handler.removeCallbacks(attachGameBar)
         handler.removeCallbacks(firstPaint)
@@ -549,6 +606,7 @@ class GameSidebar(
         handler.removeCallbacks(firstPaint)
         if (!active) {
             barReady = false
+            handleHidden = false
             gameBarView.animate().cancel()
             stopFpsTracking()
             updateGestureExclusions()
@@ -606,6 +664,7 @@ class GameSidebar(
         updateGameTaskVisibility()
         if (!sessionActive || !gameVisible || shouldClose || gameTaskHidden || panelShowing || screenshotInProgress) return
         panelShowing = true
+        clearHandleHidden()
         pillSnapState.value = true
         setPillExpanded(false)
         notifyUiBlocking()
@@ -638,6 +697,8 @@ class GameSidebar(
             fpsInteractor.dispose()
             panelShowing = false
             notifyUiBlocking()
+            updateGameBarVisibility()
+            scheduleIdle()
         }
     }
 
@@ -682,7 +743,10 @@ class GameSidebar(
             runCatching { wm.removeViewImmediate(pv) }
             panelView = null
         }
-        if (::gameBarView.isInitialized) updateGameBarVisibility()
+        if (::gameBarView.isInitialized) {
+            updateGameBarVisibility()
+            if (appSettings.handleAutoHide) scheduleIdle()
+        }
     }
 
     private fun createPanelView(initialGraphExpanded: Boolean): ComposeView {
@@ -837,6 +901,7 @@ class GameSidebar(
             return
         }
         if (pillExpanded == expanded) return
+        if (expanded) clearHandleHidden()
         handler.removeCallbacks(miniCollapseRunnable)
         handler.removeCallbacks(idleRunnable)
         pillExpanded = expanded
@@ -855,7 +920,7 @@ class GameSidebar(
             if (circleOnLeft) bounds.left += px(8) else bounds.right -= px(8)
         }
         gameBarView.systemGestureExclusionRects =
-            if (sessionActive && !bounds.isEmpty) listOf(bounds) else emptyList()
+            if (sessionActive && !handleHidden && !bounds.isEmpty) listOf(bounds) else emptyList()
     }
 
     private fun collapseVerticalPill() {
@@ -934,6 +999,7 @@ class GameSidebar(
 
     private val idleRunnable = Runnable {
         isIdleState.value = true
+        if (appSettings.handleAutoHide && !pillExpanded && canShowHandle()) hideHandle()
     }
 
     private fun enterMapperEdit() {
