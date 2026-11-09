@@ -43,8 +43,6 @@
         <item quantity="other">%d changed</item>
     </plurals>
     <string name="library_hide_sidebar_title">Hide sidebar</string>
-    <string name="library_high_touch_title">High touch polling rate</string>
-    <string name="library_high_touch_summary">Reads touch input more often for faster response</string>
     <string name="library_gesture_lock_summary">System gestures need a second swipe</string>
     <string name="library_bypass_summary">Runs on charger power without charging the battery</string>
     <string name="game_mode_none">None</string>

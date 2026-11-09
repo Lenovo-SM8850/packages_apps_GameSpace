@@ -8,23 +8,17 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.provider.Settings
-import lineageos.hardware.LineageHardwareManager
 
 /** Publishes per-user game requests from live sessions, with shared startup and shutdown cleanup. */
 object SidebarVisibility {
     const val PACKAGE = "com.libremobileos.sidebar"
     const val HIDDEN = "gamespace_sidebar_hidden"
-    const val HIGH_TOUCH = "gamespace_high_touch_polling"
     private var activePackage: String? = null
 
     fun isAvailable(context: Context): Boolean = try {
         context.packageManager.getApplicationInfo(PACKAGE,
             PackageManager.ApplicationInfoFlags.of(PackageManager.MATCH_DISABLED_COMPONENTS.toLong())).enabled
     } catch (_: PackageManager.NameNotFoundException) { false }
-
-    fun isHighTouchSupported(context: Context): Boolean =
-        LineageHardwareManager.getInstance(context)
-            .isSupported(LineageHardwareManager.FEATURE_HIGH_TOUCH_POLLING_RATE)
 
     fun setGame(context: Context, packageName: String?) {
         activePackage = packageName
@@ -34,14 +28,11 @@ object SidebarVisibility {
     fun refresh(context: Context) {
         if (activePackage == null) {
             publish(context, HIDDEN, false)
-            publish(context, HIGH_TOUCH, false)
             return
         }
         val options = InGameOptions(context)
         publish(context, HIDDEN, activePackage != null && isAvailable(context) &&
             options.current(GameOption.SIDEBAR) == 1)
-        publish(context, HIGH_TOUCH, activePackage != null && isHighTouchSupported(context) &&
-            options.current(GameOption.TOUCH) == 1)
     }
 
     private fun publish(context: Context, key: String, enabled: Boolean) {

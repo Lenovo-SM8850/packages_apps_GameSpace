@@ -91,6 +91,7 @@ import io.github.miner7222.gamespace.GameAspectRatioTile
 import io.github.miner7222.gamespace.gamebar.MediaVolumeController
 import io.github.miner7222.gamespace.gamebar.RecordingPhase
 import io.github.miner7222.gamespace.gamebar.RecordingState
+import io.github.miner7222.gamespace.gamebar.TouchSensitivitySheet
 import io.github.miner7222.gamespace.gamebar.overlayBorder
 import io.github.miner7222.gamespace.gamebar.overlayInnerAlpha
 import io.github.miner7222.gamespace.gamebar.overlayPanelAlpha
@@ -189,7 +190,7 @@ fun GamePanelCard(
         if (tile.id == "screen_record" && tileRepository.recordingState.value.phase == RecordingPhase.ACTIVE) {
             tileRepository.stopRecording()
         } else tile.toggle()
-        if (tile.options.isNotEmpty()) dialogTile = tile
+        if (tile.id == "touch_sensitivity" || tile.options.isNotEmpty()) dialogTile = tile
     }
     val recording by tileRepository.recordingState.collectAsState()
     val tiles = tileRepository.tiles
@@ -265,7 +266,13 @@ fun GamePanelCard(
                         }
                     }
                 }
-                dialogTile?.let { tile -> DashboardOptionSheet(tile, onDismiss = { dialogTile = null }) }
+                dialogTile?.let { tile ->
+                    if (tile.id == "touch_sensitivity") {
+                        TouchSensitivitySheet(onDismiss = { dialogTile = null })
+                    } else {
+                        DashboardOptionSheet(tile, onDismiss = { dialogTile = null })
+                    }
+                }
                 SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).padding(8.dp))
             }
         }

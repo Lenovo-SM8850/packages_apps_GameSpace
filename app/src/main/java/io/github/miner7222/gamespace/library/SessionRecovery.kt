@@ -11,12 +11,14 @@ import io.chaldeaprjkt.gamespace.data.AppSettings
 import io.chaldeaprjkt.gamespace.data.GameSession
 import io.chaldeaprjkt.gamespace.data.SystemSettings
 import io.chaldeaprjkt.gamespace.utils.GameModeUtils
+import io.github.miner7222.gamespace.TouchPolicySession
 
 /** Uses normal teardown for a dead session, once its user's credential storage is available. */
 object SessionRecovery {
     fun recoverIfIdle(context: Context) {
         if (SessionOptions.packageName(context) != null ||
             !context.getSystemService(UserManager::class.java).isUserUnlocked) return
+        TouchPolicySession.publish(context, null)
         try {
             val modes = GameModeUtils(context)
             GameSession(context, AppSettings(context), SystemSettings(context, modes), Gson()).unregister()

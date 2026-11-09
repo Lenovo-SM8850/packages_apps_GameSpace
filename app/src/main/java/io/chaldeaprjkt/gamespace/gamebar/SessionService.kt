@@ -67,6 +67,7 @@ import io.chaldeaprjkt.gamespace.utils.GameModeUtils
 import io.chaldeaprjkt.gamespace.utils.ScreenUtils
 import io.github.miner7222.gamespace.GameAspectRatioGesture
 import io.github.miner7222.gamespace.GameAspectRatioTile
+import io.github.miner7222.gamespace.TouchPolicySession
 import io.github.miner7222.gamespace.gamebar.SessionStartStatus
 import io.github.miner7222.gamespace.gamebar.SessionStatusChip
 import io.github.miner7222.gamespace.gamebar.SessionStatusOverlay
@@ -318,6 +319,7 @@ class SessionService : Hilt_SessionService() {
             mapperController = mapperController,
             mediaVolume = mediaVolume,
         )
+        sidebar.onGameTaskVisibilityChanged = { publishTouchPolicy() }
         sidebar.onCreate()
         startStatus = SessionStatusOverlay(this, windowManager) { sidebar.openDashboard() }
         aspectRatioGesture = GameAspectRatioGesture(this, windowManager, mainHandler,
@@ -361,11 +363,15 @@ class SessionService : Hilt_SessionService() {
             addAction(Intent.ACTION_BATTERY_CHANGED)
             addAction(AudioManager.INTERNAL_RINGER_MODE_CHANGED_ACTION)
         }, null, mainHandler, RECEIVER_EXPORTED)
-        listOf(SidebarVisibility.HIGH_TOUCH, SidebarVisibility.HIDDEN, "ax_gaming_gesture_lock").forEach { key ->
+        listOf(SidebarVisibility.HIDDEN, "ax_gaming_gesture_lock", TouchPolicySession.KEY_RESTORE_RATE).forEach { key ->
             contentResolver.registerContentObserver(Settings.Secure.getUriFor(key), false, statusObserver, userId)
         }
         contentResolver.registerContentObserver(Settings.Secure.getUriFor("ax_gaming_gesture_lock"),
             false, gestureLockObserver, userId)
+        contentResolver.registerContentObserver(
+            lineageos.providers.LineageSettings.System.getUriFor(
+                lineageos.providers.LineageSettings.System.HIGH_TOUCH_POLLING_RATE_ENABLE),
+            false, statusObserver, userId)
         optionsObservation = appSettings.inGameOptions.observe { refreshInGameOptions() }
         try {
             taskManager.registerTaskStackListener(taskListener)
@@ -462,11 +468,18 @@ class SessionService : Hilt_SessionService() {
     private fun updateGameUiVisibility() {
         val show = frameworkGameVisible && currentPackage != null && !suspended
         sidebar.setGameVisible(show)
+        publishTouchPolicy()
         aspectRatioGesture.setGameVisible(show)
         danmakuService.setGameVisible(show)
         callListener.setGameVisible(show)
         publishSessionStatus()
         startStatus.setGameVisible(show)
+    }
+
+    private fun publishTouchPolicy() {
+        val active = frameworkGameVisible && currentPackage != null && !suspended &&
+            sidebar.gameTaskFullscreenVisible
+        TouchPolicySession.publish(this, if (active) currentPackage else null)
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
@@ -703,7 +716,12 @@ class SessionService : Hilt_SessionService() {
             if (bypassChargeActive && settings.bypassChargeEnabled) {
                 add(SessionStatusChip.BYPASS_CHARGING)
             }
-            if (secureOn(SidebarVisibility.HIGH_TOUCH)) add(SessionStatusChip.TOUCH)
+            // The touch policy service journals the system-wide rate while a session replaces it.
+            if (Settings.Secure.getIntForUser(contentResolver, TouchPolicySession.KEY_RESTORE_RATE, -1,
+                    sessionUserId) == 0 &&
+                lineageos.providers.LineageSettings.System.getIntForUser(contentResolver,
+                    lineageos.providers.LineageSettings.System.HIGH_TOUCH_POLLING_RATE_ENABLE,
+                    0, sessionUserId) == 1) add(SessionStatusChip.TOUCH)
             if (tileRepository.wifiLowLatencyActive.value && wifiConnected()) add(SessionStatusChip.WIFI)
             if (secureOn(SidebarVisibility.HIDDEN)) add(SessionStatusChip.SIDEBAR_HIDDEN)
             if (secureOn("ax_gaming_gesture_lock")) add(SessionStatusChip.GESTURES)

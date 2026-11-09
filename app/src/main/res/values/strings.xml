@@ -194,7 +194,16 @@
     <string name="tile_category_connectivity">Connectivity</string>
     <string name="tile_category_accessibility_privacy">Accessibility &amp; privacy</string>
     <string name="tile_gesture_lock">Gesture lock</string>
-    <string name="tile_touch_response">Touch response</string>
+    <string name="tile_touch_sensitivity">Touch sensitivity</string>
+    <string name="touch_sensitivity_title">Touch sensitivity</string>
+    <string name="touch_sensitivity_high_polling">High sampling rate</string>
+    <string name="touch_sensitivity_tap">Tap sensitivity</string>
+    <string name="touch_sensitivity_move">Move sensitivity</string>
+    <string name="touch_sensitivity_edge">Edge rejection</string>
+    <string name="touch_sensitivity_edge_off">Off</string>
+    <string name="touch_sensitivity_edge_small">Small</string>
+    <string name="touch_sensitivity_edge_medium">Medium</string>
+    <string name="touch_sensitivity_edge_large">Large</string>
     <string name="tile_ringer">Ringer</string>
     <string name="tile_ringer_sound">Sound</string>
     <string name="tile_ringer_vibrate">Vibrate</string>
@@ -276,7 +285,7 @@
     <string name="tile_caffeine_short">Screen on 5 min</string>
     <string name="tile_aspect_ratio_short">Ratio</string>
     <string name="tile_gesture_lock_short">Gestures</string>
-    <string name="tile_touch_response_short">Touch</string>
+    <string name="tile_touch_sensitivity_short">Sensitivity</string>
     <string name="status_do_not_disturb_short">DND</string>
     <string name="status_sidebar_hidden_short">Sidebar off</string>
     <string name="status_high_touch_sampling_short">High touch sampling</string>

@@ -60,8 +60,9 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import io.github.miner7222.gamespace.TouchSensitivitySettings
+import io.github.miner7222.gamespace.gamebar.TouchSensitivityTile
 import io.github.miner7222.gamespace.library.GameOption
-import io.github.miner7222.gamespace.library.SidebarVisibility
 import io.github.miner7222.gamespace.library.SessionOptions
 import io.github.miner7222.gamespace.shortLabel
 import io.chaldeaprjkt.gamespace.data.AppSettings
@@ -341,7 +342,7 @@ class TileRepository @Inject constructor(
     private val haloAvailableSetting = "halo_ring_available"
     private val notificationState = mutableStateOf((appSettings.inGameOptions.current(GameOption.DANMAKU) == 1))
     private val gestureState = mutableStateOf(false)
-    private val touchResponseState = mutableStateOf(false)
+    private val touchSensitivityRevision = mutableIntStateOf(0)
     private val wifiLowLatencyState = mutableStateOf(false)
     private val ringerState = mutableStateOf(AudioManager.RINGER_MODE_NORMAL)
     private val bypassChargeState = mutableStateOf(systemSettings.bypassChargeEnabled)
@@ -451,7 +452,9 @@ class TileRepository @Inject constructor(
             Settings.Secure.NIGHT_DISPLAY_ACTIVATED,
             Settings.Secure.ACCESSIBILITY_DISPLAY_INVERSION_ENABLED,
             Settings.Secure.ACCESSIBILITY_DISPLAY_DALTONIZER_ENABLED,
-            Settings.Secure.REDUCE_BRIGHT_COLORS_ACTIVATED, "ax_gaming_gesture_lock"
+            Settings.Secure.REDUCE_BRIGHT_COLORS_ACTIVATED, "ax_gaming_gesture_lock",
+            TouchSensitivitySettings.KEY_HIGH_POLLING, TouchSensitivitySettings.KEY_TAP,
+            TouchSensitivitySettings.KEY_MOVE, TouchSensitivitySettings.KEY_EDGE,
         ).forEach { key ->
             context.contentResolver.registerContentObserver(
                 Settings.Secure.getUriFor(key), false, settingsObserver, UserHandle.USER_ALL
@@ -496,7 +499,7 @@ class TileRepository @Inject constructor(
         bypassChargeState.value = systemSettings.bypassChargeEnabled
         isFpsInfoVisible.value = appSettings.showFps
         gestureState.value = systemSettings.gestureLock
-        touchResponseState.value = appSettings.inGameOptions.current(GameOption.TOUCH) == 1
+        touchSensitivityRevision.intValue++
         wifiLowLatencyState.value = appSettings.wifiLowLatency
         ringerState.value = audioManager.ringerModeInternal
         if (pendingDefaultOrder && supportedFeatures.isNotEmpty()) {
@@ -592,7 +595,7 @@ class TileRepository @Inject constructor(
                 SystemProperties.getBoolean("persist.sys.ax_chg_bypass", false) ||
                 SystemProperties.getBoolean("persist.sys.battery_bypass_supported", false)
             "screen_aspect_ratio" -> aspectRatioTile.isAvailable
-            "touch_response" -> SidebarVisibility.isHighTouchSupported(context)
+            "touch_sensitivity", "pen_input" -> true
             "wifi_low_latency" -> appSettings.wifiLowLatencySupported
             "boost_memory" ->
                 context.checkSelfPermission(Manifest.permission.KILL_BACKGROUND_PROCESSES) ==
@@ -1067,22 +1070,7 @@ class TileRepository @Inject constructor(
             state = gestureState,
             setter = { gameSession.setOption(GameOption.GESTURES, if (it) 1 else 0) },
         ))
-        add(ToggleableTile(
-            id = "touch_response",
-            label = context.getString(R.string.tile_touch_response),
-            shortLabel = context.shortLabel(R.string.tile_touch_response_short),
-            icon = R.drawable.materialsymbols_ic_touch_app_rounded_filled,
-            category = TileCategory.GAME_TOOLS,
-            sessionOption = GameOption.TOUCH,
-            readSavedDifference = { differsFromSaved(GameOption.TOUCH) },
-            state = touchResponseState,
-            available = { hasDeviceCapability("touch_response") },
-            setter = {
-                gameSession.setOption(GameOption.TOUCH, if (it) 1 else 0)
-                SidebarVisibility.refresh(context)
-                refreshPlatformStates()
-            },
-        ))
+        add(TouchSensitivityTile(context) { touchSensitivityRevision.intValue })
         add(CycleTile(
             id = "ringer",
             label = context.getString(R.string.tile_ringer),
