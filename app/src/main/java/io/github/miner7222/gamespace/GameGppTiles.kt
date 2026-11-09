@@ -182,6 +182,7 @@ class GameFrameInterpTile @Inject constructor(
     override val label: String get() = context.getString(R.string.tile_frame_interp)
     override val shortLabel: String? get() = context.shortLabel(R.string.tile_frame_interp_short)
     override val failureRes = R.string.frame_interp_change_failed
+    override val detailNote: String get() = context.getString(R.string.frame_interp_description)
     /** Shown only while super resolution actually holds interpolation back. */
     override val detailFooter: String?
         get() = if (superResolution.isEnabled) context.getString(R.string.frame_interp_super_resolution_note) else null
@@ -205,6 +206,7 @@ class GameSuperResolutionTile @Inject constructor(
     override val label: String get() = context.getString(R.string.tile_super_resolution)
     override val shortLabel: String? get() = context.shortLabel(R.string.tile_super_resolution_short)
     override val failureRes = R.string.super_resolution_change_failed
+    override val detailNote: String get() = context.getString(R.string.super_resolution_description)
 
     override fun optionLabel(value: Int): String = context.getString(when (value) {
         0 -> R.string.gpp_off
