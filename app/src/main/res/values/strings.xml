@@ -72,7 +72,6 @@
     <string name="ringer_mode_title">In-game ringer mode</string>
     <string name="ringer_mode_silent">Silent</string>
     <string name="ringer_mode_vibrate">Vibrate</string>
-    <string name="ringer_mode_normal">Normal</string>
     <string name="ringer_mode_no_change">Do not change</string>
 
     <!-- Game Mode Labels -->
