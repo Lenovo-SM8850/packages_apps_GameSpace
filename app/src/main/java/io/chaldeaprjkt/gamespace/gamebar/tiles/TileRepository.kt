@@ -116,11 +116,19 @@ interface TileAction {
     val sessionOption: GameOption? get() = null
     val isSessionTile: Boolean get() = sessionOption != null
     val differsFromSaved: Boolean get() = false
+    /** A short description shown at the top of the tile's detail page. */
+    val detailNote: String? get() = null
+    /** A short note shown below the options on the tile's detail page. */
+    val detailFooter: String? get() = null
+    /** A reason the tile is set but cannot take effect; the tile then uses the attention colour. */
+    val notice: String? get() = null
     /** Non-empty when tapping the tile opens a picker after [toggle] ran. */
     val options: List<TileOption> get() = emptyList()
     @Composable fun observeEnabled(): State<Boolean>
     fun toggle()
     fun selectOption(option: TileOption) {}
+    /** A setting that holds the tile back, shown in the attention colour without a text. */
+    val limited: Boolean get() = false
 }
 
 class ToggleableTile(

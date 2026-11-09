@@ -34,6 +34,14 @@ class TouchSensitivityTile(private val context: Context,
                 TouchSensitivitySettings.edge(context) != TouchSensitivitySettings.DEFAULT_EDGE
         }
 
+    /** Pen input turns high polling off for the session, which holds a requested high polling back. */
+    override val limited: Boolean
+        get() {
+            revision()
+            return TouchSensitivitySettings.penInput(context) &&
+                TouchSensitivitySettings.highPolling(context)
+        }
+
     @Composable
     override fun observeEnabled(): State<Boolean> = rememberUpdatedState(isEnabled)
 

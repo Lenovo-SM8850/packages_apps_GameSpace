@@ -207,6 +207,7 @@
     <string name="tile_pen_input_high_polling_off">High sampling off</string>
     <string name="touch_sensitivity_title">Touch sensitivity</string>
     <string name="touch_sensitivity_high_polling">High sampling rate</string>
+    <string name="touch_sensitivity_high_polling_pen">Disabled while pen input is on.</string>
     <string name="touch_sensitivity_tap">Tap sensitivity</string>
     <string name="touch_sensitivity_move">Move sensitivity</string>
     <string name="touch_sensitivity_edge">Edge rejection</string>
