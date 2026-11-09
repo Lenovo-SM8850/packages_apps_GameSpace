@@ -1,0 +1,201 @@
+// SPDX-License-Identifier: Apache-2.0
+package io.github.miner7222.gamespace
+
+import android.app.ActivityTaskManager
+import android.content.Context
+import android.database.ContentObserver
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemProperties
+import android.os.UserHandle
+import android.provider.Settings
+import android.util.Log
+import android.widget.Toast
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.State
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberUpdatedState
+import dagger.hilt.android.qualifiers.ApplicationContext
+import io.chaldeaprjkt.gamespace.R
+import io.chaldeaprjkt.gamespace.gamebar.tiles.TileAction
+import io.chaldeaprjkt.gamespace.gamebar.tiles.TileCategory
+import io.chaldeaprjkt.gamespace.gamebar.tiles.TileKind
+import io.chaldeaprjkt.gamespace.gamebar.tiles.TileOption
+import org.json.JSONObject
+import javax.inject.Inject
+import javax.inject.Singleton
+
+/**
+ * A per-game choice for the game post-processing service. The dashboard stores it in a
+ * Settings.Secure map that the tuning session service reads; the service applies and releases it.
+ */
+abstract class GameGppTile(
+    protected val context: Context,
+    private val setting: String,
+    private val values: List<Int>,
+) : TileAction {
+    private var gamePackage: String? = null
+    private var gameUserId = context.userId
+    private val mode = mutableStateOf(0)
+    private var available = false
+    private var observer: ContentObserver? = null
+
+    override val kind = TileKind.DIALOG
+    override val category = TileCategory.DISPLAY
+    override val valueLine: String get() = optionLabel(mode.value)
+    override val isEnabled: Boolean get() = available && mode.value != 0
+    override val isAvailable: Boolean get() = available
+    override val options: List<TileOption>
+        get() = if (!available) emptyList() else values.map {
+            TileOption(it.toString(), optionLabel(it), it == mode.value)
+        }
+    @Composable
+    override fun observeEnabled(): State<Boolean> = rememberUpdatedState(isEnabled)
+
+    var onChanged: (() -> Unit)? = null
+    var onFailureMessage: ((String) -> Unit)? = null
+
+    protected abstract val failureRes: Int
+
+    protected abstract fun optionLabel(value: Int): String
+
+    fun onGameStart(packageName: String) {
+        gamePackage = packageName
+        gameUserId = resolveGameUserId(packageName)
+        observe()
+        refresh()
+    }
+
+    fun onGameStop() {
+        unobserve()
+        gamePackage = null
+        gameUserId = context.userId
+        available = false
+        mode.value = 0
+        onChanged?.invoke()
+    }
+
+    fun refresh() {
+        reload()
+        onChanged?.invoke()
+    }
+
+    override fun toggle() = refresh()
+
+    override fun selectOption(option: TileOption) {
+        select(option.id.toIntOrNull() ?: 0)
+    }
+
+    fun select(next: Int) {
+        reload()
+        val pkg = gamePackage ?: return
+        if (!available || next !in values) return
+        try {
+            val map = readMap(gameUserId)
+            if (next == 0) map.remove(pkg) else map.put(pkg, next)
+            if (!Settings.Secure.putStringForUser(context.contentResolver, setting,
+                    map.toString(), gameUserId)) {
+                showFailure()
+                return
+            }
+            mode.value = next
+            onChanged?.invoke()
+        } catch (e: Exception) {
+            Log.w(TAG, "Unable to change $setting", e)
+            showFailure()
+        }
+    }
+
+    private fun observe() {
+        unobserve()
+        val next = object : ContentObserver(Handler(Looper.getMainLooper())) {
+            override fun onChange(selfChange: Boolean) = refresh()
+        }
+        context.contentResolver.registerContentObserver(Settings.Secure.getUriFor(setting), false,
+            next, gameUserId)
+        observer = next
+    }
+
+    private fun unobserve() {
+        val current = observer ?: return
+        observer = null
+        context.contentResolver.unregisterContentObserver(current)
+    }
+
+    private fun reload() {
+        available = false
+        val pkg = gamePackage ?: return
+        try {
+            val gameContext = context.createContextAsUser(UserHandle.of(gameUserId), 0)
+            if (gameContext.packageManager.getLaunchIntentForPackage(pkg) == null) return
+            if (!SystemProperties.getBoolean(GPP_PROPERTY, false)) return
+            mode.value = readMap(gameUserId).optInt(pkg, 0).takeIf { it in values } ?: 0
+            available = true
+        } catch (e: Exception) {
+            Log.w(TAG, "Unable to read $setting", e)
+        }
+    }
+
+    private fun readMap(userId: Int): JSONObject {
+        val raw = Settings.Secure.getStringForUser(context.contentResolver, setting, userId)
+        return if (raw.isNullOrEmpty()) JSONObject() else JSONObject(raw)
+    }
+
+    private fun resolveGameUserId(packageName: String): Int {
+        try {
+            val tasks = ActivityTaskManager.getInstance().getTasks(Int.MAX_VALUE).filter {
+                it.baseActivity?.packageName == packageName ||
+                    it.topActivity?.packageName == packageName
+            }
+            val task = tasks.firstOrNull { it.userId == context.userId && it.isVisible }
+                ?: tasks.firstOrNull { it.isFocused }
+                ?: tasks.firstOrNull { it.isVisible }
+                ?: tasks.firstOrNull { it.userId == context.userId }
+            if (task != null) return task.userId
+        } catch (e: Exception) {
+            Log.w(TAG, "Unable to query game task user", e)
+        }
+        return context.userId
+    }
+
+    private fun showFailure() {
+        val message = context.getString(failureRes)
+        onFailureMessage?.invoke(message) ?: Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+    }
+
+    companion object {
+        private const val TAG = "GameGppTile"
+        private const val GPP_PROPERTY = "vendor.gpp.create_frc_extension"
+    }
+}
+
+@Singleton
+class GameFrameInterpTile @Inject constructor(
+    @ApplicationContext context: Context,
+) : GameGppTile(context, "game_frame_interp", listOf(0, 1, 2)) {
+    override val id = "frame_interpolation"
+    override val icon = R.drawable.materialsymbols_ic_auto_awesome_motion_rounded_filled
+    override val label: String get() = context.getString(R.string.tile_frame_interp)
+    override val shortLabel: String? get() = context.shortLabel(R.string.tile_frame_interp_short)
+    override val failureRes = R.string.frame_interp_change_failed
+
+    override fun optionLabel(value: Int): String = context.getString(when (value) {
+        1 -> R.string.frame_interp_2x
+        2 -> R.string.frame_interp_3x
+        else -> R.string.gpp_off
+    })
+}
+
+@Singleton
+class GameSuperResolutionTile @Inject constructor(
+    @ApplicationContext context: Context,
+) : GameGppTile(context, "game_super_resolution", listOf(0, 1)) {
+    override val id = "super_resolution"
+    override val icon = R.drawable.materialsymbols_ic_4k_rounded_filled
+    override val label: String get() = context.getString(R.string.tile_super_resolution)
+    override val shortLabel: String? get() = context.shortLabel(R.string.tile_super_resolution_short)
+    override val failureRes = R.string.super_resolution_change_failed
+
+    override fun optionLabel(value: Int): String =
+        context.getString(if (value > 0) R.string.gpp_on else R.string.gpp_off)
+}

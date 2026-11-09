@@ -15,6 +15,8 @@
  */
 package io.chaldeaprjkt.gamespace.utils.di
 
+import io.github.miner7222.gamespace.GameFrameInterpTile
+import io.github.miner7222.gamespace.GameSuperResolutionTile
 import android.content.Context
 import com.google.gson.Gson
 import dagger.Module
@@ -90,5 +92,10 @@ object MainModule {
         systemSettings: SystemSettings,
         gameSession: GameSession,
         aspectRatioTile: GameAspectRatioTile,
-    ): TileRepository = TileRepository(context, appSettings, systemSettings, gameSession, aspectRatioTile)
+        frameInterpTile: GameFrameInterpTile,
+        superResolutionTile: GameSuperResolutionTile,
+    ): TileRepository = TileRepository(
+        context, appSettings, systemSettings, gameSession, aspectRatioTile,
+        frameInterpTile, superResolutionTile,
+    )
 }

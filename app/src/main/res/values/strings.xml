@@ -189,6 +189,16 @@
     <string name="aspect_ratio_change_failed">Could not change aspect ratio.</string>
     <string name="aspect_ratio_swipe_down_again">Swipe down again to move the game to the bottom</string>
     <string name="aspect_ratio_swipe_up_again">Swipe up again to move the game back to the center</string>
+    <string name="tile_frame_interp">Frame interpolation</string>
+    <string name="tile_frame_interp_short">Motion</string>
+    <string name="frame_interp_2x">2x</string>
+    <string name="frame_interp_3x">3x</string>
+    <string name="tile_super_resolution">Super resolution</string>
+    <string name="tile_super_resolution_short">Super res</string>
+    <string name="gpp_on">On</string>
+    <string name="gpp_off">Off</string>
+    <string name="frame_interp_change_failed">Could not change frame interpolation.</string>
+    <string name="super_resolution_change_failed">Could not change super resolution.</string>
     <string name="tile_category_game_tools">Game tools</string>
     <string name="tile_category_sound_notifications">Sound &amp; notifications</string>
     <string name="tile_category_display">Display</string>
