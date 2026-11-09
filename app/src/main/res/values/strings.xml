@@ -200,7 +200,6 @@
     <string name="tile_category_sound_notifications">Sound &amp; notifications</string>
     <string name="tile_category_display">Display</string>
     <string name="tile_category_connectivity">Connectivity</string>
-    <string name="tile_category_accessibility_privacy">Accessibility &amp; privacy</string>
     <string name="tile_gesture_lock">Gesture lock</string>
     <string name="tile_touch_sensitivity">Touch sensitivity</string>
     <string name="tile_pen_input">Pen input</string>

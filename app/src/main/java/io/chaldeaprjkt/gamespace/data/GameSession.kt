@@ -222,7 +222,6 @@ class GameSession @Inject constructor(
     }
 
     fun setBypassChargeEnabled(enabled: Boolean) = setOption(GameOption.BYPASS, if (enabled) 1 else 0)
-    fun setDanmakuNotification(enabled: Boolean) = setOption(GameOption.DANMAKU, if (enabled) 1 else 0)
 
     fun setOption(option: GameOption, value: Int) {
         if (liveState != null && SessionOptions.choose(context, option, value)) applyOptions()

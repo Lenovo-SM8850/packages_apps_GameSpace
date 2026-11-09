@@ -20,7 +20,6 @@ package io.chaldeaprjkt.gamespace.data
 import android.app.Service
 import android.content.Context
 import android.content.SharedPreferences
-import android.net.wifi.WifiManager
 import android.provider.Settings
 import android.view.WindowManager
 import androidx.preference.PreferenceManager
@@ -75,7 +74,7 @@ class AppSettings @Inject constructor(private val context: Context) {
         get() = db.getBoolean(KEY_AUTO_BRIGHTNESS_DISABLE, true)
         set(it) = db.edit().putBoolean(KEY_AUTO_BRIGHTNESS_DISABLE, it).apply()
 
-    // Runs the Boost Memory tile's cleanup when a game session starts.
+    // Global default for the cleanup at game start; the per-game value is a GameOption.MEMORY override.
     var autoBoostMemory
         get() = db.getBoolean(KEY_AUTO_BOOST_MEMORY, false)
         set(value) = db.edit().putBoolean(KEY_AUTO_BOOST_MEMORY, value).apply()
@@ -161,20 +160,13 @@ class AppSettings @Inject constructor(private val context: Context) {
     val showStatusAtGameStart: Boolean
         get() = inGameOptions.current(GameOption.START_STATUS) == 1
 
-    val savedWifiLowLatency: Boolean get() = db.getBoolean(KEY_WIFI_LOW_LATENCY, true)
-
+    // The running game's saved choice, or the global default when no session is active.
     val wifiLowLatency: Boolean
-        get() = io.github.miner7222.gamespace.library.SessionOptions.wifi(context, savedWifiLowLatency)
+        get() = inGameOptions.enabled(
+            io.github.miner7222.gamespace.library.SessionOptions.packageName(context),
+            GameOption.WIFI_LOW_LATENCY)
 
-    fun setSessionWifiLowLatency(enabled: Boolean) =
-        io.github.miner7222.gamespace.library.SessionOptions.chooseWifi(context, enabled)
-
-    val wifiLowLatencySupported: Boolean
-        get() = try {
-            context.getSystemService(WifiManager::class.java)?.isLowLatencyModeSupported == true
-        } catch (_: RuntimeException) {
-            false
-        }
+    val wifiLowLatencySupported: Boolean get() = inGameOptions.wifiLowLatencySupported()
 
     fun registerPreferenceListener(listener: SharedPreferences.OnSharedPreferenceChangeListener) =
         db.registerOnSharedPreferenceChangeListener(listener)
