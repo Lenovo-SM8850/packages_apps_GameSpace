@@ -15,11 +15,6 @@
  */
 package io.chaldeaprjkt.gamespace.settings
 
-import android.content.BroadcastReceiver
-import android.content.Context
-import android.content.IntentFilter
-import android.net.wifi.WifiManager
-import io.chaldeaprjkt.gamespace.data.AppSettings
 import android.content.Intent
 import android.os.Bundle
 import android.view.View
@@ -37,12 +32,9 @@ import io.github.miner7222.gamespace.library.HideGamesPreference
 import io.github.miner7222.gamespace.library.LibraryActivity
 import io.chaldeaprjkt.gamespace.utils.di.ServiceViewEntryPoint
 import io.chaldeaprjkt.gamespace.utils.entryPointOf
-import io.chaldeaprjkt.gamespace.preferences.QuickStartAppPreference
-import io.chaldeaprjkt.gamespace.preferences.QuickStartAppPreferenceDialogFragment
 
 @AndroidEntryPoint(SettingsBasePreferenceFragment::class)
-class SettingsFragment : Hilt_SettingsFragment(),
-    QuickStartAppPreferenceDialogFragment.QuickStartAppListener {
+class SettingsFragment : Hilt_SettingsFragment() {
 
     private val systemSettings by lazy {
         requireContext().entryPointOf<ServiceViewEntryPoint>().systemSettings()
@@ -52,36 +44,13 @@ class SettingsFragment : Hilt_SettingsFragment(),
         requireContext().entryPointOf<ServiceViewEntryPoint>().appSettings()
     }
 
-    private val wifiStateReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context, intent: Intent) {
-            updateWifiPreference()
-        }
-    }
-
-    private fun updateWifiPreference() {
-        findPreference<Preference>(AppSettings.KEY_WIFI_LOW_LATENCY)?.isVisible =
-            appSettings.wifiLowLatencySupported
-    }
-
-    override fun onStart() {
-        super.onStart()
-        requireContext().registerReceiver(wifiStateReceiver,
-            IntentFilter(WifiManager.WIFI_STATE_CHANGED_ACTION), Context.RECEIVER_EXPORTED)
-    }
-
-    override fun onStop() {
-        requireContext().unregisterReceiver(wifiStateReceiver)
-        super.onStop()
-    }
-
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
         appSettings.inGameOptions.ensureMigrated()
         appSettings.migrateHandleOpacity()
         setPreferencesFromResource(R.xml.root_preferences, rootKey)
-        updatePreferences()
         arguments?.getString("section")?.let { section ->
             val keep = if (section == "main")
-                setOf("library_preferences", "game_optimization", "global_in_game_options") else setOf(section)
+                setOf("library_preferences", "global_in_game_options") else setOf(section)
             for (index in preferenceScreen.preferenceCount - 1 downTo 0) {
                 val preference = preferenceScreen.getPreference(index)
                 if (preference.key !in keep) preferenceScreen.removePreference(preference)
@@ -119,10 +88,6 @@ class SettingsFragment : Hilt_SettingsFragment(),
         }
     }
 
-    private fun updatePreferences() {
-        updateWifiPreference()
-    }
-
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         setInlineLayout(arguments?.getBoolean("inline", false) == true)
@@ -130,17 +95,6 @@ class SettingsFragment : Hilt_SettingsFragment(),
             (activity as? SettingsActivity)?.openGlobalInGameOptions()
             true
         }
-        if (savedInstanceState == null &&
-            activity?.intent?.getBooleanExtra(SettingsActivity.EXTRA_EDIT_QUICK_APPS, false) == true) {
-            activity?.intent?.removeExtra(SettingsActivity.EXTRA_EDIT_QUICK_APPS)
-            view.post {
-                findPreference<Preference>(AppSettings.KEY_QUICK_START_APPS)?.let {
-                    scrollToPreference(it)
-                    onDisplayPreferenceDialog(it)
-                }
-            }
-        }
-
         findPreference<SwitchPreferenceCompat>("gamespace_auto_game_detect")?.apply {
             isChecked = systemSettings.autoGameDetect
             setOnPreferenceChangeListener { _, value ->
@@ -167,7 +121,6 @@ class SettingsFragment : Hilt_SettingsFragment(),
 
     override fun onResume() {
         super.onResume()
-        updateWifiPreference()
         findPreference<androidx.preference.ListPreference>("gamespace_default_game_mode")?.value =
             systemSettings.libraryDefaultMode.toString()
         findPreference<SwitchPreferenceCompat>("gamespace_auto_game_detect")?.isChecked =
@@ -177,24 +130,5 @@ class SettingsFragment : Hilt_SettingsFragment(),
         findPreference<Preference>("library_open")?.summary = resources.getQuantityString(
             R.plurals.library_game_count, count, count)
     }
-
-    override fun onDisplayPreferenceDialog(preference: Preference) {
-        if (preference is QuickStartAppPreference) {
-            val dialogFragment =
-                QuickStartAppPreferenceDialogFragment.newInstance(preference.key)
-            dialogFragment.setListener(this)
-            dialogFragment.setTargetFragment(this, 0)
-            dialogFragment.show(parentFragmentManager, "QuickStartAppPreferenceDialogFragment")
-        } else {
-            super.onDisplayPreferenceDialog(preference)
-        }
-    }
-
-    override fun getSavedQuickStartApps(): String {
-        val prefs = preferenceManager.sharedPreferences ?: return ""
-        return prefs.getString(io.chaldeaprjkt.gamespace.data.AppSettings.KEY_QUICK_START_APPS, "") ?: ""
-    }
-
-    override fun saveQuickStartApps(apps: String) { /* no-op */ }
 
 }

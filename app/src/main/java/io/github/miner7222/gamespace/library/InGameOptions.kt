@@ -9,6 +9,7 @@ import android.content.IntentFilter
 import android.content.Context
 import android.content.SharedPreferences
 import android.database.ContentObserver
+import android.net.wifi.WifiManager
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemProperties
@@ -20,30 +21,33 @@ import io.chaldeaprjkt.gamespace.data.AppSettings
 import io.github.miner7222.gamespace.GameSplitAspectRatio
 import org.json.JSONObject
 
-enum class GameOptionGroup(val title: Int, val options: List<GameOption>) {
+/** [globalOnly] groups have no per-game values and appear only in the global options. */
+enum class GameOptionGroup(val title: Int, val options: List<GameOption>, val globalOnly: Boolean = false) {
     SCREEN(R.string.options_screen, listOf(GameOption.START_STATUS, GameOption.BRIGHTNESS,
         GameOption.AWAKE, GameOption.SPLIT_RATIO, GameOption.SIDEBAR)),
     NOTIFICATIONS(R.string.options_notifications, listOf(GameOption.DANMAKU, GameOption.DND,
         GameOption.CALL_OVERLAY, GameOption.CALLS, GameOption.RINGER)),
     HARDWARE(R.string.options_hardware, listOf(GameOption.GESTURES,
-        GameOption.HAPTICS, GameOption.BYPASS));
+        GameOption.HAPTICS, GameOption.BYPASS, GameOption.MEMORY, GameOption.WIFI_LOW_LATENCY)),
+    // Touch rows edit per-game overrides and global defaults instead of a single value.
+    TOUCH(R.string.options_touch, emptyList());
 }
 
 enum class GameOption(val key: String, val title: Int, val summary: Int, val default: Int,
-    val entries: Int = 0, val values: Int = 0) {
+    val entries: Int = 0, val values: Int = 0, val globalOnly: Boolean = false) {
     BRIGHTNESS("gamespace_auto_brightness_disabled", R.string.auto_brightness_disabled_title, 0, 1),
-    AWAKE("gamespace_stay_awake", R.string.stay_awake_title, 0, 0),
+    AWAKE("gamespace_stay_awake", R.string.stay_awake_title, 0, 0, globalOnly = true),
     DANMAKU("gamespace_danmaku_notification_mode", R.string.danmaku_notification_mode_title,
         R.string.danmaku_notification_mode_summary, 1),
     HAPTICS("gamespace_pulse_bass_haptics_disabled", R.string.pulse_bass_haptics_disabled_title,
         R.string.pulse_bass_haptics_disabled_summary, 1),
-    DND("gamespace_auto_dnd", R.string.auto_dnd_title, R.string.auto_dnd_summary, 0),
+    DND("gamespace_auto_dnd", R.string.auto_dnd_title, R.string.auto_dnd_summary, 0, globalOnly = true),
     CALL_OVERLAY("call_overlay_enabled", R.string.call_overlay_enabled_title,
         R.string.call_overlay_enabled_summary, 1),
     CALLS("gamespace_calls_mode", R.string.in_game_calls_title, 0, 0,
         R.array.in_game_calls_entries, R.array.in_game_calls_values),
     RINGER("gamespace_ringer_mode", R.string.ringer_mode_title, 0, 3,
-        R.array.ringer_mode_entries, R.array.ringer_mode_values),
+        R.array.ringer_mode_entries, R.array.ringer_mode_values, globalOnly = true),
     GESTURES("gamespace_lock_gesture", R.string.tile_gesture_lock,
         R.string.library_gesture_lock_summary, 0),
     SIDEBAR("gamespace_hide_sidebar", R.string.library_hide_sidebar_title, 0, 1),
@@ -51,7 +55,12 @@ enum class GameOption(val key: String, val title: Int, val summary: Int, val def
         R.string.library_bypass_summary, 0),
     START_STATUS("gamespace_show_status_at_game_start", R.string.show_status_at_game_start_title, 0, 1),
     SPLIT_RATIO("gamespace_split_keep_ratio", R.string.per_app_keep_aspect_ratio_title,
-        R.string.per_app_keep_aspect_ratio_summary, 0);
+        R.string.per_app_keep_aspect_ratio_summary, 0),
+    // These two keep the keys of the former launch preferences, so earlier global choices carry over.
+    MEMORY(AppSettings.KEY_AUTO_BOOST_MEMORY, R.string.game_memory_management_title,
+        R.string.game_memory_management_summary, 0),
+    WIFI_LOW_LATENCY(AppSettings.KEY_WIFI_LOW_LATENCY, R.string.wifi_low_latency_title,
+        R.string.wifi_low_latency_summary, 1);
 
     fun accepts(value: Int): Boolean = when (this) {
         CALLS -> value in 0..2
@@ -172,7 +181,9 @@ class InGameOptions(private val context: Context) {
             if (preferences.getBoolean(BYPASS_DEFAULT, false)) 1 else 0
         } else if (option.entries != 0) {
             preferences.getString(option.key, option.default.toString())?.toIntOrNull()
-                ?.takeIf(option::accepts) ?: option.default
+                ?.takeIf(option::accepts)
+                // A stored sound mode predates the option offering only vibrate and mute.
+                ?.takeUnless { option == GameOption.RINGER && it == 2 } ?: option.default
         } else if (preferences.getBoolean(option.key, option.default == 1)) 1 else 0
     }
 
@@ -193,13 +204,15 @@ class InGameOptions(private val context: Context) {
         ensureMigrated()
         val game = readMap()?.optJSONObject(packageName) ?: return emptyMap()
         return GameOption.entries.mapNotNull { option ->
+            if (option.globalOnly) return@mapNotNull null
             val value = game.optInt(option.key, -1)
             if (option.accepts(value)) option to value else null
         }.toMap()
     }
 
     fun effective(packageName: String?, option: GameOption): Int =
-        packageName?.let { overrides(it)[option] } ?: global(option)
+        if (option.globalOnly) global(option)
+        else packageName?.let { overrides(it)[option] } ?: global(option)
 
     fun enabled(packageName: String?, option: GameOption) = effective(packageName, option) == 1
 
@@ -209,6 +222,11 @@ class InGameOptions(private val context: Context) {
 
     fun set(packageName: String, option: GameOption, value: Int): Boolean = synchronized(lock) {
         require(packageName.isNotEmpty() && option.accepts(value))
+        // Global-only options never store a per-game value; the choice belongs to every game.
+        if (option.globalOnly) {
+            setGlobal(option, value)
+            return@synchronized true
+        }
         if (!ensureMigrated()) return@synchronized false
         val map = readMap() ?: return@synchronized false
         val game = map.optJSONObject(packageName) ?: JSONObject()
@@ -233,8 +251,15 @@ class InGameOptions(private val context: Context) {
         if (saved) syncSplitAspectRatio() else false
     }
 
+    fun wifiLowLatencySupported(): Boolean = try {
+        context.getSystemService(WifiManager::class.java)?.isLowLatencyModeSupported == true
+    } catch (_: RuntimeException) {
+        false
+    }
+
     fun availableOptions(): List<GameOption> = GameOption.entries.filter {
         when (it) {
+            GameOption.WIFI_LOW_LATENCY -> wifiLowLatencySupported()
             GameOption.HAPTICS -> context.getSystemService(Vibrator::class.java)?.hasVibrator() == true
             GameOption.SIDEBAR -> SidebarVisibility.isAvailable(context)
             GameOption.BYPASS -> SystemProperties.getBoolean("persist.sys.battery_bypass_supported", false)
@@ -249,8 +274,7 @@ class InGameOptions(private val context: Context) {
             override fun onChange(selfChange: Boolean) { onChange() }
         }
         val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
-            if (key == null || key == BYPASS_DEFAULT || key == AppSettings.KEY_WIFI_LOW_LATENCY ||
-                GameOption.entries.any { it.key == key }) {
+            if (key == null || key == BYPASS_DEFAULT || GameOption.entries.any { it.key == key }) {
                 handler.post { onChange() }
             }
         }
@@ -265,6 +289,12 @@ class InGameOptions(private val context: Context) {
             addAction(Intent.ACTION_PACKAGE_CHANGED)
             addDataScheme("package")
         }, Context.RECEIVER_NOT_EXPORTED)
+        // Low-latency support can depend on the radio state.
+        val wifiState = object : BroadcastReceiver() {
+            override fun onReceive(context: Context, intent: Intent) { onChange() }
+        }
+        context.registerReceiver(wifiState, IntentFilter(WifiManager.WIFI_STATE_CHANGED_ACTION),
+            Context.RECEIVER_NOT_EXPORTED)
         val session = SessionOptions.observe(context) { handler.post { onChange() } }
         resolver.registerContentObserver(Settings.Secure.getUriFor(OVERRIDES), false, observer, userId)
         resolver.registerContentObserver(Settings.System.getUriFor(LibraryKeys.GAMES), false, observer, userId)
@@ -272,6 +302,7 @@ class InGameOptions(private val context: Context) {
         return AutoCloseable {
             session.close()
             context.unregisterReceiver(packages)
+            context.unregisterReceiver(wifiState)
             resolver.unregisterContentObserver(observer)
             preferences.unregisterOnSharedPreferenceChangeListener(listener)
             handler.removeCallbacksAndMessages(null)

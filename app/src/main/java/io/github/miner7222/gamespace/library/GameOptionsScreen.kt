@@ -24,9 +24,6 @@ import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
-import android.net.wifi.WifiManager
-import androidx.preference.PreferenceManager
-import io.chaldeaprjkt.gamespace.data.AppSettings
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.luminance
@@ -42,8 +39,9 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.DialogWindowProvider
 import androidx.core.view.WindowCompat
 import io.chaldeaprjkt.gamespace.R
+import io.github.miner7222.gamespace.TouchSensitivitySettings
 
-internal data class GameOptionsSnapshot(val effective: Map<GameOption, Int>, val changed: Set<GameOption>, val available: List<GameOption>, val runtimeMode: Int?)
+internal data class GameOptionsSnapshot(val effective: Map<GameOption, Int>, val changed: Set<GameOption>, val available: List<GameOption>, val runtimeMode: Int?, val touchChanged: Boolean)
 
 @Composable
 internal fun rememberGameOptions(store: InGameOptions, packageName: String): GameOptionsSnapshot {
@@ -56,6 +54,11 @@ internal fun rememberGameOptions(store: InGameOptions, packageName: String): Gam
         }
         context.contentResolver.registerContentObserver(Settings.Secure.getUriFor("ax_gaming_gesture_lock"),
             false, gestureObserver, context.userId)
+        // Touch overrides and defaults change the per-game rows without touching the option store.
+        listOf(TouchSensitivitySettings.OVERRIDES, TouchSensitivitySettings.DEFAULTS).forEach { key ->
+            context.contentResolver.registerContentObserver(Settings.Secure.getUriFor(key), false,
+                gestureObserver, context.userId)
+        }
         onDispose {
             observer.close()
             context.contentResolver.unregisterContentObserver(gestureObserver)
@@ -65,11 +68,13 @@ internal fun rememberGameOptions(store: InGameOptions, packageName: String): Gam
         val overrides = store.overrides(packageName)
         val currentGame = SessionOptions.packageName(context) == packageName
         GameOptionsSnapshot(GameOption.entries.associateWith {
-            if (it == GameOption.GESTURES && currentGame) Settings.Secure.getIntForUser(
+            if (it.globalOnly) store.global(it)
+            else if (it == GameOption.GESTURES && currentGame) Settings.Secure.getIntForUser(
                 context.contentResolver, "ax_gaming_gesture_lock", 0, context.userId)
             else overrides[it] ?: store.global(it)
-        }, overrides.keys, store.availableOptions(),
-            if (SessionOptions.packageName(context) == packageName) SessionOptions.mode(context) else null)
+        }, overrides.keys, store.availableOptions().filter { packageName.isEmpty() || !it.globalOnly },
+            if (SessionOptions.packageName(context) == packageName) SessionOptions.mode(context) else null,
+            packageName.isNotEmpty() && TouchSensitivitySettings.hasOverrides(context, packageName))
     }
 }
 
@@ -132,23 +137,28 @@ internal fun OptionsCategories(titles: List<Int>, selected: Int, onSelect: (Int)
 @Composable
 internal fun GameOptionsContent(packageName: String?, expanded: Boolean, onBack: () -> Unit,
     overlay: Boolean = false, selectedGroup: GameOptionGroup? = null,
-    footer: @Composable () -> Unit = {}) {
+    editQuickApps: Boolean = false, onQuickAppsHandled: () -> Unit = {}) {
     val context = LocalContext.current
     val store = remember(context) { InGameOptions(context) }
     val snapshot = rememberGameOptions(store, packageName.orEmpty())
     var category by rememberSaveable(packageName) { mutableIntStateOf(0) }
     var choice by remember(packageName) { mutableStateOf<GameOption?>(null) }
     BackHandler { if (choice != null) choice = null else onBack() }
-    val groups = if (selectedGroup != null) listOf(selectedGroup) else GameOptionGroup.entries
+    // Global-only groups have no per-game values.
+    val groups = if (selectedGroup != null) listOf(selectedGroup)
+        else GameOptionGroup.entries.filter { packageName == null || !it.globalOnly }
     val detail: @Composable (List<GameOptionGroup>) -> Unit = { visibleGroups ->
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)) {
             visibleGroups.forEach { group ->
                 val options = group.options.filter { it in snapshot.available }
-                if (options.isNotEmpty()) {
+                val screenRows = packageName == null && !overlay && group == GameOptionGroup.SCREEN
+                // Touch rows edit for the viewed game on both screens; the overlay lists options only.
+                val touchRows = group == GameOptionGroup.TOUCH && !overlay
+                if (options.isNotEmpty() || screenRows || touchRows) {
                     Text(stringResource(group.title), style = MaterialTheme.typography.labelLarge,
                         color = MaterialTheme.colorScheme.primary)
-                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    if (options.isNotEmpty()) Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         options.forEachIndexed { index, option ->
                             val value = if (packageName == null) store.global(option) else snapshot.effective.getValue(option)
                             val summary = if (option.entries != 0) {
@@ -165,14 +175,19 @@ internal fun GameOptionsContent(packageName: String?, expanded: Boolean, onBack:
                                 })
                         }
                     }
+                    if (touchRows) TouchRows(packageName)
+                    if (screenRows) GlobalScreenRows(editQuickApps, onQuickAppsHandled)
                 }
             }
-            if (packageName != null && SessionOptions.packageName(context) == packageName) SessionWifiOption()
-            if (packageName != null) TextButton(onClick = { store.reset(packageName) },
-                enabled = snapshot.changed.isNotEmpty(), modifier = Modifier.align(Alignment.End)) {
+            if (packageName != null) TextButton(onClick = {
+                store.reset(packageName)
+                TouchSensitivitySettings.clearOverrides(context, packageName,
+                    applyLive = SessionOptions.packageName(context) == packageName &&
+                        SessionOptions.isActive(context))
+            }, enabled = snapshot.changed.isNotEmpty() || snapshot.touchChanged,
+                modifier = Modifier.align(Alignment.End)) {
                 Text(stringResource(R.string.library_reset_defaults))
             }
-            footer()
         }
     }
     if (overlay) {
@@ -255,28 +270,5 @@ internal fun OptionRow(title: String, summary: String?, checked: Boolean?,
                     thumbContent = { if (checked) Icon(Icons.Rounded.Check, null, Modifier.size(SwitchDefaults.IconSize)) })
             }
         }
-    }
-}
-
-@Composable
-private fun SessionWifiOption() {
-    val context = LocalContext.current
-    val supported = remember(context) {
-        runCatching { context.getSystemService(WifiManager::class.java)?.isLowLatencyModeSupported == true }.getOrDefault(false)
-    }
-    if (!supported) return
-    val preferences = remember(context) { PreferenceManager.getDefaultSharedPreferences(context) }
-    var revision by remember { mutableIntStateOf(0) }
-    DisposableEffect(context) {
-        val observation = InGameOptions(context).observe { revision++ }
-        onDispose { observation.close() }
-    }
-    val enabled = remember(revision) {
-        SessionOptions.wifi(context, preferences.getBoolean(AppSettings.KEY_WIFI_LOW_LATENCY, true))
-    }
-    Text(stringResource(R.string.options_session), style = MaterialTheme.typography.labelLarge,
-        color = MaterialTheme.colorScheme.primary)
-    OptionRow(stringResource(R.string.wifi_low_latency_title), null, enabled, groupedShape(0, 1)) {
-        SessionOptions.chooseWifi(context, !enabled)
     }
 }

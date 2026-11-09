@@ -9,7 +9,6 @@ import android.content.Context
 object SessionOptions {
     private class State(val packageName: String, var savedMode: Int) {
         val choices = mutableMapOf<GameOption, Int>()
-        var wifi: Boolean? = null
         var mode: Int? = null
         var autoBrightness: Boolean? = null
         var brightness: Float? = null
@@ -48,6 +47,8 @@ object SessionOptions {
 
     fun value(context: Context, option: GameOption): Int {
         val state = states[context.userId]
+        // Global-only options never take a session value; the global choice is authoritative.
+        if (option.globalOnly) return InGameOptions(context).global(option)
         return state?.choices?.get(option) ?: InGameOptions(context).effective(state?.packageName, option)
     }
 
@@ -70,11 +71,6 @@ object SessionOptions {
         return (state.choices[option] ?: saved) != saved
     }
 
-    fun wifiDiffersFromSaved(context: Context, saved: Boolean): Boolean {
-        val state = states[context.userId] ?: return false
-        return (state.wifi ?: saved) != saved
-    }
-
     fun modeDiffersFromSaved(context: Context): Boolean {
         val state = states[context.userId] ?: return false
         return (state.mode ?: state.savedMode) != state.savedMode
@@ -85,14 +81,6 @@ object SessionOptions {
         val state = states[context.userId] ?: return false
         state.autoBrightness = enabled
         state.choices[GameOption.BRIGHTNESS] = if (enabled) 0 else 1
-        notify(context)
-        return true
-    }
-
-    fun wifi(context: Context, global: Boolean): Boolean = states[context.userId]?.wifi ?: global
-    fun chooseWifi(context: Context, enabled: Boolean): Boolean {
-        val state = states[context.userId] ?: return false
-        state.wifi = enabled
         notify(context)
         return true
     }

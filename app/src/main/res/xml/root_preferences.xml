@@ -29,6 +29,16 @@
             android:summary="@string/auto_game_detect_summary"
             android:defaultValue="true"
             android:persistent="false" />
+
+        <ListPreference
+            android:key="gamespace_default_game_mode"
+            android:title="@string/library_default_mode"
+            android:summary="%s"
+            android:entries="@array/per_app_preferred_mode_entries"
+            android:entryValues="@array/per_app_preferred_mode_values"
+            android:defaultValue="1"
+            android:persistent="false" />
+
         <Preference
             android:key="library_open"
             android:title="@string/library_open"
@@ -40,60 +50,9 @@
             android:title="@string/library_hide_title" />
     </PreferenceCategory>
 
-    <PreferenceCategory
-        android:key="game_optimization"
-        android:title="@string/game_optimization_title">
-
-        <ListPreference
-            android:key="gamespace_default_game_mode"
-            android:title="@string/library_default_mode"
-            android:summary="%s"
-            android:entries="@array/per_app_preferred_mode_entries"
-            android:entryValues="@array/per_app_preferred_mode_values"
-            android:defaultValue="1"
-            android:persistent="false" />
-
-        <SwitchPreferenceCompat
-            android:key="game_memory_management"
-            android:title="@string/game_memory_management_title"
-            android:summary="@string/game_memory_management_summary"
-            android:defaultValue="false" />
-
-        <SwitchPreferenceCompat
-            android:key="gamespace_wifi_low_latency"
-            android:title="@string/wifi_low_latency_title"
-            android:summary="@string/wifi_low_latency_summary"
-            android:defaultValue="true" />
-
-    </PreferenceCategory>
-
     <Preference
         android:key="global_in_game_options"
         android:title="@string/global_in_game_options_title"
         android:persistent="false" />
-
-    <PreferenceCategory
-        android:key="global_preferences"
-        android:title="@string/options_other">
-
-        <com.crdroid.settings.preferences.CustomSeekBarPreference
-            android:key="gamespace_menu_opacity"
-            android:title="@string/icon_idle_opacity_title"
-            android:defaultValue="100"
-            android:max="100"
-            app:min="0"
-            app:units="%" />
-
-        <SwitchPreferenceCompat
-            android:key="gamespace_handle_auto_hide"
-            android:title="@string/handle_auto_hide_title"
-            android:summary="@string/handle_auto_hide_summary"
-            android:defaultValue="false" />
-
-        <io.chaldeaprjkt.gamespace.preferences.QuickStartAppPreference
-            android:key="quick_start_apps"
-            android:title="@string/quick_start_apps_title" />
-
-    </PreferenceCategory>
 
 </PreferenceScreen>

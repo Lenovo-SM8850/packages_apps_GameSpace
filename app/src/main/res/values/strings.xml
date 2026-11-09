@@ -160,7 +160,6 @@
     <string name="cd_expand">Expand</string>
 
     <!-- Game Optimization -->
-    <string name="game_optimization_title">Launch Optimization</string>
     <string name="game_memory_management_title">Smart Memory Management</string>
     <string name="game_memory_management_summary">Automatically clear background apps when launching games</string>
     <string name="game_memory_boosted">Memory boosted</string>
@@ -193,8 +192,14 @@
     <string name="tile_frame_interp_short">Motion</string>
     <string name="frame_interp_2x">2x</string>
     <string name="frame_interp_3x">3x</string>
+    <string name="frame_interp_description">Inserts intermediate frames between frames, up to 120 fps. Uses more power and heat.</string>
     <string name="tile_super_resolution">Super resolution</string>
     <string name="tile_super_resolution_short">Super res</string>
+    <string name="super_resolution_light">Light</string>
+    <string name="super_resolution_strong">Strong</string>
+    <string name="super_resolution_description">Renders the game at a lower resolution and upscales it, for better performance with little loss of detail.</string>
+    <string name="super_resolution_restart_needed">Applies after the game restarts.</string>
+    <string name="super_resolution_unsupported">Not supported on this device.</string>
     <string name="gpp_on">On</string>
     <string name="gpp_off">Off</string>
     <string name="frame_interp_change_failed">Could not change frame interpolation.</string>
@@ -307,9 +312,9 @@
     <string name="gamebar_battery_label_short">Batt</string>
     <string name="options_screen">Screen and overlay</string>
     <string name="options_notifications">Notifications and calls</string>
-    <string name="options_hardware">Touch and hardware</string>
+    <string name="options_hardware">Hardware</string>
+    <string name="options_touch">Touch</string>
     <string name="options_session">This session</string>
     <string name="game_performance">Game Tuner</string>
-    <string name="options_other">Other options</string>
     <string name="global_in_game_options_title">Global in-game options</string>
 </resources>
