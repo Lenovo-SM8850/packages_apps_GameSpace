@@ -175,12 +175,19 @@ abstract class GameGppTile(
 @Singleton
 class GameFrameInterpTile @Inject constructor(
     @ApplicationContext context: Context,
+    private val superResolution: GameSuperResolutionTile,
 ) : GameGppTile(context, "game_frame_interp", listOf(0, 1, 2)) {
     override val id = "frame_interpolation"
     override val icon = R.drawable.materialsymbols_ic_auto_awesome_motion_rounded_filled
     override val label: String get() = context.getString(R.string.tile_frame_interp)
     override val shortLabel: String? get() = context.shortLabel(R.string.tile_frame_interp_short)
     override val failureRes = R.string.frame_interp_change_failed
+    /** Shown only while super resolution actually holds interpolation back. */
+    override val detailFooter: String?
+        get() = if (superResolution.isEnabled) context.getString(R.string.frame_interp_super_resolution_note) else null
+
+    /** Super resolution caps the source frames, which holds interpolation back. */
+    override val limited: Boolean get() = superResolution.isEnabled
 
     override fun optionLabel(value: Int): String = context.getString(when (value) {
         1 -> R.string.frame_interp_2x
