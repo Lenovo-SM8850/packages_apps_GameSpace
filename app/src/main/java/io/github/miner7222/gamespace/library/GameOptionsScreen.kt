@@ -39,8 +39,9 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.DialogWindowProvider
 import androidx.core.view.WindowCompat
 import io.chaldeaprjkt.gamespace.R
+import io.github.miner7222.gamespace.TouchSensitivitySettings
 
-internal data class GameOptionsSnapshot(val effective: Map<GameOption, Int>, val changed: Set<GameOption>, val available: List<GameOption>, val runtimeMode: Int?)
+internal data class GameOptionsSnapshot(val effective: Map<GameOption, Int>, val changed: Set<GameOption>, val available: List<GameOption>, val runtimeMode: Int?, val touchChanged: Boolean)
 
 @Composable
 internal fun rememberGameOptions(store: InGameOptions, packageName: String): GameOptionsSnapshot {
@@ -53,6 +54,11 @@ internal fun rememberGameOptions(store: InGameOptions, packageName: String): Gam
         }
         context.contentResolver.registerContentObserver(Settings.Secure.getUriFor("ax_gaming_gesture_lock"),
             false, gestureObserver, context.userId)
+        // Touch overrides and defaults change the per-game rows without touching the option store.
+        listOf(TouchSensitivitySettings.OVERRIDES, TouchSensitivitySettings.DEFAULTS).forEach { key ->
+            context.contentResolver.registerContentObserver(Settings.Secure.getUriFor(key), false,
+                gestureObserver, context.userId)
+        }
         onDispose {
             observer.close()
             context.contentResolver.unregisterContentObserver(gestureObserver)
@@ -67,7 +73,8 @@ internal fun rememberGameOptions(store: InGameOptions, packageName: String): Gam
                 context.contentResolver, "ax_gaming_gesture_lock", 0, context.userId)
             else overrides[it] ?: store.global(it)
         }, overrides.keys, store.availableOptions().filter { packageName.isEmpty() || !it.globalOnly },
-            if (SessionOptions.packageName(context) == packageName) SessionOptions.mode(context) else null)
+            if (SessionOptions.packageName(context) == packageName) SessionOptions.mode(context) else null,
+            packageName.isNotEmpty() && TouchSensitivitySettings.hasOverrides(context, packageName))
     }
 }
 
@@ -130,7 +137,7 @@ internal fun OptionsCategories(titles: List<Int>, selected: Int, onSelect: (Int)
 @Composable
 internal fun GameOptionsContent(packageName: String?, expanded: Boolean, onBack: () -> Unit,
     overlay: Boolean = false, selectedGroup: GameOptionGroup? = null,
-    footer: @Composable () -> Unit = {}) {
+    globalScreenRows: (@Composable () -> Unit)? = null) {
     val context = LocalContext.current
     val store = remember(context) { InGameOptions(context) }
     val snapshot = rememberGameOptions(store, packageName.orEmpty())
@@ -144,11 +151,17 @@ internal fun GameOptionsContent(packageName: String?, expanded: Boolean, onBack:
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)) {
             visibleGroups.forEach { group ->
-                val options = group.options.filter { it in snapshot.available }
-                if (options.isNotEmpty()) {
+                // Settings adds its global-only rows to the screen group.
+                val screenRows = globalScreenRows != null && packageName == null && !overlay &&
+                    group == GameOptionGroup.SCREEN
+                // Touch rows edit for the viewed game on both screens; the overlay lists options only.
+                val touchRows = group == GameOptionGroup.TOUCH && !overlay
+                val options = group.options.filter { it in snapshot.available &&
+                    !(touchRows && it == GameOption.GESTURES) }
+                if (options.isNotEmpty() || screenRows || touchRows) {
                     Text(stringResource(group.title), style = MaterialTheme.typography.labelLarge,
                         color = MaterialTheme.colorScheme.primary)
-                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    if (options.isNotEmpty()) Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         options.forEachIndexed { index, option ->
                             val value = if (packageName == null) store.global(option) else snapshot.effective.getValue(option)
                             val summary = if (option.entries != 0) {
@@ -165,13 +178,37 @@ internal fun GameOptionsContent(packageName: String?, expanded: Boolean, onBack:
                                 })
                         }
                     }
+                    if (touchRows) TouchRows(packageName,
+                        gestureRow = if (GameOption.GESTURES in snapshot.available) {
+                            { shape ->
+                                val option = GameOption.GESTURES
+                                val value = if (packageName == null) store.global(option) else snapshot.effective.getValue(option)
+                                val summary = if (option.entries != 0) {
+                                    val values = context.resources.getStringArray(option.values)
+                                    context.resources.getStringArray(option.entries)[values.indexOf(value.toString()).coerceAtLeast(0)]
+                                } else if (option.summary != 0) stringResource(option.summary) else null
+                                OptionRow(stringResource(option.title), summary,
+                                    if (option.entries == 0) value == 1 else null, shape,
+                                    changed = packageName != null && option in snapshot.changed,
+                                    onClick = {
+                                        if (option.entries != 0) choice = option
+                                        else if (packageName == null) store.setGlobal(option, 1 - value)
+                                        else store.set(packageName, option, 1 - value)
+                                    })
+                            }
+                        } else null)
+                    if (screenRows) globalScreenRows?.invoke()
                 }
             }
-            if (packageName != null) TextButton(onClick = { store.reset(packageName) },
-                enabled = snapshot.changed.isNotEmpty(), modifier = Modifier.align(Alignment.End)) {
+            if (packageName != null) TextButton(onClick = {
+                store.reset(packageName)
+                TouchSensitivitySettings.clearOverrides(context, packageName,
+                    applyLive = SessionOptions.packageName(context) == packageName &&
+                        SessionOptions.isActive(context))
+            }, enabled = snapshot.changed.isNotEmpty() || snapshot.touchChanged,
+                modifier = Modifier.align(Alignment.End)) {
                 Text(stringResource(R.string.library_reset_defaults))
             }
-            footer()
         }
     }
     if (overlay) {

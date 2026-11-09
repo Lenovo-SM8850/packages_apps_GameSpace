@@ -304,9 +304,8 @@
     <string name="gamebar_battery_label_short">Batt</string>
     <string name="options_screen">Screen and overlay</string>
     <string name="options_notifications">Notifications and calls</string>
-    <string name="options_hardware">Touch and hardware</string>
+    <string name="options_hardware">Hardware</string>
     <string name="options_touch">Touch</string>
     <string name="game_performance">Game Tuner</string>
-    <string name="options_other">Other options</string>
     <string name="global_in_game_options_title">Global in-game options</string>
 </resources>

@@ -55,28 +55,4 @@
         android:title="@string/global_in_game_options_title"
         android:persistent="false" />
 
-    <PreferenceCategory
-        android:key="global_preferences"
-        android:title="@string/options_other">
-
-        <com.crdroid.settings.preferences.CustomSeekBarPreference
-            android:key="gamespace_menu_opacity"
-            android:title="@string/icon_idle_opacity_title"
-            android:defaultValue="100"
-            android:max="100"
-            app:min="0"
-            app:units="%" />
-
-        <SwitchPreferenceCompat
-            android:key="gamespace_handle_auto_hide"
-            android:title="@string/handle_auto_hide_title"
-            android:summary="@string/handle_auto_hide_summary"
-            android:defaultValue="false" />
-
-        <io.chaldeaprjkt.gamespace.preferences.QuickStartAppPreference
-            android:key="quick_start_apps"
-            android:title="@string/quick_start_apps_title" />
-
-    </PreferenceCategory>
-
 </PreferenceScreen>

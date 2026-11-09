@@ -17,6 +17,9 @@
  */
 package io.chaldeaprjkt.gamespace.settings
 
+import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Bundle
 import android.view.ViewGroup
 import androidx.activity.compose.BackHandler
@@ -26,10 +29,12 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -37,7 +42,9 @@ import androidx.fragment.app.FragmentContainerView
 import com.android.settingslib.collapsingtoolbar.CollapsingToolbarBaseActivity
 import dagger.hilt.android.AndroidEntryPoint
 import io.chaldeaprjkt.gamespace.R
+import io.chaldeaprjkt.gamespace.data.AppSettings
 import io.github.miner7222.gamespace.library.*
+import kotlin.math.roundToInt
 
 @AndroidEntryPoint(CollapsingToolbarBaseActivity::class)
 class SettingsActivity : Hilt_SettingsActivity() {
@@ -47,6 +54,7 @@ class SettingsActivity : Hilt_SettingsActivity() {
 
     private var globalOptionsOpen by mutableStateOf(false)
     private var globalCategory by mutableIntStateOf(0)
+    private var editQuickApps by mutableStateOf(false)
 
     fun openGlobalInGameOptions() {
         globalOptionsOpen = true
@@ -55,9 +63,14 @@ class SettingsActivity : Hilt_SettingsActivity() {
     @OptIn(ExperimentalMaterial3ExpressiveApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val quickApps = intent.getBooleanExtra(EXTRA_EDIT_QUICK_APPS, false)
+        // The request is consumed once; a recreated activity restores its own state instead.
+        val quickApps = savedInstanceState == null && intent.getBooleanExtra(EXTRA_EDIT_QUICK_APPS, false)
+        intent.removeExtra(EXTRA_EDIT_QUICK_APPS)
+        editQuickApps = quickApps
         globalOptionsOpen = savedInstanceState?.getBoolean("global_options_open") ?: quickApps
-        globalCategory = savedInstanceState?.getInt("global_category")?.coerceIn(0, 3) ?: if (quickApps) 3 else 0
+        // Quick start apps live in the first group, the screen and overlay options.
+        globalCategory = savedInstanceState?.getInt("global_category")
+            ?.coerceIn(0, GameOptionGroup.entries.lastIndex) ?: 0
         enableEdgeToEdge()
         actionBar?.hide()
         window.setContentView(ComposeView(this).apply {
@@ -81,8 +94,11 @@ class SettingsActivity : Hilt_SettingsActivity() {
     @Composable
     private fun SettingsContent() {
         val mainTitles = listOf(R.string.game_list_title, R.string.global_in_game_options_title)
-        val gameTitles = GameOptionGroup.entries.map { it.title } + R.string.options_other
+        val gameTitles = GameOptionGroup.entries.map { it.title }
         val back = { if (globalOptionsOpen) globalOptionsOpen = false else finish() }
+        val globalRows: @Composable () -> Unit = {
+            GlobalScreenRows(editQuickApps) { editQuickApps = false }
+        }
         BackHandler(onBack = back)
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surfaceContainer) {
             BoxWithConstraints(Modifier.windowInsetsPadding(WindowInsets.safeDrawing)) {
@@ -101,17 +117,16 @@ class SettingsActivity : Hilt_SettingsActivity() {
                         Surface(Modifier.weight(1f).fillMaxHeight(), shape = RoundedCornerShape(28.dp),
                             color = MaterialTheme.colorScheme.surfaceContainerLow) {
                             if (globalOptionsOpen) {
-                                if (globalCategory < GameOptionGroup.entries.size)
-                                    GameOptionsContent(null, expanded = false,
-                                        selectedGroup = GameOptionGroup.entries[globalCategory], onBack = back)
-                                else PreferencesPane("global_preferences")
+                                GameOptionsContent(null, expanded = false,
+                                    selectedGroup = GameOptionGroup.entries[globalCategory], onBack = back,
+                                    globalScreenRows = globalRows)
                             } else PreferencesPane("library_preferences")
                         }
                     } else Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
                         Box(Modifier.widthIn(max = 640.dp).fillMaxSize()) {
                             if (globalOptionsOpen)
                                 GameOptionsContent(null, expanded = false, onBack = back,
-                                    footer = { PreferencesPane("global_preferences", inline = true) })
+                                    globalScreenRows = globalRows)
                             else PreferencesPane("main")
                         }
                     }
@@ -161,4 +176,94 @@ class SettingsActivity : Hilt_SettingsActivity() {
                 })
         }
     }
+}
+
+/**
+ * Rows of the screen group that exist only globally: handle opacity, handle auto-hide and the
+ * quick start apps. They keep their preference keys, so the handle and sidebar update live.
+ */
+@Composable
+private fun GlobalScreenRows(editQuickApps: Boolean, onQuickAppsHandled: () -> Unit) {
+    val context = LocalContext.current
+    val settings = remember(context) { AppSettings(context) }
+    var opacity by remember { mutableIntStateOf(settings.menuOpacity) }
+    var autoHide by remember { mutableStateOf(settings.handleAutoHide) }
+    var picking by rememberSaveable { mutableStateOf(false) }
+    // The dashboard can ask for the picker directly; consume the request once.
+    LaunchedEffect(editQuickApps) {
+        if (editQuickApps) {
+            picking = true
+            onQuickAppsHandled()
+        }
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        SliderRow(stringResource(R.string.icon_idle_opacity_title), "$opacity%", opacity.toFloat(),
+            0f..100f, 0, groupedShape(0, 3)) { position ->
+            val next = position.roundToInt().coerceIn(0, 100)
+            if (next != opacity) {
+                opacity = next
+                settings.menuOpacity = next
+            }
+        }
+        OptionRow(stringResource(R.string.handle_auto_hide_title),
+            stringResource(R.string.handle_auto_hide_summary), autoHide, groupedShape(1, 3)) {
+            autoHide = !autoHide
+            settings.handleAutoHide = autoHide
+        }
+        OptionRow(stringResource(R.string.quick_start_apps_title), null, null, groupedShape(2, 3)) {
+            picking = true
+        }
+    }
+    if (picking) QuickStartAppsDialog(settings.quickStartApps, onDismiss = { picking = false },
+        onSave = { apps ->
+            settings.quickStartApps = apps
+            picking = false
+        })
+}
+
+/** Selection is a comma-separated package list, the format the sidebar reads. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun QuickStartAppsDialog(saved: String, onDismiss: () -> Unit, onSave: (String) -> Unit) {
+    val context = LocalContext.current
+    val apps = remember(context) { launchableApps(context) }
+    var selection by rememberSaveable { mutableStateOf(saved) }
+    // Only seeds the checkboxes; later toggles are tracked in [selection].
+    val seed = remember { selection.split(',').filter { it.isNotEmpty() }.toSet() }
+    AlertDialog(onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.quick_start_apps_title)) },
+        text = {
+            AppPickerContent(apps, seed, "", {}) { packageName, checked ->
+                val packages = selection.split(',').filter { it.isNotEmpty() }.toMutableList()
+                if (checked) {
+                    if (packageName !in packages) packages.add(packageName)
+                } else packages.remove(packageName)
+                selection = packages.joinToString(",")
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onSave(selection) }) { Text(stringResource(android.R.string.ok)) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(android.R.string.cancel)) }
+        })
+}
+
+/** One entry per launcher package, sorted by label. */
+private fun launchableApps(context: Context): List<PickerApp> {
+    val pm = context.packageManager
+    val intent = Intent(Intent.ACTION_MAIN, null).addCategory(Intent.CATEGORY_LAUNCHER)
+    val seen = mutableSetOf<String>()
+    val apps = mutableListOf<PickerApp>()
+    for (info in pm.queryIntentActivities(intent, 0)) {
+        val packageName = info.activityInfo?.packageName ?: continue
+        if (!seen.add(packageName)) continue
+        try {
+            val app = pm.getApplicationInfo(packageName, 0)
+            apps.add(PickerApp(pm.getApplicationLabel(app).toString(), packageName, pm.getApplicationIcon(app)))
+        } catch (_: PackageManager.NameNotFoundException) {
+            // The package was removed while the list was being built.
+        }
+    }
+    return apps.sortedWith { a, b -> a.name.compareTo(b.name, ignoreCase = true) }
 }
