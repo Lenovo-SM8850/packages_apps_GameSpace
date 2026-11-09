@@ -25,7 +25,7 @@ enum class GameOptionGroup(val title: Int, val options: List<GameOption>) {
         GameOption.AWAKE, GameOption.SPLIT_RATIO, GameOption.SIDEBAR)),
     NOTIFICATIONS(R.string.options_notifications, listOf(GameOption.DANMAKU, GameOption.DND,
         GameOption.CALL_OVERLAY, GameOption.CALLS, GameOption.RINGER)),
-    HARDWARE(R.string.options_hardware, listOf(GameOption.GESTURES, GameOption.TOUCH,
+    HARDWARE(R.string.options_hardware, listOf(GameOption.GESTURES,
         GameOption.HAPTICS, GameOption.BYPASS));
 }
 
@@ -46,8 +46,6 @@ enum class GameOption(val key: String, val title: Int, val summary: Int, val def
         R.array.ringer_mode_entries, R.array.ringer_mode_values),
     GESTURES("gamespace_lock_gesture", R.string.tile_gesture_lock,
         R.string.library_gesture_lock_summary, 0),
-    TOUCH("gamespace_high_touch_polling_enabled", R.string.library_high_touch_title,
-        R.string.library_high_touch_summary, 1),
     SIDEBAR("gamespace_hide_sidebar", R.string.library_hide_sidebar_title, 0, 1),
     BYPASS("bypass_charge_enabled", R.string.bypass_charge_enabled_title,
         R.string.library_bypass_summary, 0),
@@ -238,7 +236,6 @@ class InGameOptions(private val context: Context) {
     fun availableOptions(): List<GameOption> = GameOption.entries.filter {
         when (it) {
             GameOption.HAPTICS -> context.getSystemService(Vibrator::class.java)?.hasVibrator() == true
-            GameOption.TOUCH -> SidebarVisibility.isHighTouchSupported(context)
             GameOption.SIDEBAR -> SidebarVisibility.isAvailable(context)
             GameOption.BYPASS -> SystemProperties.getBoolean("persist.sys.battery_bypass_supported", false)
             else -> true

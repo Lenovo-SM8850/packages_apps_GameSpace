@@ -68,6 +68,7 @@ import io.chaldeaprjkt.gamespace.utils.GameModeUtils
 import io.chaldeaprjkt.gamespace.utils.ScreenUtils
 import io.github.miner7222.gamespace.GameAspectRatioGesture
 import io.github.miner7222.gamespace.GameAspectRatioTile
+import io.github.miner7222.gamespace.TouchPolicySession
 import io.github.miner7222.gamespace.gamebar.SessionStartStatus
 import io.github.miner7222.gamespace.gamebar.SessionStatusChip
 import io.github.miner7222.gamespace.gamebar.SessionStatusOverlay
@@ -362,11 +363,15 @@ class SessionService : Hilt_SessionService() {
             addAction(Intent.ACTION_BATTERY_CHANGED)
             addAction(AudioManager.INTERNAL_RINGER_MODE_CHANGED_ACTION)
         }, null, mainHandler, RECEIVER_EXPORTED)
-        listOf(SidebarVisibility.HIGH_TOUCH, SidebarVisibility.HIDDEN, "ax_gaming_gesture_lock").forEach { key ->
+        listOf(SidebarVisibility.HIDDEN, "ax_gaming_gesture_lock").forEach { key ->
             contentResolver.registerContentObserver(Settings.Secure.getUriFor(key), false, statusObserver, userId)
         }
         contentResolver.registerContentObserver(Settings.Secure.getUriFor("ax_gaming_gesture_lock"),
             false, gestureLockObserver, userId)
+        contentResolver.registerContentObserver(
+            lineageos.providers.LineageSettings.System.getUriFor(
+                lineageos.providers.LineageSettings.System.HIGH_TOUCH_POLLING_RATE_ENABLE),
+            false, statusObserver, userId)
         optionsObservation = appSettings.inGameOptions.observe { refreshInGameOptions() }
         try {
             taskManager.registerTaskStackListener(taskListener)
@@ -462,6 +467,7 @@ class SessionService : Hilt_SessionService() {
 
     private fun updateGameUiVisibility() {
         val show = frameworkGameVisible && currentPackage != null && !suspended
+        TouchPolicySession.publish(this, if (show) currentPackage else null)
         sidebar.setGameVisible(show)
         aspectRatioGesture.setGameVisible(show)
         danmakuService.setGameVisible(show)
@@ -695,7 +701,9 @@ class SessionService : Hilt_SessionService() {
             if (bypassChargeActive && settings.bypassChargeEnabled) {
                 add(if (plugged) SessionStatusChip.BYPASS_CHARGING else SessionStatusChip.BYPASS_READY)
             }
-            if (secureOn(SidebarVisibility.HIGH_TOUCH)) add(SessionStatusChip.TOUCH)
+            if (lineageos.providers.LineageSettings.System.getIntForUser(contentResolver,
+                    lineageos.providers.LineageSettings.System.HIGH_TOUCH_POLLING_RATE_ENABLE,
+                    0, sessionUserId) == 1) add(SessionStatusChip.TOUCH)
             if (tileRepository.wifiLowLatencyActive.value) add(SessionStatusChip.WIFI)
             if (secureOn(SidebarVisibility.HIDDEN)) add(SessionStatusChip.SIDEBAR_HIDDEN)
             if (secureOn("ax_gaming_gesture_lock")) add(SessionStatusChip.GESTURES)

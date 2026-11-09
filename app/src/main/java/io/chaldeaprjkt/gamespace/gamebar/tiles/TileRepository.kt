@@ -60,8 +60,9 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import io.github.miner7222.gamespace.TouchSensitivitySettings
+import io.github.miner7222.gamespace.gamebar.TouchSensitivityTile
 import io.github.miner7222.gamespace.library.GameOption
-import io.github.miner7222.gamespace.library.SidebarVisibility
 import io.github.miner7222.gamespace.library.SessionOptions
 import io.github.miner7222.gamespace.shortLabel
 import io.chaldeaprjkt.gamespace.data.AppSettings
@@ -131,12 +132,14 @@ class ToggleableTile(
     override val isSessionTile: Boolean = sessionOption != null,
     private val available: () -> Boolean = { true },
     private val readSavedDifference: () -> Boolean = { false },
+    private val readValueLine: (() -> String?)? = null,
     override val shortLabel: String? = null,
 ) : TileAction {
     override val differsFromSaved: Boolean get() = readSavedDifference()
     override val kind = TileKind.TOGGLE
     override val isAvailable: Boolean get() = available()
     override val isEnabled: Boolean get() = state.value
+    override val valueLine: String? get() = readValueLine?.invoke()
     @Composable override fun observeEnabled(): State<Boolean> = rememberUpdatedState(state.value)
     override fun toggle() {
         if (!isAvailable) return
@@ -341,7 +344,8 @@ class TileRepository @Inject constructor(
     private val haloAvailableSetting = "halo_ring_available"
     private val notificationState = mutableStateOf((appSettings.inGameOptions.current(GameOption.DANMAKU) == 1))
     private val gestureState = mutableStateOf(false)
-    private val touchResponseState = mutableStateOf(false)
+    private val penInputState = mutableStateOf(false)
+    private val touchSensitivityRevision = mutableIntStateOf(0)
     private val wifiLowLatencyState = mutableStateOf(false)
     private val ringerState = mutableStateOf(AudioManager.RINGER_MODE_NORMAL)
     private val bypassChargeState = mutableStateOf(systemSettings.bypassChargeEnabled)
@@ -451,7 +455,10 @@ class TileRepository @Inject constructor(
             Settings.Secure.NIGHT_DISPLAY_ACTIVATED,
             Settings.Secure.ACCESSIBILITY_DISPLAY_INVERSION_ENABLED,
             Settings.Secure.ACCESSIBILITY_DISPLAY_DALTONIZER_ENABLED,
-            Settings.Secure.REDUCE_BRIGHT_COLORS_ACTIVATED, "ax_gaming_gesture_lock"
+            Settings.Secure.REDUCE_BRIGHT_COLORS_ACTIVATED, "ax_gaming_gesture_lock",
+            TouchSensitivitySettings.KEY_HIGH_POLLING, TouchSensitivitySettings.KEY_TAP,
+            TouchSensitivitySettings.KEY_MOVE, TouchSensitivitySettings.KEY_EDGE,
+            TouchSensitivitySettings.KEY_PEN_INPUT
         ).forEach { key ->
             context.contentResolver.registerContentObserver(
                 Settings.Secure.getUriFor(key), false, settingsObserver, UserHandle.USER_ALL
@@ -496,7 +503,8 @@ class TileRepository @Inject constructor(
         bypassChargeState.value = systemSettings.bypassChargeEnabled
         isFpsInfoVisible.value = appSettings.showFps
         gestureState.value = systemSettings.gestureLock
-        touchResponseState.value = appSettings.inGameOptions.current(GameOption.TOUCH) == 1
+        penInputState.value = TouchSensitivitySettings.penInput(context)
+        touchSensitivityRevision.intValue++
         wifiLowLatencyState.value = appSettings.wifiLowLatency
         ringerState.value = audioManager.ringerModeInternal
         if (pendingDefaultOrder && supportedFeatures.isNotEmpty()) {
@@ -592,7 +600,7 @@ class TileRepository @Inject constructor(
                 SystemProperties.getBoolean("persist.sys.ax_chg_bypass", false) ||
                 SystemProperties.getBoolean("persist.sys.battery_bypass_supported", false)
             "screen_aspect_ratio" -> aspectRatioTile.isAvailable
-            "touch_response" -> SidebarVisibility.isHighTouchSupported(context)
+            "touch_sensitivity", "pen_input" -> true
             "wifi_low_latency" -> appSettings.wifiLowLatencySupported
             "boost_memory" ->
                 context.checkSelfPermission(Manifest.permission.KILL_BACKGROUND_PROCESSES) ==
@@ -656,14 +664,29 @@ class TileRepository @Inject constructor(
             (needsMigration && savedOrder.isNotEmpty() && snapshot != null && savedOrder == snapshot)
         pendingDefaultOrder = useDefault && supportedFeatures.isEmpty()
         val selection = if (useDefault) currentDefault else savedOrder.orEmpty()
+        val migrated = if (needsMigration) migrateSavedOrder(selection) else selection
         // Filter the catalogue, not availability: unplugging a device or hiding a
         // capability must never remove a user's selection from its saved position.
         val catalogIds = defaultTiles.map { it.id }.toSet()
-        val order = selection.filter { it in catalogIds }.distinct()
+        val order = migrated.filter { it in catalogIds }.distinct()
         val newSnapshot = if (useDefault) currentDefault
             else (snapshot ?: currentDefault).filter { it in catalogIds }.distinct()
         appSettings.saveTileConfiguration(order, newSnapshot, TILE_ORDER_VERSION)
         return order
+    }
+
+    /** Existing installs keep their order but gain the new touch controls once. */
+    private fun migrateSavedOrder(order: List<String>): List<String> {
+        val migrated = order.toMutableList()
+        val touchIndex = migrated.indexOf("touch_response")
+        if (touchIndex >= 0) {
+            migrated[touchIndex] = "touch_sensitivity"
+        } else if ("touch_sensitivity" !in migrated) {
+            val anchor = migrated.indexOf("bypass_charge_enabled")
+            migrated.add(if (anchor >= 0) anchor + 1 else migrated.size, "touch_sensitivity")
+        }
+        if ("pen_input" !in migrated) migrated.add("pen_input")
+        return migrated
     }
 
     fun resetToDefault() {
@@ -676,15 +699,15 @@ class TileRepository @Inject constructor(
     }
 
     companion object {
-        private const val TILE_ORDER_VERSION = 1
+        private const val TILE_ORDER_VERSION = 2
         private val DEFAULT_MAIN_ORDER = listOf(
             AxPlatformClient.FEATURE_SCREENSHOT, AxPlatformClient.FEATURE_SCREEN_RECORD,
             "fps_info", AxPlatformClient.FEATURE_ZEN, "gesture_lock", "bypass_charge_enabled",
-            "touch_response", "screen_off", "ringer", "notification", "screen_aspect_ratio",
+            "touch_sensitivity", "screen_off", "ringer", "notification", "screen_aspect_ratio",
             "boost_memory",
         )
         private val DEFAULT_MORE_ORDER = listOf(
-            AxPlatformClient.FEATURE_WIFI, AxPlatformClient.FEATURE_BLUETOOTH,
+            "pen_input", AxPlatformClient.FEATURE_WIFI, AxPlatformClient.FEATURE_BLUETOOTH,
             AxPlatformClient.FEATURE_NIGHT_LIGHT, AxPlatformClient.FEATURE_MIC_PRIVACY,
         )
     }
@@ -1067,20 +1090,18 @@ class TileRepository @Inject constructor(
             state = gestureState,
             setter = { gameSession.setOption(GameOption.GESTURES, if (it) 1 else 0) },
         ))
+        add(TouchSensitivityTile(context) { touchSensitivityRevision.intValue })
         add(ToggleableTile(
-            id = "touch_response",
-            label = context.getString(R.string.tile_touch_response),
-            shortLabel = context.shortLabel(R.string.tile_touch_response_short),
-            icon = R.drawable.materialsymbols_ic_touch_app_rounded_filled,
+            id = "pen_input",
+            label = context.getString(R.string.tile_pen_input),
+            shortLabel = context.shortLabel(R.string.tile_pen_input_short),
+            icon = R.drawable.materialsymbols_ic_menu_book_rounded_filled,
             category = TileCategory.GAME_TOOLS,
-            sessionOption = GameOption.TOUCH,
-            readSavedDifference = { differsFromSaved(GameOption.TOUCH) },
-            state = touchResponseState,
-            available = { hasDeviceCapability("touch_response") },
+            state = penInputState,
+            available = { hasDeviceCapability("pen_input") },
             setter = {
-                gameSession.setOption(GameOption.TOUCH, if (it) 1 else 0)
-                SidebarVisibility.refresh(context)
-                refreshPlatformStates()
+                TouchSensitivitySettings.setPenInput(context, it)
+                penInputState.value = it
             },
         ))
         add(CycleTile(
