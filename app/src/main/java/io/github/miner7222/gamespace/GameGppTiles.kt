@@ -82,6 +82,9 @@ abstract class GameGppTile(
 
     override fun toggle() = refresh()
 
+    /** A stored value from an earlier set of choices, read as the nearest current one. */
+    protected open fun normalize(value: Int): Int = value
+
     override fun selectOption(option: TileOption) {
         select(option.id.toIntOrNull() ?: 0)
     }
@@ -184,4 +187,23 @@ class GameFrameInterpTile @Inject constructor(
         2 -> R.string.frame_interp_3x
         else -> R.string.gpp_off
     })
+}
+
+@Singleton
+class GameSuperResolutionTile @Inject constructor(
+    @ApplicationContext context: Context,
+) : GameGppTile(context, "game_super_resolution", listOf(0, 1)) {
+    override val id = "super_resolution"
+    override val icon = R.drawable.materialsymbols_ic_hd_rounded_filled
+    override val label: String get() = context.getString(R.string.tile_super_resolution)
+    override val shortLabel: String? get() = context.shortLabel(R.string.tile_super_resolution_short)
+    override val failureRes = R.string.super_resolution_change_failed
+
+    override fun optionLabel(value: Int): String = context.getString(when (value) {
+        0 -> R.string.gpp_off
+        else -> R.string.gpp_on
+    })
+
+    override fun normalize(value: Int): Int = if (value > 0) 1 else 0
+
 }

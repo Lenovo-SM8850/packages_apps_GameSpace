@@ -68,6 +68,7 @@ import io.chaldeaprjkt.gamespace.utils.ScreenUtils
 import io.github.miner7222.gamespace.GameAspectRatioGesture
 import io.github.miner7222.gamespace.GameAspectRatioTile
 import io.github.miner7222.gamespace.GameFrameInterpTile
+import io.github.miner7222.gamespace.GameSuperResolutionTile
 import io.github.miner7222.gamespace.TouchPolicySession
 import io.github.miner7222.gamespace.gamebar.SessionStartStatus
 import io.github.miner7222.gamespace.gamebar.SessionStatusChip
@@ -94,6 +95,7 @@ class SessionService : Hilt_SessionService() {
     @Inject lateinit var mediaVolume: MediaVolumeController
     @Inject lateinit var aspectRatioTile: GameAspectRatioTile
     @Inject lateinit var frameInterpTile: GameFrameInterpTile
+    @Inject lateinit var superResolutionTile: GameSuperResolutionTile
     @Inject lateinit var gson: Gson
 
     private var currentPackage: String? = null
@@ -710,6 +712,7 @@ class SessionService : Hilt_SessionService() {
         val requestedRinger = options.current(GameOption.RINGER)
         val chips = buildList {
             if (frameInterpTile.isEnabled) add(SessionStatusChip.FRAME_INTERPOLATION)
+            if (superResolutionTile.isEnabled) add(SessionStatusChip.SUPER_RESOLUTION)
             // Do not disturb that was on before the session took it over is not announced.
             if (options.current(GameOption.DND) == 1 && filter != NotificationManager.INTERRUPTION_FILTER_ALL &&
                 filter != NotificationManager.INTERRUPTION_FILTER_UNKNOWN && session.dndChanged()) {

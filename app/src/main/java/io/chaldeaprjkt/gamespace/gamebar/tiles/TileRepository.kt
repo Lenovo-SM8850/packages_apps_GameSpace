@@ -55,6 +55,7 @@ import com.android.internal.util.ScreenshotHelper
 import io.chaldeaprjkt.gamespace.R
 import io.github.miner7222.gamespace.GameAspectRatioTile
 import io.github.miner7222.gamespace.GameFrameInterpTile
+import io.github.miner7222.gamespace.GameSuperResolutionTile
 import io.github.miner7222.gamespace.gamebar.RecordingPhase
 import io.github.miner7222.gamespace.gamebar.RecordingStateController
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -246,6 +247,7 @@ class TileRepository @Inject constructor(
     private val gameSession: GameSession,
     private val aspectRatioTile: GameAspectRatioTile,
     private val frameInterpTile: GameFrameInterpTile,
+    private val superResolutionTile: GameSuperResolutionTile,
 ) {
     private val recording = RecordingStateController()
     private lateinit var platform: AxPlatformClient
@@ -479,6 +481,7 @@ class TileRepository @Inject constructor(
     fun onGameStart(packageName: String) {
         aspectRatioTile.onGameStart(packageName)
         frameInterpTile.onGameStart(packageName)
+        superResolutionTile.onGameStart(packageName)
         mutableStartupCleanup.value = null
         if (appSettings.autoBoostMemory) {
             val result = clearBackgroundProcesses()
@@ -490,6 +493,7 @@ class TileRepository @Inject constructor(
     fun onGameStop() {
         aspectRatioTile.onGameStop()
         frameInterpTile.onGameStop()
+        superResolutionTile.onGameStop()
         mutableStartupCleanup.value = null
     }
 
@@ -497,6 +501,7 @@ class TileRepository @Inject constructor(
         if (!listening || !::platform.isInitialized) return
         aspectRatioTile.refresh()
         frameInterpTile.refresh()
+        superResolutionTile.refresh()
         supportedFeatures = platform.supportedFeatures.toSet()
         platformTiles.forEach { tile ->
             updatePlatformTile(tile, platform.getState(tile.id))
@@ -607,6 +612,7 @@ class TileRepository @Inject constructor(
             "screen_aspect_ratio" -> aspectRatioTile.isAvailable
             "touch_sensitivity", "pen_input" -> true
             "frame_interpolation" -> frameInterpTile.isAvailable
+            "super_resolution" -> superResolutionTile.isAvailable
             "wifi_low_latency" -> appSettings.wifiLowLatencySupported
             "boost_memory" ->
                 context.checkSelfPermission(Manifest.permission.KILL_BACKGROUND_PROCESSES) ==
@@ -714,7 +720,7 @@ class TileRepository @Inject constructor(
         )
         private val DEFAULT_MORE_ORDER = listOf(
             "pen_input", AxPlatformClient.FEATURE_WIFI, AxPlatformClient.FEATURE_BLUETOOTH,
-            AxPlatformClient.FEATURE_NIGHT_LIGHT, AxPlatformClient.FEATURE_MIC_PRIVACY,
+            "frame_interpolation", "super_resolution",
         )
     }
 
@@ -1169,6 +1175,7 @@ class TileRepository @Inject constructor(
 
         add(aspectRatioTile)
         add(frameInterpTile)
+        add(superResolutionTile)
 
         add(
             ToggleableTile(

@@ -192,8 +192,12 @@
     <string name="tile_frame_interp_short">Motion</string>
     <string name="frame_interp_2x">2x</string>
     <string name="frame_interp_3x">3x</string>
+    <string name="tile_super_resolution">Super resolution</string>
+    <string name="tile_super_resolution_short">Super res</string>
+    <string name="gpp_on">On</string>
     <string name="gpp_off">Off</string>
     <string name="frame_interp_change_failed">Couldn\'t change frame interpolation.</string>
+    <string name="super_resolution_change_failed">Couldn\'t change super resolution.</string>
     <string name="tile_category_game_tools">Game tools</string>
     <string name="tile_category_sound_notifications">Sound &amp; notifications</string>
     <string name="tile_category_display">Display</string>
