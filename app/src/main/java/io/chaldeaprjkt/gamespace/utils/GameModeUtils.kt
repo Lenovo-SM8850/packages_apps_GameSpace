@@ -21,6 +21,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.IDeviceIdleController
 import android.os.RemoteException
 import android.os.ServiceManager
@@ -56,16 +57,29 @@ class GameModeUtils @Inject constructor(private val context: Context) {
             ServiceManager.getService(Context.GAME_SERVICE)
         ) ?: return@withModeLock false
         if (modeData == null) {
-            service.resetGameModeConfigOverride(packageName, userId, -1)
+            val managed = managedModes(packageName, userId)
+            if (managed.isEmpty()) {
+                service.resetGameModeConfigOverride(packageName, userId, -1)
+            } else {
+                for (mode in service.getAvailableGameModes(packageName, userId)) {
+                    if (mode !in managed) {
+                        service.resetGameModeConfigOverride(packageName, userId, mode)
+                    }
+                }
+            }
             if (service.getGameMode(packageName, userId) != GameManager.GAME_MODE_STANDARD) {
                 service.setGameMode(packageName, GameManager.GAME_MODE_STANDARD, userId)
             }
             setAngleDriverChoice(packageName, DRIVER_CHOICE_DEFAULT)
         } else {
+            // GameTuning owns the display values of the profiles it has tuned; writing the
+            // built-in defaults over them would drop a preset at every session start.
+            val managed = managedModes(packageName, userId)
             val previousMode = service.getGameMode(packageName, userId)
             var updated = false
             try {
                 modeData.forEach { config ->
+                    if (config.mode in managed) return@forEach
                     val currentFactor = service.getResolutionScalingFactor(
                         packageName, config.mode, userId)
                     if (abs(currentFactor - config.downscaleFactor) > 0.0001f) {
@@ -82,6 +96,23 @@ class GameModeUtils @Inject constructor(private val context: Context) {
             }
         }
         true
+    }
+
+    /** Profiles the tuning app has a preset for; empty when it is absent or cannot answer. */
+    private fun managedModes(packageName: String, userId: Int): Set<Int> = try {
+        val uri = Uri.Builder().scheme("content").authority(TUNING_AUTHORITY)
+            .appendPath(TUNING_MANAGED)
+            .appendQueryParameter("package", packageName)
+            .appendQueryParameter("user", userId.toString())
+            .build()
+        context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+            if (cursor.moveToFirst()) {
+                cursor.getString(cursor.getColumnIndexOrThrow(TUNING_MODES))
+                    .orEmpty().split(',').mapNotNull { it.toIntOrNull() }.toSet()
+            } else emptySet()
+        } ?: emptySet()
+    } catch (e: Exception) {
+        emptySet()
     }
 
     fun setActiveGameMode(systemSettings: SystemSettings, mode: Int) {
@@ -216,6 +247,9 @@ class GameModeUtils @Inject constructor(private val context: Context) {
         const val DRIVER_CHOICE_ANGLE = "angle"
         const val DRIVER_CHOICE_NATIVE = "native"
         private const val VULKAN_1_0 = 0x00400000
+        private const val TUNING_AUTHORITY = "io.github.miner7222.gametuning.presets"
+        private const val TUNING_MANAGED = "managed"
+        private const val TUNING_MODES = "modes"
 
         fun Context.describeGameMode(mode: Int) =
             resources.getStringArray(R.array.game_mode_names)[mode] ?: resources.getString(R.string.game_mode_unsupported)
