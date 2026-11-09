@@ -712,7 +712,10 @@ class SessionService : Hilt_SessionService() {
         val requestedRinger = options.current(GameOption.RINGER)
         val chips = buildList {
             if (frameInterpTile.isEnabled) add(SessionStatusChip.FRAME_INTERPOLATION)
-            if (superResolutionTile.isEnabled) add(SessionStatusChip.SUPER_RESOLUTION)
+            // A stored choice the device cannot run shows a notice on its tile instead.
+            if (superResolutionTile.isEnabled && superResolutionTile.notice == null) {
+                add(SessionStatusChip.SUPER_RESOLUTION)
+            }
             // Do not disturb that was on before the session took it over is not announced.
             if (options.current(GameOption.DND) == 1 && filter != NotificationManager.INTERRUPTION_FILTER_ALL &&
                 filter != NotificationManager.INTERRUPTION_FILTER_UNKNOWN && session.dndChanged()) {

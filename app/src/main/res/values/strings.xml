@@ -195,6 +195,7 @@
     <string name="tile_super_resolution">Super resolution</string>
     <string name="tile_super_resolution_short">Super res</string>
     <string name="super_resolution_description">Upscales the game\'s frames for a sharper picture. Uses more power and heat.</string>
+    <string name="super_resolution_unsupported">Not supported on this device.</string>
     <string name="gpp_on">On</string>
     <string name="gpp_off">Off</string>
     <string name="frame_interp_change_failed">Couldn\'t change frame interpolation.</string>

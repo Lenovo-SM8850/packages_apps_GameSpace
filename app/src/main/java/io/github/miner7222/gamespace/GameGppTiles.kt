@@ -37,6 +37,7 @@ abstract class GameGppTile(
     private var gamePackage: String? = null
     private var gameUserId = context.userId
     private val mode = mutableStateOf(0)
+    private val noticeState = mutableStateOf<String?>(null)
     private var available = false
     private var observer: ContentObserver? = null
 
@@ -45,6 +46,7 @@ abstract class GameGppTile(
     override val valueLine: String get() = optionLabel(mode.value)
     override val isEnabled: Boolean get() = available && mode.value != 0
     override val isAvailable: Boolean get() = available
+    override val notice: String? get() = noticeState.value
     override val options: List<TileOption>
         get() = if (!available) emptyList() else values.map {
             TileOption(it.toString(), optionLabel(it), it == mode.value)
@@ -59,6 +61,17 @@ abstract class GameGppTile(
 
     protected abstract fun optionLabel(value: Int): String
 
+    /**
+     * A short reason the stored choice cannot take effect, or null. The tile then shows it in the
+     * attention colour and above its options.
+     */
+    protected open fun readNotice(pkg: String, level: Int): String? = null
+
+    /** Keeps a stored choice selectable when the engine is missing, so it can be seen and turned off. */
+    protected open fun availableWithoutSupport(pkg: String, level: Int): Boolean = false
+
+    protected open fun gppSupported(): Boolean = SystemProperties.getBoolean(GPP_PROPERTY, false)
+
     fun onGameStart(packageName: String) {
         gamePackage = packageName
         gameUserId = resolveGameUserId(packageName)
@@ -72,6 +85,7 @@ abstract class GameGppTile(
         gameUserId = context.userId
         available = false
         mode.value = 0
+        noticeState.value = null
         onChanged?.invoke()
     }
 
@@ -127,13 +141,15 @@ abstract class GameGppTile(
 
     private fun reload() {
         available = false
+        noticeState.value = null
         val pkg = gamePackage ?: return
         try {
             val gameContext = context.createContextAsUser(UserHandle.of(gameUserId), 0)
             if (gameContext.packageManager.getLaunchIntentForPackage(pkg) == null) return
-            if (!SystemProperties.getBoolean(GPP_PROPERTY, false)) return
-            mode.value = readMap(gameUserId).optInt(pkg, 0).takeIf { it in values } ?: 0
-            available = true
+            val stored = normalize(readMap(gameUserId).optInt(pkg, 0)).takeIf { it in values } ?: 0
+            mode.value = stored
+            noticeState.value = readNotice(pkg, stored)
+            available = gppSupported() || availableWithoutSupport(pkg, stored)
         } catch (e: Exception) {
             Log.w(TAG, "Unable to read $setting", e)
         }
@@ -215,4 +231,9 @@ class GameSuperResolutionTile @Inject constructor(
 
     override fun normalize(value: Int): Int = if (value > 0) 1 else 0
 
+    override fun availableWithoutSupport(pkg: String, level: Int): Boolean = level > 0
+
+    override fun readNotice(pkg: String, level: Int): String? =
+        if (level > 0 && !gppSupported()) context.getString(R.string.super_resolution_unsupported)
+        else null
 }
