@@ -653,14 +653,14 @@ fun TileButton(tile: TileAction, modifier: Modifier = Modifier, tablet: Boolean 
 
 @Composable
 private fun BoxScope.DashboardOptionSheet(tile: TileAction, onDismiss: () -> Unit) {
-    val title = stringResource(R.string.tile_aspect_ratio)
+    val title = tile.label
     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.3f)).clickable(onClick = onDismiss))
     Surface(Modifier.align(Alignment.BottomCenter).fillMaxWidth().fillMaxHeight(0.8f).semantics { paneTitle = title },
         shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
         color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = overlayInnerAlpha()),
         contentColor = MaterialTheme.colorScheme.onSurface) {
         Column(Modifier.verticalScroll(rememberScrollState()).selectableGroup().padding(16.dp)) {
-            Text(stringResource(R.string.tile_aspect_ratio), Modifier.padding(vertical = 12.dp), style = MaterialTheme.typography.titleMedium)
+            Text(title, Modifier.padding(vertical = 12.dp), style = MaterialTheme.typography.titleMedium)
             tile.options.forEach { option ->
                 Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).selectable(option.selected, role = Role.RadioButton,
                     onClick = { tile.selectOption(option); onDismiss() }), verticalAlignment = Alignment.CenterVertically) {

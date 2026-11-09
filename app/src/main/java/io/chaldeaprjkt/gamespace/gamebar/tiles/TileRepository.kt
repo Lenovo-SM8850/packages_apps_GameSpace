@@ -54,6 +54,7 @@ import com.android.axion.platform.AxPlatformClient
 import com.android.internal.util.ScreenshotHelper
 import io.chaldeaprjkt.gamespace.R
 import io.github.miner7222.gamespace.GameAspectRatioTile
+import io.github.miner7222.gamespace.GameFrameInterpTile
 import io.github.miner7222.gamespace.gamebar.RecordingPhase
 import io.github.miner7222.gamespace.gamebar.RecordingStateController
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -244,6 +245,7 @@ class TileRepository @Inject constructor(
     private val systemSettings: SystemSettings,
     private val gameSession: GameSession,
     private val aspectRatioTile: GameAspectRatioTile,
+    private val frameInterpTile: GameFrameInterpTile,
 ) {
     private val recording = RecordingStateController()
     private lateinit var platform: AxPlatformClient
@@ -476,6 +478,7 @@ class TileRepository @Inject constructor(
 
     fun onGameStart(packageName: String) {
         aspectRatioTile.onGameStart(packageName)
+        frameInterpTile.onGameStart(packageName)
         mutableStartupCleanup.value = null
         if (appSettings.autoBoostMemory) {
             val result = clearBackgroundProcesses()
@@ -486,12 +489,14 @@ class TileRepository @Inject constructor(
 
     fun onGameStop() {
         aspectRatioTile.onGameStop()
+        frameInterpTile.onGameStop()
         mutableStartupCleanup.value = null
     }
 
     fun refreshPlatformStates() {
         if (!listening || !::platform.isInitialized) return
         aspectRatioTile.refresh()
+        frameInterpTile.refresh()
         supportedFeatures = platform.supportedFeatures.toSet()
         platformTiles.forEach { tile ->
             updatePlatformTile(tile, platform.getState(tile.id))
@@ -601,6 +606,7 @@ class TileRepository @Inject constructor(
                 SystemProperties.getBoolean("persist.sys.battery_bypass_supported", false)
             "screen_aspect_ratio" -> aspectRatioTile.isAvailable
             "touch_sensitivity", "pen_input" -> true
+            "frame_interpolation" -> frameInterpTile.isAvailable
             "wifi_low_latency" -> appSettings.wifiLowLatencySupported
             "boost_memory" ->
                 context.checkSelfPermission(Manifest.permission.KILL_BACKGROUND_PROCESSES) ==
@@ -1162,6 +1168,7 @@ class TileRepository @Inject constructor(
         ))
 
         add(aspectRatioTile)
+        add(frameInterpTile)
 
         add(
             ToggleableTile(

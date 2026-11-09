@@ -92,6 +92,7 @@ import kotlin.math.ceil
  * Declared in display order: performance first, conveniences after.
  */
 enum class SessionStatusChip(val label: Int, val icon: ImageVector, val short: Int = 0) {
+    FRAME_INTERPOLATION(R.string.tile_frame_interp, Icons.Rounded.AutoAwesomeMotion),
     BYPASS_CHARGING(R.string.bypass_charge_enabled_title, Icons.Rounded.BatteryChargingFull,
         R.string.bypass_charge_enabled_title_short),
     TOUCH(R.string.status_high_touch_sampling, Icons.Rounded.TouchApp, R.string.status_high_touch_sampling_short),
