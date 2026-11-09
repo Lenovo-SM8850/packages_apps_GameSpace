@@ -88,6 +88,7 @@ import io.chaldeaprjkt.gamespace.settings.SettingsActivity
 import io.chaldeaprjkt.gamespace.utils.GameModeUtils
 import io.github.miner7222.gamespace.FitLabel
 import io.github.miner7222.gamespace.GameAspectRatioTile
+import io.github.miner7222.gamespace.gamebar.DashboardDetailSheet
 import io.github.miner7222.gamespace.gamebar.MediaVolumeController
 import io.github.miner7222.gamespace.gamebar.RecordingPhase
 import io.github.miner7222.gamespace.gamebar.RecordingState
@@ -584,14 +585,21 @@ fun TileButton(tile: TileAction, modifier: Modifier = Modifier, tablet: Boolean 
     onClick: () -> Unit = { tile.toggle() }, onDefault: () -> Unit = {}) {
     val enabled by tile.observeEnabled()
     val changed = tile.differsFromSaved
+    val notice = tile.notice
     // Toggles, a set aspect ratio and a ringer that can make sound read as on.
     val active = enabled
     val record = tile.id == "screen_record" && recording.phase == RecordingPhase.ACTIVE
+    // A set control that cannot take effect warns instead of reading as normally enabled.
+    val alert = record || notice != null
     val color = MaterialTheme.colorScheme
     val inner = overlayInnerAlpha()
-    val background by animateColorAsState(if (record) color.errorContainer else if (active) color.primaryContainer
+    // An enabled tile held back by another setting takes the tertiary colour, without a text.
+    val limited = !alert && active && tile.limited
+    val background by animateColorAsState(if (alert) color.errorContainer
+        else if (limited) color.tertiaryContainer else if (active) color.primaryContainer
         else color.surfaceContainerHighest.copy(alpha = inner))
-    val foreground = if (record) color.onErrorContainer else if (active) color.onPrimaryContainer else color.onSurfaceVariant
+    val foreground = if (alert) color.onErrorContainer else if (limited) color.onTertiaryContainer
+        else if (active) color.onPrimaryContainer else color.onSurfaceVariant
     val radius by animateDpAsState(if (active || record) 22.dp else 16.dp)
     val value = if (tile.id == "screen_record") when (recording.phase) {
         RecordingPhase.ACTIVE -> recording.elapsedMillis?.let { "%d:%02d".format(Locale.getDefault(), it / 60000, it / 1000 % 60) }
@@ -629,7 +637,8 @@ fun TileButton(tile: TileAction, modifier: Modifier = Modifier, tablet: Boolean 
                 if (!value.isNullOrBlank()) Text(value, fontSize = if (compact && height < 55.dp) 9.sp
                     else if (compact || !tablet) 10.sp else 11.sp, fontWeight = FontWeight.Normal,
                     lineHeight = if (compact && height < 55.dp) 11.sp else if (compact || !tablet) 12.sp else 14.sp,
-                    color = if (record) foreground else color.onSurfaceVariant,
+                    // A recording or held-back tile keeps its value readable on the tinted background.
+                    color = if (record || limited || alert) foreground else color.onSurfaceVariant,
                     style = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = if (record) "tnum" else null),
                     maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
@@ -653,21 +662,27 @@ fun TileButton(tile: TileAction, modifier: Modifier = Modifier, tablet: Boolean 
 
 @Composable
 private fun BoxScope.DashboardOptionSheet(tile: TileAction, onDismiss: () -> Unit) {
-    val title = tile.label
-    Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.3f)).clickable(onClick = onDismiss))
-    Surface(Modifier.align(Alignment.BottomCenter).fillMaxWidth().fillMaxHeight(0.8f).semantics { paneTitle = title },
-        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = overlayInnerAlpha()),
-        contentColor = MaterialTheme.colorScheme.onSurface) {
-        Column(Modifier.verticalScroll(rememberScrollState()).selectableGroup().padding(16.dp)) {
-            Text(title, Modifier.padding(vertical = 12.dp), style = MaterialTheme.typography.titleMedium)
-            tile.options.forEach { option ->
-                Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).selectable(option.selected, role = Role.RadioButton,
-                    onClick = { tile.selectOption(option); onDismiss() }), verticalAlignment = Alignment.CenterVertically) {
-                    RadioButton(option.selected, onClick = null)
-                    Text(option.label, Modifier.padding(start = 8.dp))
-                }
+    DashboardDetailSheet(tile.label, onBack = onDismiss, contentModifier = Modifier.selectableGroup()) {
+        tile.detailNote?.let { note ->
+            Text(note, Modifier.padding(top = 4.dp, bottom = 12.dp),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodyMedium)
+        }
+        tile.notice?.let { reason ->
+            Text(reason, Modifier.padding(top = 4.dp, bottom = 12.dp),
+                color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
+        }
+        tile.options.forEach { option ->
+            Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).selectable(option.selected, role = Role.RadioButton,
+                onClick = { tile.selectOption(option); onDismiss() }), verticalAlignment = Alignment.CenterVertically) {
+                RadioButton(option.selected, onClick = null)
+                Text(option.label, Modifier.padding(start = 8.dp))
             }
+        }
+        tile.detailFooter?.let { note ->
+            Text(note, Modifier.padding(top = 12.dp),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall)
         }
     }
 }

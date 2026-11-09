@@ -35,8 +35,9 @@ abstract class GameGppTile(
     private val values: List<Int>,
 ) : TileAction {
     private var gamePackage: String? = null
-    private var gameUserId = context.userId
+    protected var gameUserId = context.userId
     private val mode = mutableStateOf(0)
+    private val noticeState = mutableStateOf<String?>(null)
     private var available = false
     private var observer: ContentObserver? = null
 
@@ -45,6 +46,7 @@ abstract class GameGppTile(
     override val valueLine: String get() = optionLabel(mode.value)
     override val isEnabled: Boolean get() = available && mode.value != 0
     override val isAvailable: Boolean get() = available
+    override val notice: String? get() = noticeState.value
     override val options: List<TileOption>
         get() = if (!available) emptyList() else values.map {
             TileOption(it.toString(), optionLabel(it), it == mode.value)
@@ -59,6 +61,17 @@ abstract class GameGppTile(
 
     protected abstract fun optionLabel(value: Int): String
 
+    /**
+     * A short reason the stored choice cannot take effect, or null. The tile then shows it in the
+     * attention colour and above its options.
+     */
+    protected open fun readNotice(pkg: String, level: Int): String? = null
+
+    /** Keeps a stored choice selectable when the engine is missing, so it can be seen and turned off. */
+    protected open fun availableWithoutSupport(pkg: String, level: Int): Boolean = false
+
+    protected open fun gppSupported(): Boolean = SystemProperties.getBoolean(GPP_PROPERTY, false)
+
     fun onGameStart(packageName: String) {
         gamePackage = packageName
         gameUserId = resolveGameUserId(packageName)
@@ -72,6 +85,7 @@ abstract class GameGppTile(
         gameUserId = context.userId
         available = false
         mode.value = 0
+        noticeState.value = null
         onChanged?.invoke()
     }
 
@@ -81,6 +95,9 @@ abstract class GameGppTile(
     }
 
     override fun toggle() = refresh()
+
+    /** A stored value from an earlier set of choices, read as the nearest current one. */
+    protected open fun normalize(value: Int): Int = value
 
     override fun selectOption(option: TileOption) {
         select(option.id.toIntOrNull() ?: 0)
@@ -124,13 +141,15 @@ abstract class GameGppTile(
 
     private fun reload() {
         available = false
+        noticeState.value = null
         val pkg = gamePackage ?: return
         try {
             val gameContext = context.createContextAsUser(UserHandle.of(gameUserId), 0)
             if (gameContext.packageManager.getLaunchIntentForPackage(pkg) == null) return
-            if (!SystemProperties.getBoolean(GPP_PROPERTY, false)) return
-            mode.value = readMap(gameUserId).optInt(pkg, 0).takeIf { it in values } ?: 0
-            available = true
+            val stored = normalize(readMap(gameUserId).optInt(pkg, 0)).takeIf { it in values } ?: 0
+            mode.value = stored
+            noticeState.value = readNotice(pkg, stored)
+            available = gppSupported() || availableWithoutSupport(pkg, stored)
         } catch (e: Exception) {
             Log.w(TAG, "Unable to read $setting", e)
         }
@@ -172,12 +191,20 @@ abstract class GameGppTile(
 @Singleton
 class GameFrameInterpTile @Inject constructor(
     @ApplicationContext context: Context,
+    private val superResolution: GameSuperResolutionTile,
 ) : GameGppTile(context, "game_frame_interp", listOf(0, 1, 2)) {
     override val id = "frame_interpolation"
     override val icon = R.drawable.materialsymbols_ic_auto_awesome_motion_rounded_filled
     override val label: String get() = context.getString(R.string.tile_frame_interp)
     override val shortLabel: String? get() = context.shortLabel(R.string.tile_frame_interp_short)
     override val failureRes = R.string.frame_interp_change_failed
+    override val detailNote: String get() = context.getString(R.string.frame_interp_description)
+    /** Shown only while super resolution actually holds interpolation back. */
+    override val detailFooter: String?
+        get() = if (superResolution.isEnabled) context.getString(R.string.frame_interp_super_resolution_note) else null
+
+    /** Super resolution caps the source frames, which holds interpolation back. */
+    override val limited: Boolean get() = superResolution.isEnabled
 
     override fun optionLabel(value: Int): String = context.getString(when (value) {
         1 -> R.string.frame_interp_2x
@@ -191,11 +218,22 @@ class GameSuperResolutionTile @Inject constructor(
     @ApplicationContext context: Context,
 ) : GameGppTile(context, "game_super_resolution", listOf(0, 1)) {
     override val id = "super_resolution"
-    override val icon = R.drawable.materialsymbols_ic_4k_rounded_filled
+    override val icon = R.drawable.materialsymbols_ic_hd_rounded_filled
     override val label: String get() = context.getString(R.string.tile_super_resolution)
     override val shortLabel: String? get() = context.shortLabel(R.string.tile_super_resolution_short)
     override val failureRes = R.string.super_resolution_change_failed
+    override val detailNote: String get() = context.getString(R.string.super_resolution_description)
 
-    override fun optionLabel(value: Int): String =
-        context.getString(if (value > 0) R.string.gpp_on else R.string.gpp_off)
+    override fun optionLabel(value: Int): String = context.getString(when (value) {
+        0 -> R.string.gpp_off
+        else -> R.string.gpp_on
+    })
+
+    override fun normalize(value: Int): Int = if (value > 0) 1 else 0
+
+    override fun availableWithoutSupport(pkg: String, level: Int): Boolean = level > 0
+
+    override fun readNotice(pkg: String, level: Int): String? =
+        if (level > 0 && !gppSupported()) context.getString(R.string.super_resolution_unsupported)
+        else null
 }

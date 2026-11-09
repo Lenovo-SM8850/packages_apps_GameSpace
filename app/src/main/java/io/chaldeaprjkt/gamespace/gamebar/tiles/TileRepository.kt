@@ -18,27 +18,21 @@ package io.chaldeaprjkt.gamespace.gamebar.tiles
 import android.Manifest
 import android.app.ActivityManager
 import android.content.BroadcastReceiver
-import android.content.ContentResolver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.database.ContentObserver
-import android.hardware.SensorPrivacyManager
 import android.hardware.display.ColorDisplayManager
 import android.media.AudioManager
-import android.net.TetheringManager
-import android.os.BatteryManager
 import android.os.Bundle
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemProperties
 import android.os.UserHandle
-import android.os.UserManager
 import android.provider.Settings
-import android.telephony.TelephonyManager
 import android.view.WindowManager
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.MutableState
@@ -72,7 +66,6 @@ import io.chaldeaprjkt.gamespace.data.GameSession
 import io.chaldeaprjkt.gamespace.data.SystemSettings
 import javax.inject.Inject
 import javax.inject.Singleton
-import lineageos.hardware.LineageHardwareManager
 
 /** One row of a tile's picker; [id] is only meaningful to the tile that produced it. */
 data class TileOption(val id: String, val label: String, val selected: Boolean)
@@ -84,7 +77,6 @@ enum class TileCategory(val labelRes: Int) {
     SOUND_NOTIFICATIONS(R.string.tile_category_sound_notifications),
     DISPLAY(R.string.tile_category_display),
     CONNECTIVITY(R.string.tile_category_connectivity),
-    ACCESSIBILITY_PRIVACY(R.string.tile_category_accessibility_privacy),
 }
 
 /** A completed one-shot action; backends publish confirmed results, not button presses. */
@@ -116,11 +108,19 @@ interface TileAction {
     val sessionOption: GameOption? get() = null
     val isSessionTile: Boolean get() = sessionOption != null
     val differsFromSaved: Boolean get() = false
+    /** A short description shown at the top of the tile's detail page. */
+    val detailNote: String? get() = null
+    /** A short note shown below the options on the tile's detail page. */
+    val detailFooter: String? get() = null
+    /** A reason the tile is set but cannot take effect; the tile then uses the attention colour. */
+    val notice: String? get() = null
     /** Non-empty when tapping the tile opens a picker after [toggle] ran. */
     val options: List<TileOption> get() = emptyList()
     @Composable fun observeEnabled(): State<Boolean>
     fun toggle()
     fun selectOption(option: TileOption) {}
+    /** A setting that holds the tile back, shown in the attention colour without a text. */
+    val limited: Boolean get() = false
 }
 
 class ToggleableTile(
@@ -302,8 +302,7 @@ class TileRepository @Inject constructor(
             if (!listening || !::defaultTiles.isInitialized) return
             if (supportedFeatures.isEmpty() || key in setOf(
                     AxPlatformClient.KEY_BATTERY, AxPlatformClient.KEY_DOZE,
-                    AxPlatformClient.KEY_CONFIG, AxPlatformClient.FEATURE_DATA_SAVER,
-                    AxPlatformClient.FEATURE_AIRPLANE_MODE
+                    AxPlatformClient.KEY_CONFIG, AxPlatformClient.FEATURE_AIRPLANE_MODE
                 )) {
                 refreshPlatformStates()
             } else {
@@ -322,20 +321,6 @@ class TileRepository @Inject constructor(
         // Reading the revision makes this getter observable to every Compose consumer.
         sessionRevision.intValue
         return SessionOptions.differsFromSaved(context, option)
-    }
-
-    private fun ringerDiffersFromSaved(): Boolean {
-        sessionRevision.intValue
-        val packageName = SessionOptions.packageName(context) ?: return false
-        val saved = appSettings.inGameOptions.effective(packageName, GameOption.RINGER)
-        // "No change" is a policy, not a physical ringer mode. Keep its choice comparison.
-        return if (saved == 3) SessionOptions.differsFromSaved(context, GameOption.RINGER)
-            else ringerState.value != saved
-    }
-
-    private fun wifiDiffersFromSaved(): Boolean {
-        sessionRevision.intValue
-        return SessionOptions.wifiDiffersFromSaved(context, appSettings.savedWifiLowLatency)
     }
 
     private val _tileOrder = mutableStateListOf<String>()
@@ -371,30 +356,6 @@ class TileRepository @Inject constructor(
     }
     private val stateHandler = Handler(Looper.getMainLooper())
     private val screenshotHelper by lazy { ScreenshotHelper(context) }
-    private val lineageHardware by lazy { LineageHardwareManager.getInstance(context) }
-    // Hardware/properties have no removable listener, and the sync listener is
-    // scoped to the caller's user. Refresh their live values for the current user
-    // while the game service is running, without refreshing the entire cache.
-    private val hardwareStateRefresh = object : Runnable {
-        override fun run() {
-            platformTiles.filter {
-                (it.id == AxPlatformClient.FEATURE_READING_MODE ||
-                    it.id == AxPlatformClient.FEATURE_AUTO_SYNC) && it.availableState.value
-            }.forEach { it.updateFromState(platform.getState(it.id)) }
-            scheduleHardwareRefresh()
-        }
-    }
-
-    private fun scheduleHardwareRefresh() {
-        stateHandler.removeCallbacks(hardwareStateRefresh)
-        if (!listening) return
-        if (platformTiles.any {
-                (it.id == AxPlatformClient.FEATURE_READING_MODE ||
-                    it.id == AxPlatformClient.FEATURE_AUTO_SYNC) && it.availableState.value
-            }) {
-            stateHandler.postDelayed(hardwareStateRefresh, 1000)
-        }
-    }
 
     private val settingsObserver = object : ContentObserver(Handler(Looper.getMainLooper())) {
         override fun onChange(selfChange: Boolean) {
@@ -455,11 +416,8 @@ class TileRepository @Inject constructor(
         preferences.registerOnSharedPreferenceChangeListener(preferenceListener)
         platform.addListener(platformListener)
         listOf(
-            haloEnabledSetting, haloAvailableSetting, Settings.Secure.SMART_PIXEL_FILTER_ENABLED,
-            Settings.Secure.NIGHT_DISPLAY_ACTIVATED,
-            Settings.Secure.ACCESSIBILITY_DISPLAY_INVERSION_ENABLED,
-            Settings.Secure.ACCESSIBILITY_DISPLAY_DALTONIZER_ENABLED,
-            Settings.Secure.REDUCE_BRIGHT_COLORS_ACTIVATED, "ax_gaming_gesture_lock",
+            haloEnabledSetting, haloAvailableSetting, Settings.Secure.NIGHT_DISPLAY_ACTIVATED,
+            "ax_gaming_gesture_lock",
             TouchSensitivitySettings.KEY_HIGH_POLLING, TouchSensitivitySettings.KEY_TAP,
             TouchSensitivitySettings.KEY_MOVE, TouchSensitivitySettings.KEY_EDGE,
             TouchSensitivitySettings.KEY_PEN_INPUT
@@ -483,7 +441,7 @@ class TileRepository @Inject constructor(
         frameInterpTile.onGameStart(packageName)
         superResolutionTile.onGameStart(packageName)
         mutableStartupCleanup.value = null
-        if (appSettings.autoBoostMemory) {
+        if (appSettings.inGameOptions.enabled(packageName, GameOption.MEMORY)) {
             val result = clearBackgroundProcesses()
             mutableStartupCleanup.value = result
         }
@@ -527,7 +485,6 @@ class TileRepository @Inject constructor(
             preferredTileOrder.addAll(order)
         }
         rebuildAvailableTiles()
-        scheduleHardwareRefresh()
     }
 
     private fun updatePlatformTile(tile: PlatformTile, state: Bundle) {
@@ -536,9 +493,7 @@ class TileRepository @Inject constructor(
             state.getBoolean("available", true) &&
             (!state.containsKey("tileState") ||
                 AxPlatformClient.getTileState(state) != AxPlatformClient.TILE_STATE_UNAVAILABLE) &&
-            hasDeviceCapability(tile.id) &&
-            (tile.id != AxPlatformClient.FEATURE_USB_TETHER ||
-                state.getBoolean("usbConnected", false))
+            hasDeviceCapability(tile.id)
         tile.updateFromState(state)
     }
 
@@ -572,32 +527,8 @@ class TileRepository @Inject constructor(
                     Settings.Global.getInt(
                         context.contentResolver, Settings.Global.AIRPLANE_MODE_ON, 0
                     ) == 0
-            AxPlatformClient.FEATURE_DATA_SAVER ->
-                context.getSystemService(TelephonyManager::class.java)?.isDataCapable == true
-            AxPlatformClient.FEATURE_BATTERY_SAVER ->
-                (context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
-                    ?.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0) ?: 0) == 0
-            AxPlatformClient.FEATURE_HOTSPOT ->
-                context.getSystemService(UserManager::class.java)
-                    .isUserAdmin(ActivityManager.getCurrentUser()) &&
-                !platform.getState(AxPlatformClient.FEATURE_DATA_SAVER).getBoolean("active", false) &&
-                context.getSystemService(TetheringManager::class.java)?.let {
-                    it.isTetheringSupported && it.tetherableWifiRegexs.isNotEmpty()
-                } == true
-            AxPlatformClient.FEATURE_USB_TETHER ->
-                context.getSystemService(TetheringManager::class.java)?.let {
-                    it.isTetheringSupported && it.tetherableUsbRegexs.isNotEmpty()
-                } == true
             AxPlatformClient.FEATURE_NIGHT_LIGHT ->
                 ColorDisplayManager.isNightDisplayAvailable(context)
-            AxPlatformClient.FEATURE_REDUCE_BRIGHTNESS ->
-                ColorDisplayManager.isReduceBrightColorsAvailable(context)
-            AxPlatformClient.FEATURE_CAMERA_PRIVACY ->
-                context.getSystemService(SensorPrivacyManager::class.java)
-                    ?.supportsSensorToggle(SensorPrivacyManager.Sensors.CAMERA) == true
-            AxPlatformClient.FEATURE_MIC_PRIVACY ->
-                context.getSystemService(SensorPrivacyManager::class.java)
-                    ?.supportsSensorToggle(SensorPrivacyManager.Sensors.MICROPHONE) == true
             "halo" -> UserHandle.myUserId() == UserHandle.USER_SYSTEM &&
                 ActivityManager.getCurrentUser() == UserHandle.USER_SYSTEM &&
                 Settings.Secure.getIntForUser(context.contentResolver,
@@ -635,7 +566,6 @@ class TileRepository @Inject constructor(
         preferences.unregisterOnSharedPreferenceChangeListener(preferenceListener)
         optionsObservation?.close()
         optionsObservation = null
-        stateHandler.removeCallbacks(hardwareStateRefresh)
         onBeforePlatformAction = null
         onScreenshotComplete = null
     }
@@ -712,6 +642,7 @@ class TileRepository @Inject constructor(
 
     companion object {
         private const val TILE_ORDER_VERSION = 2
+        private const val RINGER_NO_CHANGE = 3
         private val DEFAULT_MAIN_ORDER = listOf(
             AxPlatformClient.FEATURE_SCREENSHOT, AxPlatformClient.FEATURE_SCREEN_RECORD,
             "fps_info", AxPlatformClient.FEATURE_ZEN, "gesture_lock", "bypass_charge_enabled",
@@ -781,13 +712,6 @@ class TileRepository @Inject constructor(
     private fun secureEnabled(key: String): Boolean =
         Settings.Secure.getIntForUser(context.contentResolver, key, 0, UserHandle.USER_CURRENT) == 1
 
-    private fun toggleSecure(key: String) {
-        Settings.Secure.putIntForUser(
-            context.contentResolver, key, if (secureEnabled(key)) 0 else 1, UserHandle.USER_CURRENT
-        )
-        refreshPlatformStates()
-    }
-
     private fun openSettings(action: String) {
         val intent = Intent(action).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         if (intent.resolveActivity(context.packageManager) != null) context.startActivity(intent)
@@ -795,20 +719,11 @@ class TileRepository @Inject constructor(
 
     private fun platformTile(feature: String, iconRes: Int, fallbackLabel: String,
         shortLabel: String? = null): PlatformTile {
-        // These hooks describe different controls/settings on this ROM. Read and write
-        // the actual settings, and observe them so changes from Settings/QS stay in sync.
-        val setting = when (feature) {
-            AxPlatformClient.FEATURE_SMART_PIXELS -> Settings.Secure.SMART_PIXEL_FILTER_ENABLED
-            else -> null
-        }
+        // These hooks describe different controls/settings on this ROM. Observe the actual
+        // settings so changes from Settings/QS stay in sync.
         val observedSetting = when (feature) {
             AxPlatformClient.FEATURE_NIGHT_LIGHT -> Settings.Secure.NIGHT_DISPLAY_ACTIVATED
-            AxPlatformClient.FEATURE_COLOR_INVERSION ->
-                Settings.Secure.ACCESSIBILITY_DISPLAY_INVERSION_ENABLED
-            AxPlatformClient.FEATURE_COLOR_CORRECTION ->
-                Settings.Secure.ACCESSIBILITY_DISPLAY_DALTONIZER_ENABLED
-            AxPlatformClient.FEATURE_REDUCE_BRIGHTNESS -> Settings.Secure.REDUCE_BRIGHT_COLORS_ACTIVATED
-            else -> setting
+            else -> null
         }
         val tile = PlatformTile(
             id = feature,
@@ -817,42 +732,25 @@ class TileRepository @Inject constructor(
             platform = platform,
             shortLabel = shortLabel,
             readResult = { latestResults[feature] },
-            kind = when (feature) {
-                AxPlatformClient.FEATURE_SCREENSHOT -> TileKind.ACTION
-                AxPlatformClient.FEATURE_CAST -> TileKind.DIALOG
-                else -> TileKind.TOGGLE
-            },
+            kind = if (feature == AxPlatformClient.FEATURE_SCREENSHOT) TileKind.ACTION else TileKind.TOGGLE,
             category = when (feature) {
                 AxPlatformClient.FEATURE_ZEN, AxPlatformClient.FEATURE_HEADS_UP ->
                     TileCategory.SOUND_NOTIFICATIONS
-                AxPlatformClient.FEATURE_ROTATION, AxPlatformClient.FEATURE_NIGHT_LIGHT,
-                AxPlatformClient.FEATURE_READING_MODE, AxPlatformClient.FEATURE_REDUCE_BRIGHTNESS,
-                AxPlatformClient.FEATURE_SMART_PIXELS -> TileCategory.DISPLAY
-                AxPlatformClient.FEATURE_CAMERA_PRIVACY, AxPlatformClient.FEATURE_MIC_PRIVACY,
-                AxPlatformClient.FEATURE_COLOR_INVERSION, AxPlatformClient.FEATURE_COLOR_CORRECTION ->
-                    TileCategory.ACCESSIBILITY_PRIVACY
-                AxPlatformClient.FEATURE_BATTERY_SAVER, AxPlatformClient.FEATURE_CAFFEINE,
-                AxPlatformClient.FEATURE_SCREENSHOT, AxPlatformClient.FEATURE_SCREEN_RECORD,
-                AxPlatformClient.FEATURE_CAST -> TileCategory.GAME_TOOLS
+                AxPlatformClient.FEATURE_ROTATION, AxPlatformClient.FEATURE_NIGHT_LIGHT ->
+                    TileCategory.DISPLAY
+                AxPlatformClient.FEATURE_CAFFEINE, AxPlatformClient.FEATURE_SCREENSHOT,
+                AxPlatformClient.FEATURE_SCREEN_RECORD -> TileCategory.GAME_TOOLS
                 else -> TileCategory.CONNECTIVITY
             },
             sessionOption = if (feature == AxPlatformClient.FEATURE_ZEN) GameOption.DND else null,
-            readSavedDifference = { feature == AxPlatformClient.FEATURE_ZEN && differsFromSaved(GameOption.DND) },
             usePlatformLabel = feature != AxPlatformClient.FEATURE_MOBILE_DATA &&
                 feature != AxPlatformClient.FEATURE_CAFFEINE &&
                 feature != AxPlatformClient.FEATURE_ZEN &&
                 feature != AxPlatformClient.FEATURE_SCREEN_RECORD &&
                 feature != AxPlatformClient.FEATURE_HEADS_UP,
             readActive = when (feature) {
-                AxPlatformClient.FEATURE_AUTO_SYNC -> { {
-                    ContentResolver.getMasterSyncAutomaticallyAsUser(ActivityManager.getCurrentUser())
-                } }
                 AxPlatformClient.FEATURE_ZEN -> { {
                     Settings.Global.getInt(context.contentResolver, Settings.Global.ZEN_MODE, 0) != 0
-                } }
-                AxPlatformClient.FEATURE_READING_MODE -> { {
-                    feature in supportedFeatures &&
-                        lineageHardware.get(LineageHardwareManager.FEATURE_READING_ENHANCEMENT)
                 } }
                 else -> observedSetting?.let { { secureEnabled(it) } }
             },
@@ -861,14 +759,13 @@ class TileRepository @Inject constructor(
                 when (feature) {
                     AxPlatformClient.FEATURE_ZEN -> {
                         val enabled = Settings.Global.getInt(context.contentResolver, Settings.Global.ZEN_MODE, 0) != 0
-                        gameSession.setOption(GameOption.DND, if (enabled) 0 else 1)
+                        gameSession.saveGlobalOption(GameOption.DND, if (enabled) 0 else 1)
                     }
-                    AxPlatformClient.FEATURE_VPN, AxPlatformClient.FEATURE_CAST -> {
+                    AxPlatformClient.FEATURE_VPN -> {
                         if (platform.getState(feature).getBoolean("enabled", false)) {
                             platform.toggle(feature)
                         } else {
-                            openSettings(if (feature == AxPlatformClient.FEATURE_VPN)
-                                Settings.ACTION_VPN_SETTINGS else Settings.ACTION_CAST_SETTINGS)
+                            openSettings(Settings.ACTION_VPN_SETTINGS)
                         }
                     }
                     AxPlatformClient.FEATURE_SCREENSHOT -> {
@@ -887,14 +784,7 @@ class TileRepository @Inject constructor(
                             }
                         }, 500)
                     }
-                    AxPlatformClient.FEATURE_AUTO_SYNC -> {
-                        val userId = ActivityManager.getCurrentUser()
-                        ContentResolver.setMasterSyncAutomaticallyAsUser(
-                            !ContentResolver.getMasterSyncAutomaticallyAsUser(userId), userId
-                        )
-                        refreshPlatformStates()
-                    }
-                    else -> if (setting != null) toggleSecure(setting) else platform.toggle(feature)
+                    else -> platform.toggle(feature)
                 }
             },
         )
@@ -949,85 +839,15 @@ class TileRepository @Inject constructor(
             context.getString(R.string.tile_mobile_data),
         ))
         add(platformTile(
-            AxPlatformClient.FEATURE_AIRPLANE_MODE,
-            R.drawable.materialsymbols_ic_flight_rounded_filled,
-            context.getString(R.string.tile_airplane_mode),
-        ))
-        add(platformTile(
-            AxPlatformClient.FEATURE_LOCATION,
-            R.drawable.materialsymbols_ic_location_on_rounded_filled,
-            context.getString(R.string.tile_location),
-        ))
-        add(platformTile(
-            AxPlatformClient.FEATURE_BATTERY_SAVER,
-            R.drawable.materialsymbols_ic_battery_saver_rounded_filled,
-            context.getString(R.string.tile_battery_saver),
-        ))
-        add(platformTile(
-            AxPlatformClient.FEATURE_HOTSPOT,
-            R.drawable.materialsymbols_ic_wifi_tethering_rounded_filled,
-            context.getString(R.string.tile_hotspot),
-        ))
-        add(platformTile(
             AxPlatformClient.FEATURE_NIGHT_LIGHT,
             R.drawable.materialsymbols_ic_nights_stay_rounded_filled,
             context.getString(R.string.tile_night_light),
-        ))
-        add(platformTile(
-            AxPlatformClient.FEATURE_DATA_SAVER,
-            R.drawable.materialsymbols_ic_data_saver_on_rounded_filled,
-            context.getString(R.string.tile_data_saver),
-        ))
-        add(platformTile(
-            AxPlatformClient.FEATURE_COLOR_INVERSION,
-            R.drawable.materialsymbols_ic_invert_colors_rounded_filled,
-            context.getString(R.string.tile_color_inversion),
-        ))
-        add(platformTile(
-            AxPlatformClient.FEATURE_COLOR_CORRECTION,
-            R.drawable.materialsymbols_ic_palette_rounded_filled,
-            context.getString(R.string.tile_color_correction),
-        ))
-        add(platformTile(
-            AxPlatformClient.FEATURE_REDUCE_BRIGHTNESS,
-            R.drawable.materialsymbols_ic_brightness_low_rounded_filled,
-            context.getString(R.string.tile_reduce_brightness),
         ))
         add(platformTile(
             AxPlatformClient.FEATURE_HEADS_UP,
             R.drawable.materialsymbols_ic_notifications_active_rounded_filled,
             context.getString(R.string.tile_heads_up),
             context.shortLabel(R.string.tile_heads_up_short),
-        ))
-        add(platformTile(
-            AxPlatformClient.FEATURE_AUTO_SYNC,
-            R.drawable.materialsymbols_ic_sync_rounded_filled,
-            context.getString(R.string.tile_auto_sync),
-        ))
-        add(platformTile(
-            AxPlatformClient.FEATURE_CAMERA_PRIVACY,
-            R.drawable.materialsymbols_ic_photo_camera_rounded_filled,
-            context.getString(R.string.tile_camera_privacy),
-        ))
-        add(platformTile(
-            AxPlatformClient.FEATURE_MIC_PRIVACY,
-            R.drawable.materialsymbols_ic_mic_rounded_filled,
-            context.getString(R.string.tile_mic_privacy),
-        ))
-        add(platformTile(
-            AxPlatformClient.FEATURE_USB_TETHER,
-            R.drawable.materialsymbols_ic_usb_rounded_filled,
-            context.getString(R.string.tile_usb_tether),
-        ))
-        add(platformTile(
-            AxPlatformClient.FEATURE_READING_MODE,
-            R.drawable.materialsymbols_ic_menu_book_rounded_filled,
-            context.getString(R.string.tile_reading_mode),
-        ))
-        add(platformTile(
-            AxPlatformClient.FEATURE_POWER_SHARE,
-            R.drawable.materialsymbols_ic_battery_charging_full_rounded_filled,
-            context.getString(R.string.tile_power_share),
         ))
         add(platformTile(
             AxPlatformClient.FEATURE_CAFFEINE,
@@ -1039,16 +859,6 @@ class TileRepository @Inject constructor(
             AxPlatformClient.FEATURE_VPN,
             R.drawable.materialsymbols_ic_vpn_key_rounded_filled,
             context.getString(R.string.tile_vpn),
-        ))
-        add(platformTile(
-            AxPlatformClient.FEATURE_CAST,
-            R.drawable.materialsymbols_ic_cast_rounded_filled,
-            context.getString(R.string.tile_cast),
-        ))
-        add(platformTile(
-            AxPlatformClient.FEATURE_SMART_PIXELS,
-            R.drawable.materialsymbols_ic_grid_on_rounded_filled,
-            context.getString(R.string.tile_smart_pixels),
         ))
         add(platformTile(
             AxPlatformClient.FEATURE_SCREEN_RECORD,
@@ -1072,7 +882,7 @@ class TileRepository @Inject constructor(
                 shortLabel = context.shortLabel(R.string.tile_danmaku_short),
                 icon = R.drawable.materialsymbols_ic_forum_rounded_filled,
                 state = notificationState,
-                setter = { gameSession.setDanmakuNotification(it) }
+                setter = { gameSession.saveOption(GameOption.DANMAKU, if (it) 1 else 0) }
             )
         )
 
@@ -1087,7 +897,7 @@ class TileRepository @Inject constructor(
                 shortLabel = context.shortLabel(R.string.bypass_charge_enabled_title_short),
                 icon = R.drawable.materialsymbols_ic_battery_charging_full_rounded_filled,
                 state = bypassChargeState,
-                setter = { gameSession.setBypassChargeEnabled(it) }
+                setter = { gameSession.saveOption(GameOption.BYPASS, if (it) 1 else 0) }
             )
         )
 
@@ -1100,19 +910,20 @@ class TileRepository @Inject constructor(
             sessionOption = GameOption.GESTURES,
             readSavedDifference = { differsFromSaved(GameOption.GESTURES) },
             state = gestureState,
-            setter = { gameSession.setOption(GameOption.GESTURES, if (it) 1 else 0) },
+            setter = { gameSession.saveOption(GameOption.GESTURES, if (it) 1 else 0) },
         ))
         add(TouchSensitivityTile(context) { touchSensitivityRevision.intValue })
         add(ToggleableTile(
             id = "pen_input",
             label = context.getString(R.string.tile_pen_input),
             shortLabel = context.shortLabel(R.string.tile_pen_input_short),
-            icon = R.drawable.materialsymbols_ic_menu_book_rounded_filled,
+            icon = R.drawable.materialsymbols_ic_stylus_rounded_filled,
             category = TileCategory.GAME_TOOLS,
             state = penInputState,
             available = { hasDeviceCapability("pen_input") },
             setter = {
-                TouchSensitivitySettings.setPenInput(context, it)
+                TouchSensitivitySettings.setValue(context, SessionOptions.packageName(context),
+                    TouchSensitivitySettings.KEY_PEN_INPUT, if (it) 1 else 0)
                 penInputState.value = it
             },
         ))
@@ -1122,9 +933,8 @@ class TileRepository @Inject constructor(
             defaultIcon = R.drawable.materialsymbols_ic_volume_up_rounded_filled,
             category = TileCategory.SOUND_NOTIFICATIONS,
             sessionOption = GameOption.RINGER,
-            readSavedDifference = { ringerDiffersFromSaved() },
-            // Sound and vibrate read as on; only mute reads as off.
-            readEnabled = { ringerState.value != AudioManager.RINGER_MODE_SILENT },
+            // Vibrate also silences the ringer, so only sound reads as on.
+            readEnabled = { ringerState.value == AudioManager.RINGER_MODE_NORMAL },
             readIcon = {
                 when (ringerState.value) {
                     AudioManager.RINGER_MODE_SILENT -> R.drawable.materialsymbols_ic_volume_off_rounded_filled
@@ -1146,14 +956,10 @@ class TileRepository @Inject constructor(
                     AudioManager.RINGER_MODE_VIBRATE -> AudioManager.RINGER_MODE_SILENT
                     else -> AudioManager.RINGER_MODE_NORMAL
                 }
-                gameSession.setOption(GameOption.RINGER, next)
-                // GameSession already owns/restores this setting. Reapply a repeated choice
-                // when an external writer changed the actual mode since its last apply.
-                if (SessionOptions.hasChoice(context, GameOption.RINGER) &&
-                    appSettings.inGameOptions.current(GameOption.RINGER) == next &&
-                    audioManager.ringerModeInternal != next) {
-                    audioManager.ringerModeInternal = next
-                }
+                // Only vibrate and mute carry over to later games; sound lasts until this one ends.
+                gameSession.saveGlobalOption(GameOption.RINGER,
+                    if (next == AudioManager.RINGER_MODE_NORMAL) RINGER_NO_CHANGE else next)
+                if (audioManager.ringerModeInternal != next) audioManager.ringerModeInternal = next
                 ringerState.value = audioManager.ringerModeInternal
             },
         ))
@@ -1163,12 +969,10 @@ class TileRepository @Inject constructor(
             shortLabel = context.shortLabel(R.string.wifi_low_latency_title_short),
             icon = R.drawable.materialsymbols_ic_wifi_rounded_filled,
             category = TileCategory.CONNECTIVITY,
-            isSessionTile = true,
-            readSavedDifference = { wifiDiffersFromSaved() },
             state = wifiLowLatencyState,
             available = { hasDeviceCapability("wifi_low_latency") },
             setter = {
-                appSettings.setSessionWifiLowLatency(it)
+                gameSession.saveOption(GameOption.WIFI_LOW_LATENCY, if (it) 1 else 0)
                 refreshPlatformStates()
             },
         ))
@@ -1183,13 +987,12 @@ class TileRepository @Inject constructor(
                 category = TileCategory.GAME_TOOLS,
                 available = { hasDeviceCapability("stay_awake") },
                 sessionOption = GameOption.AWAKE,
-                readSavedDifference = { differsFromSaved(GameOption.AWAKE) },
                 label = context.getString(R.string.tile_stay_awake),
                 shortLabel = context.shortLabel(R.string.tile_stay_awake_short),
                 icon = R.drawable.materialsymbols_ic_bedtime_rounded_filled,
                 state = systemSettings.stayAwakeState,
                 setter = {
-                    gameSession.setOption(GameOption.AWAKE, if (it) 1 else 0)
+                    gameSession.saveGlobalOption(GameOption.AWAKE, if (it) 1 else 0)
                 }
             )
         )

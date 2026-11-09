@@ -192,13 +192,11 @@
     <string name="tile_frame_interp_short">Motion</string>
     <string name="frame_interp_2x">2x</string>
     <string name="frame_interp_3x">3x</string>
-    <string name="frame_interp_description">Inserts intermediate frames between frames, up to 120 fps. Uses more power and heat.</string>
+    <string name="frame_interp_description">Generates intermediate frames between the source frames for smoother motion. Uses more power and heat.</string>
+    <string name="frame_interp_super_resolution_note">With super resolution on, the source frames are limited to 60 fps.</string>
     <string name="tile_super_resolution">Super resolution</string>
     <string name="tile_super_resolution_short">Super res</string>
-    <string name="super_resolution_light">Light</string>
-    <string name="super_resolution_strong">Strong</string>
-    <string name="super_resolution_description">Renders the game at a lower resolution and upscales it, for better performance with little loss of detail.</string>
-    <string name="super_resolution_restart_needed">Applies after the game restarts.</string>
+    <string name="super_resolution_description">Upscales the game\'s frames for a sharper picture. Uses more power and heat.</string>
     <string name="super_resolution_unsupported">Not supported on this device.</string>
     <string name="gpp_on">On</string>
     <string name="gpp_off">Off</string>
@@ -317,4 +315,5 @@
     <string name="options_session">This session</string>
     <string name="game_performance">Game Tuner</string>
     <string name="global_in_game_options_title">Global in-game options</string>
+    <string name="touch_sensitivity_high_polling_pen">Disabled while pen input is on.</string>
 </resources>
