@@ -46,7 +46,6 @@ class SettingsActivity : Hilt_SettingsActivity() {
     }
 
     private var globalOptionsOpen by mutableStateOf(false)
-    private var mainCategory by mutableIntStateOf(0)
     private var globalCategory by mutableIntStateOf(0)
 
     fun openGlobalInGameOptions() {
@@ -58,7 +57,6 @@ class SettingsActivity : Hilt_SettingsActivity() {
         super.onCreate(savedInstanceState)
         val quickApps = intent.getBooleanExtra(EXTRA_EDIT_QUICK_APPS, false)
         globalOptionsOpen = savedInstanceState?.getBoolean("global_options_open") ?: quickApps
-        mainCategory = savedInstanceState?.getInt("main_category")?.coerceIn(0, 1) ?: 0
         globalCategory = savedInstanceState?.getInt("global_category")?.coerceIn(0, 3) ?: if (quickApps) 3 else 0
         enableEdgeToEdge()
         actionBar?.hide()
@@ -76,15 +74,13 @@ class SettingsActivity : Hilt_SettingsActivity() {
 
     override fun onSaveInstanceState(outState: Bundle) {
         outState.putBoolean("global_options_open", globalOptionsOpen)
-        outState.putInt("main_category", mainCategory)
         outState.putInt("global_category", globalCategory)
         super.onSaveInstanceState(outState)
     }
 
     @Composable
     private fun SettingsContent() {
-        val mainTitles = listOf(R.string.game_list_title, R.string.game_optimization_title,
-            R.string.global_in_game_options_title)
+        val mainTitles = listOf(R.string.game_list_title, R.string.global_in_game_options_title)
         val gameTitles = GameOptionGroup.entries.map { it.title } + R.string.options_other
         val back = { if (globalOptionsOpen) globalOptionsOpen = false else finish() }
         BackHandler(onBack = back)
@@ -98,10 +94,9 @@ class SettingsActivity : Hilt_SettingsActivity() {
                     if (expanded) Row(Modifier.weight(1f).padding(16.dp),
                         horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                         OptionsCategories(if (globalOptionsOpen) gameTitles else mainTitles,
-                            if (globalOptionsOpen) globalCategory else mainCategory, { selected ->
+                            if (globalOptionsOpen) globalCategory else 0, { selected ->
                                 if (globalOptionsOpen) globalCategory = selected
-                                else if (selected == 2) openGlobalInGameOptions()
-                                else mainCategory = selected
+                                else if (selected == 1) openGlobalInGameOptions()
                             }, Modifier.width(340.dp))
                         Surface(Modifier.weight(1f).fillMaxHeight(), shape = RoundedCornerShape(28.dp),
                             color = MaterialTheme.colorScheme.surfaceContainerLow) {
@@ -110,7 +105,7 @@ class SettingsActivity : Hilt_SettingsActivity() {
                                     GameOptionsContent(null, expanded = false,
                                         selectedGroup = GameOptionGroup.entries[globalCategory], onBack = back)
                                 else PreferencesPane("global_preferences")
-                            } else PreferencesPane(if (mainCategory == 0) "library_preferences" else "game_optimization")
+                            } else PreferencesPane("library_preferences")
                         }
                     } else Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
                         Box(Modifier.widthIn(max = 640.dp).fillMaxSize()) {

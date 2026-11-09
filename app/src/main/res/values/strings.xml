@@ -159,7 +159,6 @@
     <string name="cd_expand">Expand</string>
 
     <!-- Game Optimization -->
-    <string name="game_optimization_title">Launch Optimization</string>
     <string name="game_memory_management_title">Smart Memory Management</string>
     <string name="game_memory_management_summary">Automatically clear background apps when launching games</string>
     <string name="game_memory_boosted">Memory boosted</string>
@@ -307,7 +306,6 @@
     <string name="options_notifications">Notifications and calls</string>
     <string name="options_hardware">Touch and hardware</string>
     <string name="options_touch">Touch</string>
-    <string name="options_session">This session</string>
     <string name="game_performance">Game Tuner</string>
     <string name="options_other">Other options</string>
     <string name="global_in_game_options_title">Global in-game options</string>

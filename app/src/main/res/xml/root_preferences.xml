@@ -29,20 +29,6 @@
             android:summary="@string/auto_game_detect_summary"
             android:defaultValue="true"
             android:persistent="false" />
-        <Preference
-            android:key="library_open"
-            android:title="@string/library_open"
-            android:persistent="false"
-            app:isPreferenceVisible="false" />
-
-        <io.github.miner7222.gamespace.library.HideGamesPreference
-            android:key="gamespace_hide_games"
-            android:title="@string/library_hide_title" />
-    </PreferenceCategory>
-
-    <PreferenceCategory
-        android:key="game_optimization"
-        android:title="@string/game_optimization_title">
 
         <ListPreference
             android:key="gamespace_default_game_mode"
@@ -53,18 +39,15 @@
             android:defaultValue="1"
             android:persistent="false" />
 
-        <SwitchPreferenceCompat
-            android:key="game_memory_management"
-            android:title="@string/game_memory_management_title"
-            android:summary="@string/game_memory_management_summary"
-            android:defaultValue="false" />
+        <Preference
+            android:key="library_open"
+            android:title="@string/library_open"
+            android:persistent="false"
+            app:isPreferenceVisible="false" />
 
-        <SwitchPreferenceCompat
-            android:key="gamespace_wifi_low_latency"
-            android:title="@string/wifi_low_latency_title"
-            android:summary="@string/wifi_low_latency_summary"
-            android:defaultValue="true" />
-
+        <io.github.miner7222.gamespace.library.HideGamesPreference
+            android:key="gamespace_hide_games"
+            android:title="@string/library_hide_title" />
     </PreferenceCategory>
 
     <Preference

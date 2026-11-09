@@ -48,6 +48,8 @@ object SessionOptions {
 
     fun value(context: Context, option: GameOption): Int {
         val state = states[context.userId]
+        // Global-only options never take a session value; the global choice is authoritative.
+        if (option.globalOnly) return InGameOptions(context).global(option)
         return state?.choices?.get(option) ?: InGameOptions(context).effective(state?.packageName, option)
     }
 

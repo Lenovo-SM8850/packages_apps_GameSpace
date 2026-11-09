@@ -24,9 +24,6 @@ import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
-import android.net.wifi.WifiManager
-import androidx.preference.PreferenceManager
-import io.chaldeaprjkt.gamespace.data.AppSettings
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.luminance
@@ -65,10 +62,11 @@ internal fun rememberGameOptions(store: InGameOptions, packageName: String): Gam
         val overrides = store.overrides(packageName)
         val currentGame = SessionOptions.packageName(context) == packageName
         GameOptionsSnapshot(GameOption.entries.associateWith {
-            if (it == GameOption.GESTURES && currentGame) Settings.Secure.getIntForUser(
+            if (it.globalOnly) store.global(it)
+            else if (it == GameOption.GESTURES && currentGame) Settings.Secure.getIntForUser(
                 context.contentResolver, "ax_gaming_gesture_lock", 0, context.userId)
             else overrides[it] ?: store.global(it)
-        }, overrides.keys, store.availableOptions(),
+        }, overrides.keys, store.availableOptions().filter { packageName.isEmpty() || !it.globalOnly },
             if (SessionOptions.packageName(context) == packageName) SessionOptions.mode(context) else null)
     }
 }
@@ -139,7 +137,9 @@ internal fun GameOptionsContent(packageName: String?, expanded: Boolean, onBack:
     var category by rememberSaveable(packageName) { mutableIntStateOf(0) }
     var choice by remember(packageName) { mutableStateOf<GameOption?>(null) }
     BackHandler { if (choice != null) choice = null else onBack() }
-    val groups = if (selectedGroup != null) listOf(selectedGroup) else GameOptionGroup.entries
+    // Global-only groups have no per-game values.
+    val groups = if (selectedGroup != null) listOf(selectedGroup)
+        else GameOptionGroup.entries.filter { packageName == null || !it.globalOnly }
     val detail: @Composable (List<GameOptionGroup>) -> Unit = { visibleGroups ->
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -167,7 +167,6 @@ internal fun GameOptionsContent(packageName: String?, expanded: Boolean, onBack:
                     }
                 }
             }
-            if (packageName != null && SessionOptions.packageName(context) == packageName) SessionWifiOption()
             if (packageName != null) TextButton(onClick = { store.reset(packageName) },
                 enabled = snapshot.changed.isNotEmpty(), modifier = Modifier.align(Alignment.End)) {
                 Text(stringResource(R.string.library_reset_defaults))
@@ -255,28 +254,5 @@ internal fun OptionRow(title: String, summary: String?, checked: Boolean?,
                     thumbContent = { if (checked) Icon(Icons.Rounded.Check, null, Modifier.size(SwitchDefaults.IconSize)) })
             }
         }
-    }
-}
-
-@Composable
-private fun SessionWifiOption() {
-    val context = LocalContext.current
-    val supported = remember(context) {
-        runCatching { context.getSystemService(WifiManager::class.java)?.isLowLatencyModeSupported == true }.getOrDefault(false)
-    }
-    if (!supported) return
-    val preferences = remember(context) { PreferenceManager.getDefaultSharedPreferences(context) }
-    var revision by remember { mutableIntStateOf(0) }
-    DisposableEffect(context) {
-        val observation = InGameOptions(context).observe { revision++ }
-        onDispose { observation.close() }
-    }
-    val enabled = remember(revision) {
-        SessionOptions.wifi(context, preferences.getBoolean(AppSettings.KEY_WIFI_LOW_LATENCY, true))
-    }
-    Text(stringResource(R.string.options_session), style = MaterialTheme.typography.labelLarge,
-        color = MaterialTheme.colorScheme.primary)
-    OptionRow(stringResource(R.string.wifi_low_latency_title), null, enabled, groupedShape(0, 1)) {
-        SessionOptions.chooseWifi(context, !enabled)
     }
 }

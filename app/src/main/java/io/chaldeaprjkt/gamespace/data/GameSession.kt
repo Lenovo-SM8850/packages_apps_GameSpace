@@ -25,6 +25,7 @@ import android.media.AudioManager
 import com.google.gson.Gson
 import io.github.miner7222.gamespace.library.SessionOptions
 import io.github.miner7222.gamespace.library.GameOption
+import io.github.miner7222.gamespace.TouchSensitivitySettings
 import io.chaldeaprjkt.gamespace.utils.GameModeUtils
 import javax.inject.Inject
 
@@ -163,6 +164,8 @@ class GameSession @Inject constructor(
         if (systemSettings.stayAwake != awake) systemSettings.stayAwake = awake
         val bypass = options.current(GameOption.BYPASS) == 1
         if (systemSettings.bypassChargeEnabled != bypass) systemSettings.bypassChargeEnabled = bypass
+        // Capture the live touch values before this game's overrides replace them.
+        TouchSensitivitySettings.beginSession(context, orig.packageName)
     }
 
     fun captureDndOwnership() {
@@ -225,6 +228,21 @@ class GameSession @Inject constructor(
         if (liveState != null && SessionOptions.choose(context, option, value)) applyOptions()
     }
 
+    /** Applies a global-only choice now and keeps it for later games. */
+    fun saveGlobalOption(option: GameOption, value: Int) {
+        if (liveState == null) return
+        // Store first so the apply below reads the new global value.
+        appSettings.inGameOptions.setGlobal(option, value)
+        setOption(option, value)
+    }
+
+    /** Applies a choice now and keeps it as this game's setting for its next sessions. */
+    fun saveOption(option: GameOption, value: Int) {
+        if (liveState == null) return
+        setOption(option, value)
+        SessionOptions.packageName(context)?.let { appSettings.inGameOptions.set(it, option, value) }
+    }
+
     private fun restoreBrightness(orig: SessionState) {
         orig.brightness?.takeIf { it.isFinite() && it >= 0f }?.let {
             displayManager.setBrightness(Display.DEFAULT_DISPLAY, it)
@@ -257,6 +275,8 @@ class GameSession @Inject constructor(
         systemSettings.gestureLock = false
         systemSettings.bypassChargeEnabled = false
         systemSettings.stayAwake = false
+        // Touch overrides are a session effect; the saved per-game values stay for later games.
+        TouchSensitivitySettings.restoreDefaults(context)
         if (orig.ownsBrightness) {
             restoreBrightness(orig)
             orig.ownsBrightness = false
@@ -297,6 +317,7 @@ class GameSession @Inject constructor(
         systemSettings.gestureLock = false
         systemSettings.bypassChargeEnabled = false
         systemSettings.stayAwake = false
+        TouchSensitivitySettings.restoreDefaults(context)
         if (orig == null) return
         check(orig.userId == null || orig.userId == context.userId) { "Session recovery user mismatch" }
         releaseEffects(orig)
