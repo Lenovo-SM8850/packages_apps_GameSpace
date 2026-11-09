@@ -664,14 +664,29 @@ class TileRepository @Inject constructor(
             (needsMigration && savedOrder.isNotEmpty() && snapshot != null && savedOrder == snapshot)
         pendingDefaultOrder = useDefault && supportedFeatures.isEmpty()
         val selection = if (useDefault) currentDefault else savedOrder.orEmpty()
+        val migrated = if (needsMigration) migrateSavedOrder(selection) else selection
         // Filter the catalogue, not availability: unplugging a device or hiding a
         // capability must never remove a user's selection from its saved position.
         val catalogIds = defaultTiles.map { it.id }.toSet()
-        val order = selection.filter { it in catalogIds }.distinct()
+        val order = migrated.filter { it in catalogIds }.distinct()
         val newSnapshot = if (useDefault) currentDefault
             else (snapshot ?: currentDefault).filter { it in catalogIds }.distinct()
         appSettings.saveTileConfiguration(order, newSnapshot, TILE_ORDER_VERSION)
         return order
+    }
+
+    /** Existing installs keep their order but gain the new touch controls once. */
+    private fun migrateSavedOrder(order: List<String>): List<String> {
+        val migrated = order.toMutableList()
+        val touchIndex = migrated.indexOf("touch_response")
+        if (touchIndex >= 0) {
+            migrated[touchIndex] = "touch_sensitivity"
+        } else if ("touch_sensitivity" !in migrated) {
+            val anchor = migrated.indexOf("bypass_charge_enabled")
+            migrated.add(if (anchor >= 0) anchor + 1 else migrated.size, "touch_sensitivity")
+        }
+        if ("pen_input" !in migrated) migrated.add("pen_input")
+        return migrated
     }
 
     fun resetToDefault() {
@@ -684,11 +699,11 @@ class TileRepository @Inject constructor(
     }
 
     companion object {
-        private const val TILE_ORDER_VERSION = 1
+        private const val TILE_ORDER_VERSION = 2
         private val DEFAULT_MAIN_ORDER = listOf(
             AxPlatformClient.FEATURE_SCREENSHOT, AxPlatformClient.FEATURE_SCREEN_RECORD,
             "fps_info", AxPlatformClient.FEATURE_ZEN, "gesture_lock", "bypass_charge_enabled",
-            "touch_response", "screen_off", "ringer", "notification", "screen_aspect_ratio",
+            "touch_sensitivity", "screen_off", "ringer", "notification", "screen_aspect_ratio",
             "boost_memory",
         )
         private val DEFAULT_MORE_ORDER = listOf(
