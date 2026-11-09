@@ -13,6 +13,7 @@ object TouchSensitivitySettings {
     const val KEY_TAP = "touch_sensitivity_tap"
     const val KEY_MOVE = "touch_sensitivity_move"
     const val KEY_EDGE = "touch_sensitivity_edge"
+    const val KEY_PEN_INPUT = "game_pen_input"
     private const val KEY_MIGRATED = "touch_sensitivity_migrated"
     private const val LEGACY_HIGH_POLLING = "gamespace_high_touch_polling_enabled"
 
@@ -64,6 +65,13 @@ object TouchSensitivitySettings {
 
     fun setEdge(context: Context, value: Int) {
         write(context, KEY_EDGE, value.coerceIn(0, 3))
+    }
+
+    fun penInput(context: Context): Boolean =
+        read(context, KEY_PEN_INPUT, 0) == 1
+
+    fun setPenInput(context: Context, enabled: Boolean) {
+        write(context, KEY_PEN_INPUT, if (enabled) 1 else 0)
     }
 
     private fun read(context: Context, key: String, default: Int): Int =

@@ -195,6 +195,8 @@
     <string name="tile_category_accessibility_privacy">Accessibility &amp; privacy</string>
     <string name="tile_gesture_lock">Gesture lock</string>
     <string name="tile_touch_sensitivity">Touch sensitivity</string>
+    <string name="tile_pen_input">Pen input</string>
+    <string name="tile_pen_input_high_polling_off">High sampling off</string>
     <string name="touch_sensitivity_title">Touch sensitivity</string>
     <string name="touch_sensitivity_high_polling">High sampling rate</string>
     <string name="touch_sensitivity_tap">Tap sensitivity</string>
@@ -286,6 +288,7 @@
     <string name="tile_aspect_ratio_short">Ratio</string>
     <string name="tile_gesture_lock_short">Gestures</string>
     <string name="tile_touch_sensitivity_short">Sensitivity</string>
+    <string name="tile_pen_input_short">Pen</string>
     <string name="status_do_not_disturb_short">DND</string>
     <string name="status_sidebar_hidden_short">Sidebar off</string>
     <string name="status_high_touch_sampling_short">High touch sampling</string>

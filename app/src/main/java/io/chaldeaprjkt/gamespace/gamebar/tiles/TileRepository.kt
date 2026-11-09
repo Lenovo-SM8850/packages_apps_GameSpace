@@ -132,12 +132,14 @@ class ToggleableTile(
     override val isSessionTile: Boolean = sessionOption != null,
     private val available: () -> Boolean = { true },
     private val readSavedDifference: () -> Boolean = { false },
+    private val readValueLine: (() -> String?)? = null,
     override val shortLabel: String? = null,
 ) : TileAction {
     override val differsFromSaved: Boolean get() = readSavedDifference()
     override val kind = TileKind.TOGGLE
     override val isAvailable: Boolean get() = available()
     override val isEnabled: Boolean get() = state.value
+    override val valueLine: String? get() = readValueLine?.invoke()
     @Composable override fun observeEnabled(): State<Boolean> = rememberUpdatedState(state.value)
     override fun toggle() {
         if (!isAvailable) return
@@ -342,6 +344,7 @@ class TileRepository @Inject constructor(
     private val haloAvailableSetting = "halo_ring_available"
     private val notificationState = mutableStateOf((appSettings.inGameOptions.current(GameOption.DANMAKU) == 1))
     private val gestureState = mutableStateOf(false)
+    private val penInputState = mutableStateOf(false)
     private val touchSensitivityRevision = mutableIntStateOf(0)
     private val wifiLowLatencyState = mutableStateOf(false)
     private val ringerState = mutableStateOf(AudioManager.RINGER_MODE_NORMAL)
@@ -455,6 +458,7 @@ class TileRepository @Inject constructor(
             Settings.Secure.REDUCE_BRIGHT_COLORS_ACTIVATED, "ax_gaming_gesture_lock",
             TouchSensitivitySettings.KEY_HIGH_POLLING, TouchSensitivitySettings.KEY_TAP,
             TouchSensitivitySettings.KEY_MOVE, TouchSensitivitySettings.KEY_EDGE,
+            TouchSensitivitySettings.KEY_PEN_INPUT
         ).forEach { key ->
             context.contentResolver.registerContentObserver(
                 Settings.Secure.getUriFor(key), false, settingsObserver, UserHandle.USER_ALL
@@ -499,6 +503,7 @@ class TileRepository @Inject constructor(
         bypassChargeState.value = systemSettings.bypassChargeEnabled
         isFpsInfoVisible.value = appSettings.showFps
         gestureState.value = systemSettings.gestureLock
+        penInputState.value = TouchSensitivitySettings.penInput(context)
         touchSensitivityRevision.intValue++
         wifiLowLatencyState.value = appSettings.wifiLowLatency
         ringerState.value = audioManager.ringerModeInternal
@@ -687,7 +692,7 @@ class TileRepository @Inject constructor(
             "boost_memory",
         )
         private val DEFAULT_MORE_ORDER = listOf(
-            AxPlatformClient.FEATURE_WIFI, AxPlatformClient.FEATURE_BLUETOOTH,
+            "pen_input", AxPlatformClient.FEATURE_WIFI, AxPlatformClient.FEATURE_BLUETOOTH,
             AxPlatformClient.FEATURE_NIGHT_LIGHT, AxPlatformClient.FEATURE_MIC_PRIVACY,
         )
     }
@@ -1071,6 +1076,19 @@ class TileRepository @Inject constructor(
             setter = { gameSession.setOption(GameOption.GESTURES, if (it) 1 else 0) },
         ))
         add(TouchSensitivityTile(context) { touchSensitivityRevision.intValue })
+        add(ToggleableTile(
+            id = "pen_input",
+            label = context.getString(R.string.tile_pen_input),
+            shortLabel = context.shortLabel(R.string.tile_pen_input_short),
+            icon = R.drawable.materialsymbols_ic_menu_book_rounded_filled,
+            category = TileCategory.GAME_TOOLS,
+            state = penInputState,
+            available = { hasDeviceCapability("pen_input") },
+            setter = {
+                TouchSensitivitySettings.setPenInput(context, it)
+                penInputState.value = it
+            },
+        ))
         add(CycleTile(
             id = "ringer",
             label = context.getString(R.string.tile_ringer),
