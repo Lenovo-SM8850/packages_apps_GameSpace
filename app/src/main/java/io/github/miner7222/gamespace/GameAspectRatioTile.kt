@@ -120,6 +120,25 @@ class GameAspectRatioTile @Inject constructor(
     // Tapping the tile only reloads the stored mode before the picker lists it.
     override fun toggle() = refresh()
 
+    override val togglesLastChoice = true
+
+    /** Full screen and the ratio used last switch places; without one the picker opens. */
+    override fun toggleLastChoice(): Boolean {
+        reload()
+        if (!available) {
+            onChanged?.invoke()
+            return true
+        }
+        if (mode.value != null) {
+            select(null)
+            return true
+        }
+        val last = androidx.preference.PreferenceManager.getDefaultSharedPreferences(context)
+            .getString(LAST_KEY, null)?.takeIf { it in MODES && it != null } ?: return false
+        select(last)
+        return true
+    }
+
     override fun selectOption(option: TileOption) {
         val next = if (option.id == FULLSCREEN_ID) null else option.id
         if (next !in PICKER_MODES) return
@@ -145,6 +164,10 @@ class GameAspectRatioTile @Inject constructor(
         reload()
         val pkg = gamePackage ?: return
         if (!available) return
+        if (next != null) {
+            androidx.preference.PreferenceManager.getDefaultSharedPreferences(context).edit()
+                .putString(LAST_KEY, next).apply()
+        }
         try {
             val userId = gameUserId
             val ratios = readRatios(userId)
@@ -212,6 +235,7 @@ class GameAspectRatioTile @Inject constructor(
         private const val SETTING = "game_window_ratios"
         // Picker id of the full screen mode, which is stored as no entry.
         private const val FULLSCREEN_ID = ""
+        private const val LAST_KEY = "game_aspect_ratio_last"
         const val CENTER_PREFIX = "1:"
         const val BOTTOM_PREFIX = "2:"
         const val DEEP_VIEW = "1:1.2"
