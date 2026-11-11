@@ -98,7 +98,7 @@
     <string name="tile_stay_awake">Stay awake</string>
     <string name="tile_wifi">Wi-Fi</string>
     <string name="tile_dnd">Do not disturb</string>
-    <string name="tile_fps_info">Stats overlay</string>
+    <string name="tile_fps_info">Perf overlay</string>
     <string name="tile_auto_rotate">Auto-rotate</string>
     <string name="tile_boost_memory">Memory boost</string>
     <string name="tile_settings">Settings</string>
@@ -215,6 +215,7 @@
     <string name="touch_sensitivity_title">Touch sensitivity</string>
     <string name="touch_sensitivity_value">%1$d%% / %2$d%% / %3$d</string>
     <string name="touch_sensitivity_high_polling">High polling rate</string>
+    <string name="touch_sensitivity_high_polling_pen">Disabled while pen input is on.</string>
     <string name="touch_sensitivity_tap">Tap sensitivity</string>
     <string name="touch_sensitivity_move">Move sensitivity</string>
     <string name="touch_sensitivity_edge">Edge rejection</string>
@@ -296,7 +297,7 @@
     <string name="wifi_low_latency_title_short">Low-lat Wi-Fi</string>
     <string name="tile_danmaku_short">Bullet alerts</string>
     <string name="tile_stay_awake_short">Awake</string>
-    <string name="tile_fps_info_short">Stats</string>
+    <string name="tile_fps_info_short">Perf</string>
     <string name="tile_boost_memory_short">Memory</string>
     <string name="tile_heads_up_short">Pop-ups</string>
     <string name="tile_caffeine_short">Screen on 5 min</string>
@@ -315,7 +316,6 @@
     <string name="options_session">This session</string>
     <string name="game_performance">Game Tuner</string>
     <string name="global_in_game_options_title">Global in-game options</string>
-    <string name="touch_sensitivity_high_polling_pen">Disabled while pen input is on.</string>
     <string name="perf_overlay_items_title">Overlay items</string>
     <string name="perf_overlay_items_summary">Up to 5 items can be shown.</string>
     <string name="perf_overlay_move">Move %1$s</string>
