@@ -4,6 +4,8 @@
 package io.github.miner7222.gamespace.library
 
 import android.content.Context
+import io.github.miner7222.gamespace.GameGppChoices
+import io.github.miner7222.gamespace.GppModeRules
 
 /** Panel choices live only between a service's game start and full session end. */
 object SessionOptions {
@@ -90,7 +92,11 @@ object SessionOptions {
 
     fun saveMode(context: Context, packageName: String, mode: Int) {
         require(mode in 0..3)
-        states[context.userId]?.takeIf { it.packageName == packageName }?.savedMode = mode
+        states[context.userId]?.takeIf { it.packageName == packageName }?.let { state ->
+            state.savedMode = mode
+            // A session override would otherwise keep the old mode, e.g. Performance raised by FI.
+            if (state.mode != null) state.mode = mode
+        }
         ModePreferences.saveRecoveryMode(context, packageName, mode)
         notify(context)
     }
@@ -99,6 +105,7 @@ object SessionOptions {
     fun chooseMode(context: Context, mode: Int): Boolean {
         require(mode in 0..3)
         val state = states[context.userId] ?: return false
+        if (!GppModeRules.keepFeatures(mode) && !GameGppChoices.clear(context, state.packageName)) return false
         state.mode = mode
         state.savedMode = mode
         ModePreferences.saveRecoveryMode(context, state.packageName, mode)

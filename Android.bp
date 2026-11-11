@@ -1,0 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+filegroup {
+    name: "gamespace_gpp_mode_rules",
+    srcs: ["app/src/main/java/io/github/miner7222/gamespace/GppModeRules.kt"],
+    visibility: ["//hardware/lenovo/gamepolicy:__pkg__"],
+}
