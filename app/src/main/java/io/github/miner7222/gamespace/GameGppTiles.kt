@@ -11,6 +11,7 @@ import android.os.UserHandle
 import android.provider.Settings
 import android.util.Log
 import android.widget.Toast
+import androidx.preference.PreferenceManager
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateOf
@@ -43,6 +44,7 @@ abstract class GameGppTile(
 
     override val kind = TileKind.DIALOG
     override val category = TileCategory.DISPLAY
+    override val togglesLastChoice = true
     override val valueLine: String get() = optionLabel(mode.value)
     override val isEnabled: Boolean get() = available && mode.value != 0
     override val isAvailable: Boolean get() = available
@@ -96,6 +98,26 @@ abstract class GameGppTile(
 
     override fun toggle() = refresh()
 
+    override fun toggleLastChoice(): Boolean {
+        reload()
+        if (!available) {
+            onChanged?.invoke()
+            return true
+        }
+        if (mode.value != 0) {
+            select(0)
+            return true
+        }
+        select(lastChoice() ?: return false)
+        return true
+    }
+
+    /** The choice used last, kept for every game; null before any was used. A tile with one
+     * choice besides off always returns that one. */
+    private fun lastChoice(): Int? = values.singleOrNull { it != 0 }
+        ?: PreferenceManager.getDefaultSharedPreferences(context).getInt("${setting}_last", 0)
+            .let(::normalize).takeIf { it != 0 && it in values }
+
     /** A stored value from an earlier set of choices, read as the nearest current one. */
     protected open fun normalize(value: Int): Int = value
 
@@ -116,6 +138,10 @@ abstract class GameGppTile(
                 return
             }
             mode.value = next
+            if (next != 0) {
+                PreferenceManager.getDefaultSharedPreferences(context).edit()
+                    .putInt("${setting}_last", next).apply()
+            }
             onChanged?.invoke()
         } catch (e: Exception) {
             Log.w(TAG, "Unable to change $setting", e)

@@ -188,10 +188,14 @@ fun GamePanelCard(
         tileRepository.actionResults.collect { completion -> message(completion.result.message) }
     }
     val activateTile: (TileAction) -> Unit = { tile ->
-        if (tile.id == "screen_record" && tileRepository.recordingState.value.phase == RecordingPhase.ACTIVE) {
+        if (tile.togglesLastChoice) {
+            if (!tile.toggleLastChoice()) dialogTile = tile
+        } else if (tile.id == "screen_record" && tileRepository.recordingState.value.phase == RecordingPhase.ACTIVE) {
             tileRepository.stopRecording()
         } else tile.toggle()
-        if (tile.id == "touch_sensitivity" || tile.options.isNotEmpty()) dialogTile = tile
+        if (!tile.togglesLastChoice && (tile.id == "touch_sensitivity" || tile.options.isNotEmpty())) {
+            dialogTile = tile
+        }
     }
     val recording by tileRepository.recordingState.collectAsState()
     val tiles = tileRepository.tiles
@@ -238,7 +242,8 @@ fun GamePanelCard(
                             Spacer(Modifier.height(if (compact) 6.dp else 10.dp))
                             DashboardGrid(tiles.take(mainCount), columns, tablet, compact, tileHeight, recording,
                                 onTile = activateTile,
-                                onDefault = { openSettings(GameSettingsDestination.IN_GAME_OPTIONS) })
+                                onDefault = { openSettings(GameSettingsDestination.IN_GAME_OPTIONS) },
+                                onDetail = { dialogTile = it })
                             if (apps.isNotEmpty()) QuickStartAppSidebar(apps, compact, message, onDismiss)
                             if (tiles.size > mainCount) {
                                 HorizontalDivider(Modifier.padding(top = if (compact) 6.dp else 8.dp))
@@ -261,7 +266,8 @@ fun GamePanelCard(
                                     }
                                     DashboardGrid(tiles.drop(mainCount), columns, tablet, compact, tileHeight, recording,
                                         onTile = activateTile,
-                                        onDefault = { openSettings(GameSettingsDestination.IN_GAME_OPTIONS) })
+                                        onDefault = { openSettings(GameSettingsDestination.IN_GAME_OPTIONS) },
+                                        onDetail = { dialogTile = it })
                                 }
                             }
                         }
@@ -565,13 +571,16 @@ private fun DashboardSlider(value: Float, enabled: Boolean, label: String, icon:
 
 @Composable
 private fun DashboardGrid(tiles: List<TileAction>, columns: Int, tablet: Boolean, compact: Boolean,
-    height: Dp, recording: RecordingState, onTile: (TileAction) -> Unit, onDefault: () -> Unit) {
+    height: Dp, recording: RecordingState, onTile: (TileAction) -> Unit, onDefault: () -> Unit,
+    onDetail: (TileAction) -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(if (compact) 6.dp else 8.dp)) {
         tiles.chunked(columns).forEach { row ->
             Row(horizontalArrangement = Arrangement.spacedBy(if (compact) 6.dp else 8.dp)) {
                 row.forEach { tile -> key(tile.id) {
                     TileButton(tile, Modifier.weight(1f), tablet, compact, height, recording,
-                        onClick = { onTile(tile) }, onDefault = onDefault)
+                        onClick = { onTile(tile) }, onDefault = onDefault,
+                        onDetail = if (tile.togglesLastChoice) ({ onDetail(tile) })
+                            else null)
                 } }
                 repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
             }
@@ -582,7 +591,8 @@ private fun DashboardGrid(tiles: List<TileAction>, columns: Int, tablet: Boolean
 @Composable
 fun TileButton(tile: TileAction, modifier: Modifier = Modifier, tablet: Boolean = false,
     compact: Boolean = false, height: Dp = 72.dp, recording: RecordingState = RecordingState(),
-    onClick: () -> Unit = { tile.toggle() }, onDefault: () -> Unit = {}) {
+    onClick: () -> Unit = { tile.toggle() }, onDefault: () -> Unit = {},
+    onDetail: (() -> Unit)? = null) {
     val enabled by tile.observeEnabled()
     val changed = tile.differsFromSaved
     val notice = tile.notice
@@ -613,6 +623,7 @@ fun TileButton(tile: TileAction, modifier: Modifier = Modifier, tablet: Boolean 
     val actionLabel = if (record) stringResource(R.string.dashboard_stop_recording) else null
     val context = LocalContext.current
     val defaultLabel = stringResource(R.string.dashboard_game_default)
+    val detailLabel = if (onDetail == null) null else label
     Box(modifier.height(height).clip(RoundedCornerShape(radius)).background(background)
         .combinedClickable(onClick = onClick, onClickLabel = actionLabel, onLongClickLabel = defaultLabel,
             onLongClick = if (tile.isSessionTile) onDefault else null)
@@ -643,7 +654,8 @@ fun TileButton(tile: TileAction, modifier: Modifier = Modifier, tablet: Boolean 
                     maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
-        if (tablet) Row(Modifier.fillMaxSize().padding(start = 10.dp, end = if (tile.kind == TileKind.DIALOG) 22.dp else 8.dp),
+        if (tablet) Row(Modifier.fillMaxSize().padding(start = 10.dp,
+            end = if (tile.kind == TileKind.DIALOG || onDetail != null) 22.dp else 8.dp),
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             if (record) Icon(Icons.Rounded.Stop, null, Modifier.size(24.dp), foreground)
             else Icon(painterResource(tile.icon), null, Modifier.size(24.dp), foreground)
@@ -654,7 +666,13 @@ fun TileButton(tile: TileAction, modifier: Modifier = Modifier, tablet: Boolean 
             else Icon(painterResource(tile.icon), null, Modifier.size(if (compact && height < 55.dp) 20.dp else 24.dp), foreground)
             text()
         }
-        if (tile.kind == TileKind.DIALOG) Icon(Icons.Rounded.ChevronRight, null,
+        // A tile that toggles with its own detail page: the arrow opens the page, the rest toggles.
+        if (onDetail != null) Box(Modifier.align(if (tablet) Alignment.CenterEnd else Alignment.TopEnd)
+            .size(if (tablet) 40.dp else 32.dp).clip(CircleShape)
+            .clickable(onClickLabel = detailLabel, role = Role.Button, onClick = onDetail),
+            contentAlignment = if (tablet) Alignment.CenterEnd else Alignment.TopEnd) {
+            Icon(Icons.Rounded.ChevronRight, detailLabel, Modifier.padding(2.dp).size(16.dp), color.onSurfaceVariant)
+        } else if (tile.kind == TileKind.DIALOG) Icon(Icons.Rounded.ChevronRight, null,
             Modifier.align(if (tablet) Alignment.CenterEnd else Alignment.TopEnd).padding(2.dp).size(16.dp), color.onSurfaceVariant)
         if (changed) Box(Modifier.align(Alignment.TopEnd).padding(6.dp).size(8.dp).background(color.tertiary, CircleShape))
     }

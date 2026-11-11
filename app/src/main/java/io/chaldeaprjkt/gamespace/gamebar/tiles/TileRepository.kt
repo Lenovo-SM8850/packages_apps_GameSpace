@@ -116,9 +116,19 @@ interface TileAction {
     val notice: String? get() = null
     /** Non-empty when tapping the tile opens a picker after [toggle] ran. */
     val options: List<TileOption> get() = emptyList()
+    /**
+     * A one-choice tile with an off choice: a tap on the tile switches between off and the choice
+     * used last, and only its arrow opens the picker.
+     */
+    val togglesLastChoice: Boolean get() = false
     @Composable fun observeEnabled(): State<Boolean>
     fun toggle()
     fun selectOption(option: TileOption) {}
+    /**
+     * Switches between off and the choice used last; see [togglesLastChoice]. False when nothing
+     * was chosen yet, so the caller opens the picker.
+     */
+    fun toggleLastChoice(): Boolean = false
     /** A setting that holds the tile back, shown in the attention colour without a text. */
     val limited: Boolean get() = false
 }
