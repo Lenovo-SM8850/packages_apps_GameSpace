@@ -15,74 +15,79 @@
  */
 package io.chaldeaprjkt.gamespace.gamebar.fps
 
-import android.app.ActivityTaskManager
 import android.content.Context
-import android.hardware.display.DisplayManager
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
+import android.os.SystemProperties
+import android.util.Log
 import android.view.WindowManager
 import android.window.TaskFpsCallback
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.flow.*
-import kotlinx.coroutines.*
-import kotlin.math.max
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
-class FpsInteractor @Inject constructor(private val context: Context) {
-
-    private val wm = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
-    private val taskManager = ActivityTaskManager.getService()
-
-    private val coroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-
+class FpsInteractor @Inject constructor(context: Context) {
+    private val wm = context.getSystemService(WindowManager::class.java)
+    private val handler = Handler(Looper.getMainLooper())
     private val _fpsHistory = MutableStateFlow<List<Float>>(emptyList())
     val fpsHistory: StateFlow<List<Float>> get() = _fpsHistory
-
     private val _dynamicMaxFps = MutableStateFlow(60f)
     val dynamicMaxFps: StateFlow<Float> get() = _dynamicMaxFps
+    val maxRefreshRate: Float get() = wm.defaultDisplay?.mode?.refreshRate ?: 60f
 
-    val maxRefreshRate: Float by lazy {
-        wm.defaultDisplay?.mode?.refreshRate ?: 60f
-    }
+    var onFpsChanged: ((Float) -> Unit)? = null
+    private val buffer = ArrayDeque<Float>(100)
+    private var callback: TaskFpsCallback? = null
+    private var taskId = -1
+    private var generation = 0
+    private var lastSample = 0L
 
-    private val historySize = 100
-    private val buffer = ArrayDeque<Float>(historySize)
-
-    private val fpsFlow = MutableSharedFlow<Float>(extraBufferCapacity = 64)
-
-    private val fpsCallback = object : TaskFpsCallback() {
-        override fun onFpsReported(fps: Float) {
-            fpsFlow.tryEmit(fps)
-        }
-    }
-
-    init {
-        coroutineScope.launch {
-            fpsFlow
-                .sample(1000) 
-                .map { fps ->
+    // SurfaceFlinger dispatches to one listener per task. Share that listener between
+    // the panel and overlay, and keep it registered when the panel opens or closes.
+    fun start(gameTaskId: Int) {
+        if (taskId == gameTaskId && callback != null) return
+        dispose()
+        taskId = gameTaskId
+        buffer.clear()
+        _fpsHistory.value = emptyList()
+        _dynamicMaxFps.value = 60f
+        lastSample = 0L
+        val epoch = generation
+        val listener = object : TaskFpsCallback() {
+            override fun onFpsReported(fps: Float) {
+                handler.post {
+                    if (epoch != generation || taskId != gameTaskId || !fps.isFinite()) return@post
+                    onFpsChanged?.invoke(fps)
+                    val now = SystemClock.uptimeMillis()
+                    if (now - lastSample < 1000) return@post
+                    lastSample = now
                     val smoothed = (buffer.lastOrNull() ?: fps) * 0.75f + fps * 0.25f
-                    if (buffer.size >= historySize) buffer.removeFirst()
+                    if (buffer.size == 100) buffer.removeFirst()
                     buffer.addLast(smoothed)
-                    val dynamicMax = buffer.maxOrNull()?.coerceAtLeast(15f) ?: 60f
-                    smoothed to dynamicMax
-                }
-                .flowOn(Dispatchers.Default)
-                .collect { (smoothed, dynamicMax) ->
                     _fpsHistory.value = buffer.toList()
-                    _dynamicMaxFps.value = dynamicMax
+                    _dynamicMaxFps.value = buffer.maxOrNull()?.coerceAtLeast(15f) ?: 60f
+                    if (SystemProperties.get("vendor.gpp.log.msg") == "0x21") {
+                        Log.d("GameSpaceFps", "task=$gameTaskId output=$fps graph=$smoothed")
+                    }
                 }
+            }
         }
-    }
-
-    fun start() {
-        val taskId = taskManager?.focusedRootTaskInfo?.taskId ?: return
-        wm.registerTaskFpsCallback(taskId, Runnable::run, fpsCallback)
+        try {
+            wm.registerTaskFpsCallback(gameTaskId, Runnable::run, listener)
+            callback = listener
+        } catch (e: Exception) {
+            taskId = -1
+            Log.w("GameSpaceFps", "Cannot track task $gameTaskId", e)
+        }
     }
 
     fun dispose() {
-        wm.unregisterTaskFpsCallback(fpsCallback)
+        generation++
+        callback?.let { runCatching { wm.unregisterTaskFpsCallback(it) } }
+        callback = null
+        taskId = -1
     }
 }

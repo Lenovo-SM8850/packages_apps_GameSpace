@@ -33,7 +33,6 @@ import android.os.UserHandle
 import android.provider.Settings
 import android.util.Log
 import android.view.*
-import android.window.TaskFpsCallback
 import android.window.OnBackInvokedDispatcher
 import android.window.OnBackInvokedCallback
 import androidx.activity.OnBackPressedDispatcher
@@ -248,7 +247,10 @@ class GameSidebar(
             ?: tasks.firstOrNull { it.isFocused }
             ?: tasks.firstOrNull { it.isVisible }
             ?: tasks.firstOrNull()
+        val previousTaskId = gameTaskId
         gameTaskId = task?.taskId ?: ActivityTaskManager.INVALID_TASK_ID
+        // The frame rate follows the game's own task, which can appear after the session started.
+        if (gameTaskId != previousTaskId) updateFpsTracking()
         val hidden = task != null && task.isFloatingWindow && !task.isFocused
         if (gameTaskHidden == hidden) return
         gameTaskHidden = hidden
@@ -321,14 +323,12 @@ class GameSidebar(
             !shouldClose && !gameTaskHidden && !screenshotInProgress && !mapperEditing && !panelShowing)
     }
 
-    private val taskFpsCallback = object : TaskFpsCallback() {
-        override fun onFpsReported(fps: Float) {
-            if (::gameBarView.isInitialized && gameBarView.isAttachedToWindow) {
-                val formatted = DecimalFormat("#").apply {
-                    roundingMode = RoundingMode.HALF_EVEN
-                }.format(fps)
-                handler.post { fpsTextState.value = formatted }
-            }
+    private fun updateFpsText(fps: Float) {
+        if (sessionActive && !shouldClose && ::gameBarView.isInitialized &&
+            gameBarView.isAttachedToWindow) {
+            fpsTextState.value = DecimalFormat("#").apply {
+                roundingMode = RoundingMode.HALF_EVEN
+            }.format(fps)
         }
     }
 
@@ -634,7 +634,7 @@ class GameSidebar(
         isIdleState.value = false
 
         tileRepository.refreshPlatformStates()
-        fpsInteractor.start()
+        updateFpsTracking()
         brightnessInteractor.start()
 
         panelLayoutParam.flags = panelLayoutParam.flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE.inv()
@@ -655,8 +655,8 @@ class GameSidebar(
             updateStatsOverlayVisibility()
         } catch (_: Exception) {
             brightnessInteractor.dispose()
-            fpsInteractor.dispose()
             panelShowing = false
+            updateFpsTracking()
             notifyUiBlocking()
             updateGameBarVisibility()
             scheduleIdle()
@@ -673,7 +673,7 @@ class GameSidebar(
         notifyUiBlocking()
 
         brightnessInteractor.dispose()
-        fpsInteractor.dispose()
+        updateFpsTracking()
 
         panelView?.let { pv ->
             runCatching { wm.removeViewImmediate(pv) }
@@ -698,7 +698,7 @@ class GameSidebar(
         panelDismissing.value = true
 
         brightnessInteractor.dispose()
-        fpsInteractor.dispose()
+        updateFpsTracking()
 
         panelView?.let { pv ->
             runCatching { wm.removeViewImmediate(pv) }
@@ -898,18 +898,20 @@ class GameSidebar(
     private fun px(dp: Int) = (dp * context.resources.displayMetrics.density).toInt()
 
     private fun updateFpsTracking() {
-        stopFpsTracking()
-        if (sessionActive && gamePackage != null && !shouldClose && (showFpsState.value || pillExpanded)) {
-            taskManager?.focusedRootTaskInfo?.taskId?.let {
-                wm.registerTaskFpsCallback(it, Runnable::run, taskFpsCallback)
-            }
+        if (sessionActive && gamePackage != null && !shouldClose &&
+            (showFpsState.value || pillExpanded || panelShowing) &&
+            gameTaskId != ActivityTaskManager.INVALID_TASK_ID) {
+            fpsInteractor.onFpsChanged = ::updateFpsText
+            fpsInteractor.start(gameTaskId)
         } else {
             stopFpsTracking()
         }
     }
 
     private fun stopFpsTracking() {
-        runCatching { wm.unregisterTaskFpsCallback(taskFpsCallback) }
+        fpsInteractor.onFpsChanged = null
+        fpsInteractor.dispose()
+        fpsTextState.value = ""
     }
 
     private fun updateScreenMetrics() {
