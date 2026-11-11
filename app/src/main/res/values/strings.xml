@@ -316,4 +316,25 @@
     <string name="game_performance">Game Tuner</string>
     <string name="global_in_game_options_title">Global in-game options</string>
     <string name="touch_sensitivity_high_polling_pen">Disabled while pen input is on.</string>
+    <string name="perf_overlay_items_title">Overlay items</string>
+    <string name="perf_overlay_items_summary">Up to 5 items can be shown.</string>
+    <string name="perf_overlay_move">Move %1$s</string>
+    <string name="perf_overlay_move_up">Move up</string>
+    <string name="perf_overlay_move_down">Move down</string>
+    <string name="perf_item_fps">FPS</string>
+    <string name="perf_item_cpu_clock">CPU clock</string>
+    <string name="perf_item_gpu_clock">GPU clock</string>
+    <string name="perf_item_battery_temp">Battery temperature</string>
+    <string name="perf_item_battery_level">Battery level</string>
+    <string name="perf_item_cpu_temp">CPU temperature</string>
+    <string name="perf_item_gpu_temp">GPU temperature</string>
+    <string name="perf_item_ram">Memory usage</string>
+    <string name="perf_label_cpu">CPU</string>
+    <string name="perf_label_gpu">GPU</string>
+    <string name="perf_label_battery">Battery</string>
+    <string name="perf_label_level">Level</string>
+    <string name="perf_label_ram">RAM</string>
+    <string name="perf_value_ghz">%1$sGHz</string>
+    <string name="perf_value_mhz">%1$dMHz</string>
+    <string name="perf_value_fps">%1$sfps</string>
 </resources>

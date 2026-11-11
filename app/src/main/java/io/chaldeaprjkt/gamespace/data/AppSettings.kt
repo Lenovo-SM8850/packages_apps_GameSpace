@@ -59,14 +59,15 @@ class AppSettings @Inject constructor(private val context: Context) {
         get() = db.getBoolean("stats_overlay_compact", false)
         set(value) = db.edit().putBoolean("stats_overlay_compact", value).apply()
 
+    /** The overlay's saved centre x and top y. */
     fun statsOverlayPosition(landscape: Boolean): Pair<Int, Int>? {
-        val key = if (landscape) "stats_overlay_landscape" else "stats_overlay_portrait"
+        val key = if (landscape) "perf_overlay_landscape" else "perf_overlay_portrait"
         if (!db.contains("${key}_x") || !db.contains("${key}_y")) return null
         return db.getInt("${key}_x", 0) to db.getInt("${key}_y", 0)
     }
 
     fun saveStatsOverlayPosition(landscape: Boolean, x: Int, y: Int) {
-        val key = if (landscape) "stats_overlay_landscape" else "stats_overlay_portrait"
+        val key = if (landscape) "perf_overlay_landscape" else "perf_overlay_portrait"
         db.edit().putInt("${key}_x", x).putInt("${key}_y", y).apply()
     }
 

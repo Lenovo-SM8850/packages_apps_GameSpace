@@ -3,9 +3,6 @@
 
 package io.github.miner7222.gamespace.gamebar
 
-import android.animation.Animator
-import android.animation.AnimatorListenerAdapter
-import android.animation.ValueAnimator
 import android.content.Context
 import android.content.res.Configuration
 import android.graphics.PixelFormat
@@ -13,12 +10,21 @@ import android.os.Handler
 import android.view.GestureDetector
 import android.view.Gravity
 import android.view.MotionEvent
+import android.view.View
 import android.view.ViewConfiguration
+import android.view.ViewGroup
 import android.view.WindowInsets
 import android.view.WindowManager
 import android.widget.FrameLayout
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.basicMarquee
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.platform.LocalDensity
+import io.chaldeaprjkt.gamespace.R
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
@@ -41,14 +47,15 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import com.android.axion.compose.lifecycle.repeatWhenAttached
-import io.chaldeaprjkt.gamespace.R
 import io.chaldeaprjkt.gamespace.data.AppSettings
 import io.chaldeaprjkt.gamespace.gamebar.rememberBatteryInfo
-import io.github.miner7222.gamespace.FitLabel
-import io.github.miner7222.gamespace.shortLabelResource
 import kotlin.math.roundToInt
 
-/** A touch-bounded window whose position and lifetime are independent of the handle. */
+/**
+ * A touch-bounded window whose position and lifetime are independent of the handle. It is as wide
+ * as the items it shows; its centre stays put when that width changes, and it snaps to the top
+ * centre of the screen when dragged close to it.
+ */
 class StatsOverlay(
     private val context: Context,
     private val wm: WindowManager,
@@ -59,9 +66,11 @@ class StatsOverlay(
     private var view: FrameLayout? = null
     private var landscape = context.resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
     private val compact = mutableStateOf(appSettings.statsOverlayCompact)
-    private var stripWidth = px(if (compact.value) 128 else 184)
-    private var stripHeight = px(if (compact.value) 28 else 48)
-    private var resizeAnimator: ValueAnimator? = null
+    private val items = PerfOverlayItems.entries(context)
+    // The measured window size and the centre the window keeps when that size changes.
+    private var stripWidth = 0
+    private var stripHeight = 0
+    private var centerX = 0
     private val gestures = GestureDetector(context, object : GestureDetector.SimpleOnGestureListener() {
         override fun onDown(event: MotionEvent) = true
         override fun onDoubleTap(event: MotionEvent): Boolean {
@@ -79,6 +88,8 @@ class StatsOverlay(
     private var dragging = false
     private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
     private val params = WindowManager.LayoutParams(
+        WindowManager.LayoutParams.WRAP_CONTENT,
+        WindowManager.LayoutParams.WRAP_CONTENT,
         WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
         WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
             WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
@@ -89,14 +100,26 @@ class StatsOverlay(
         gravity = Gravity.TOP or Gravity.LEFT
         layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
         preferMinimalPostProcessing = true
+        // Re-centring after a size change must jump, not glide in from the old frame.
+        privateFlags = privateFlags or WindowManager.LayoutParams.PRIVATE_FLAG_NO_MOVE_ANIMATION
+    }
+    private val sizeListener = View.OnLayoutChangeListener { _, left, top, right, bottom, _, _, _, _ ->
+        val width = right - left
+        val height = bottom - top
+        // A re-added window lays out empty first; keep the last size so it reappears in place.
+        if (width <= 0 || height <= 0) return@OnLayoutChangeListener
+        if (width == stripWidth && height == stripHeight) return@OnLayoutChangeListener
+        stripWidth = width
+        stripHeight = height
+        // Grow or shrink around the kept centre, also while it is being dragged.
+        placeCenter(centerX, params.y)
+        updateLayout()
     }
 
     fun setVisible(visible: Boolean) {
         if (!visible) {
             handler.removeCallbacks(timeout)
             cancelGestures()
-            resizeAnimator?.cancel()
-            resizeAnimator = null
             saveDragPosition()
             pointerId = MotionEvent.INVALID_POINTER_ID
             val current = view
@@ -106,8 +129,6 @@ class StatsOverlay(
         }
         if (view != null) return
         landscape = context.resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
-        stripWidth = px(if (compact.value) 128 else 184)
-        stripHeight = px(if (compact.value) 28 else 48)
         restorePosition()
         idle.value = false
         val content = ComposeView(context)
@@ -116,13 +137,15 @@ class StatsOverlay(
             override fun onTouchEvent(event: MotionEvent) = handleTouch(event)
         }.apply {
             addView(content, FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            addOnLayoutChangeListener(sizeListener)
             repeatWhenAttached {
                 repeatOnLifecycle(Lifecycle.State.STARTED) {
                     content.setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
                     content.setContent {
                         OverlayTheme(context) {
-                            StatsStrip(fpsText.value, idle.value, compact.value)
+                            StatsStrip(fpsText.value, idle.value, compact.value,
+                                items.value.filter { it.shown }.map { it.item })
                         }
                     }
                 }
@@ -153,10 +176,6 @@ class StatsOverlay(
 
     fun onConfigurationChanged(config: Configuration) {
         cancelGestures()
-        resizeAnimator?.cancel()
-        resizeAnimator = null
-        stripWidth = px(if (compact.value) 128 else 184)
-        stripHeight = px(if (compact.value) 28 else 48)
         saveDragPosition()
         pointerId = MotionEvent.INVALID_POINTER_ID
         val nextLandscape = config.orientation == Configuration.ORIENTATION_LANDSCAPE
@@ -164,29 +183,39 @@ class StatsOverlay(
             landscape = nextLandscape
             restorePosition()
         } else {
-            clampPosition(params.x, params.y)
+            placeCenter(centerX, params.y)
         }
         updateLayout()
         if (view != null) scheduleIdle()
     }
 
-    private fun restorePosition() {
-        val saved = appSettings.statsOverlayPosition(landscape)
+    /**
+     * The top centre the strip starts at and snaps to: below the status bar while it shows, at the
+     * top of the screen when a full screen game hides it.
+     */
+    private fun anchor(): Pair<Int, Int> {
         val metrics = wm.maximumWindowMetrics
-        val insets = metrics.windowInsets.getInsetsIgnoringVisibility(
-            WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout())
-        clampPosition(saved?.first ?: ((metrics.bounds.width() - stripWidth) / 2),
-            saved?.second ?: (insets.top + px(8)))
+        val types = WindowInsets.Type.statusBars() or WindowInsets.Type.displayCutout()
+        val top = view?.rootWindowInsets?.getInsets(types)?.top
+            ?: metrics.windowInsets.getInsets(types).top
+        return metrics.bounds.width() / 2 to top + px(8)
     }
 
-    private fun clampPosition(x: Int, y: Int) {
+    private fun restorePosition() {
+        val saved = appSettings.statsOverlayPosition(landscape)
+        val (anchorX, anchorY) = anchor()
+        placeCenter(saved?.first ?: anchorX, saved?.second ?: anchorY)
+    }
+
+    /** Places the strip so its centre is at [x] (kept for later size changes), within the screen. */
+    private fun placeCenter(x: Int, y: Int) {
         val bounds = wm.maximumWindowMetrics.bounds
         val width = bounds.width().coerceAtLeast(1)
         val height = bounds.height().coerceAtLeast(1)
-        params.width = stripWidth.coerceAtMost(width)
-        params.height = stripHeight.coerceAtMost(height)
-        params.x = x.coerceIn(0, width - params.width)
-        params.y = y.coerceIn(0, height - params.height)
+        val half = stripWidth / 2
+        centerX = x.coerceIn(half, (width - (stripWidth - half)).coerceAtLeast(half))
+        params.x = (centerX - half).coerceIn(0, (width - stripWidth).coerceAtLeast(0))
+        params.y = y.coerceIn(0, (height - stripHeight).coerceAtLeast(0))
     }
 
     private fun handleTouch(event: MotionEvent): Boolean {
@@ -195,7 +224,7 @@ class StatsOverlay(
             MotionEvent.ACTION_DOWN -> {
                 wake()
                 pointerId = event.getPointerId(0)
-                startX = params.x
+                startX = centerX
                 startY = params.y
                 downX = event.rawX
                 downY = event.rawY
@@ -211,7 +240,7 @@ class StatsOverlay(
                     cancelGestures()
                 }
                 if (dragging) {
-                    clampPosition(startX + dx.roundToInt(), startY + dy.roundToInt())
+                    placeCenter(startX + dx.roundToInt(), startY + dy.roundToInt())
                     updateLayout()
                 }
             }
@@ -219,7 +248,7 @@ class StatsOverlay(
                 if (event.getPointerId(event.actionIndex) == pointerId) {
                     val index = if (event.actionIndex == 0) 1 else 0
                     pointerId = event.getPointerId(index)
-                    startX = params.x
+                    startX = centerX
                     startY = params.y
                     downX = event.getRawX(index)
                     downY = event.getRawY(index)
@@ -227,7 +256,8 @@ class StatsOverlay(
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                 if (pointerId == MotionEvent.INVALID_POINTER_ID) return true
-                if (dragging) appSettings.saveStatsOverlayPosition(landscape, params.x, params.y)
+                if (dragging) appSettings.saveStatsOverlayPosition(landscape, centerX, params.y)
+                dragging = false
                 pointerId = MotionEvent.INVALID_POINTER_ID
                 scheduleIdle()
             }
@@ -245,29 +275,6 @@ class StatsOverlay(
     private fun toggleCompact() {
         compact.value = !compact.value
         appSettings.statsOverlayCompact = compact.value
-        resizeAnimator?.cancel()
-        val fromWidth = params.width
-        val fromHeight = params.height
-        val centerX = params.x + fromWidth / 2f
-        val top = params.y
-        val toWidth = px(if (compact.value) 128 else 184)
-        val toHeight = px(if (compact.value) 28 else 48)
-        resizeAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
-            duration = 220L
-            addUpdateListener {
-                val progress = it.animatedValue as Float
-                stripWidth = (fromWidth + (toWidth - fromWidth) * progress).roundToInt()
-                stripHeight = (fromHeight + (toHeight - fromHeight) * progress).roundToInt()
-                clampPosition((centerX - stripWidth / 2f).roundToInt(), top)
-                updateLayout()
-            }
-            addListener(object : AnimatorListenerAdapter() {
-                override fun onAnimationEnd(animation: Animator) {
-                    appSettings.saveStatsOverlayPosition(landscape, params.x, params.y)
-                }
-            })
-            start()
-        }
     }
 
     private fun updateLayout() {
@@ -276,7 +283,7 @@ class StatsOverlay(
 
     private fun saveDragPosition() {
         if (pointerId != MotionEvent.INVALID_POINTER_ID && dragging) {
-            appSettings.saveStatsOverlayPosition(landscape, params.x, params.y)
+            appSettings.saveStatsOverlayPosition(landscape, centerX, params.y)
         }
     }
 
@@ -291,50 +298,89 @@ class StatsOverlay(
     }
 
     private fun px(value: Int) = (value * context.resources.displayMetrics.density).roundToInt()
-}
 
-@Composable
-private fun StatsStrip(fpsText: String, idle: Boolean, compact: Boolean) {
-    val battery = rememberBatteryInfo()
-    val opacity = animateFloatAsState(if (idle) 0.7f else 1f,
-        animationSpec = tween(if (idle) 350 else 0), label = "statsOpacity")
-    val fps = fpsText.ifEmpty { "–" }
-    val temperature = stringResource(R.string.dashboard_temperature, battery.temperatureC.roundToInt())
-    val level = if (battery.level >= 0) "${battery.level}%" else "–"
-    val fpsLabel = stringResource(R.string.gamebar_fps_label)
-    val temperatureLabel = stringResource(R.string.gamebar_temperature_label)
-    val batteryLabel = stringResource(R.string.gamebar_battery_label)
-    Box(Modifier.fillMaxSize()
-        .background(MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = overlayPanelAlpha()),
-            RoundedCornerShape(16.dp))
-        .border(overlayBorder(), RoundedCornerShape(16.dp))
-        .padding(horizontal = if (compact) 6.dp else 8.dp, vertical = if (compact) 2.dp else 4.dp)) {
-        if (compact) {
-            Text("$fps · $temperature · $level",
-                Modifier.align(Alignment.Center).graphicsLayer { alpha = opacity.value }
-                    .clearAndSetSemantics {
-                        contentDescription = "$fpsLabel: $fps · $temperatureLabel: $temperature · $batteryLabel: $level"
-                    },
-                color = MaterialTheme.colorScheme.onSurface, fontSize = 14.sp, lineHeight = 20.sp,
-                fontWeight = FontWeight.Bold, maxLines = 1,
-                style = TextStyle(fontFeatureSettings = "tnum"))
-        } else Row(Modifier.fillMaxSize().graphicsLayer { alpha = opacity.value },
-            verticalAlignment = Alignment.CenterVertically) {
-            StatValue(fps, fpsLabel, Modifier.weight(1f))
-            StatValue(temperature, temperatureLabel, Modifier.weight(1f))
-            StatValue(level, batteryLabel, Modifier.weight(1f),
-                shortLabelResource(R.string.gamebar_battery_label_short))
-        }
+    private companion object {
+        /** How close to the top centre the strip has to be dragged to snap to it. */
+        const val SNAP_DP = 40
     }
 }
 
 @Composable
-private fun StatValue(value: String, label: String, modifier: Modifier, shortLabel: String? = null) {
-    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center) {
-        Text(value, color = MaterialTheme.colorScheme.onSurface, fontSize = 17.sp, lineHeight = 20.sp,
-            fontWeight = FontWeight.Bold, style = TextStyle(fontFeatureSettings = "tnum"))
-        FitLabel(label, shortLabel, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, lineHeight = 14.sp,
-            fontWeight = FontWeight.SemiBold, letterSpacing = 0.3.sp)
+private fun StatsStrip(fpsText: String, idle: Boolean, compact: Boolean, items: List<PerfItem>) {
+    val battery = rememberBatteryInfo()
+    val values by rememberPerfValues(items.toSet())
+    val opacity = animateFloatAsState(if (idle) 0.7f else 1f,
+        animationSpec = tween(if (idle) 350 else 0), label = "statsOpacity")
+    val shown = items.map { item ->
+        Triple(perfValueText(item, fpsText, values, battery.temperatureC, battery.level),
+            stringResource(item.labelRes), stringResource(item.nameRes))
+    }
+    Box(Modifier.height(if (compact) 28.dp else 48.dp)
+        .background(MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = overlayPanelAlpha()),
+            RoundedCornerShape(16.dp))
+        .border(overlayBorder(), RoundedCornerShape(16.dp))
+        .padding(horizontal = if (compact) 10.dp else 12.dp, vertical = if (compact) 2.dp else 4.dp),
+        contentAlignment = Alignment.Center) {
+        if (compact) {
+            // Without labels the frame rate carries its unit, as the clocks do.
+            val fpsUnit = stringResource(R.string.perf_value_fps, "%s")
+            Text(shown.zip(items).joinToString(" · ") { (entry, item) ->
+                if (item == PerfItem.FPS && entry.first != "–") fpsUnit.format(entry.first)
+                else entry.first
+            },
+                Modifier.graphicsLayer { alpha = opacity.value }
+                    .clearAndSetSemantics {
+                        contentDescription = shown.joinToString(" · ") { "${it.third}: ${it.first}" }
+                    },
+                color = MaterialTheme.colorScheme.onSurface, fontSize = 14.sp, lineHeight = 20.sp,
+                fontWeight = FontWeight.Bold, maxLines = 1,
+                style = TextStyle(fontFeatureSettings = "tnum"))
+        } else Row(Modifier.fillMaxHeight().graphicsLayer { alpha = opacity.value },
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            verticalAlignment = Alignment.CenterVertically) {
+            val width = rememberStatWidth()
+            shown.forEach { (value, label, name) -> StatValue(value, label, name, width) }
+        }
+    }
+}
+
+private val StatValueStyle = TextStyle(fontSize = 17.sp, lineHeight = 20.sp, fontWeight = FontWeight.Bold,
+    fontFeatureSettings = "tnum")
+
+/**
+ * The width of every item: the widest value any item can show, so items line up the same whatever
+ * is shown and however the values change.
+ */
+@Composable
+private fun rememberStatWidth(): Int {
+    val measurer = rememberTextMeasurer()
+    val density = LocalDensity.current
+    val samples = listOf("144", "100%", "99°", stringResource(R.string.perf_value_ghz, "4.47"),
+        stringResource(R.string.perf_value_mhz, 1200))
+    return remember(samples, density) {
+        maxOf(samples.maxOf { measurer.measure(it, StatValueStyle).size.width },
+            with(density) { 36.dp.roundToPx() })
+    }
+}
+
+/**
+ * A value over its label, [width] pixels wide. A label that does not fit scrolls within it, so a
+ * long label in some language does not widen its item.
+ */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun StatValue(value: String, label: String, name: String, width: Int) {
+    Layout(content = {
+        Text(value, color = MaterialTheme.colorScheme.onSurface, maxLines = 1, style = StatValueStyle)
+        Text(label, Modifier.basicMarquee(iterations = Int.MAX_VALUE),
+            color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, lineHeight = 14.sp,
+            fontWeight = FontWeight.SemiBold, letterSpacing = 0.3.sp, maxLines = 1)
+    }, modifier = Modifier.clearAndSetSemantics { contentDescription = "$name: $value" }) { parts, _ ->
+        val top = parts[0].measure(Constraints(maxWidth = width))
+        val bottom = parts[1].measure(Constraints(maxWidth = width))
+        layout(width, top.height + bottom.height) {
+            top.place((width - top.width) / 2, 0)
+            bottom.place((width - bottom.width) / 2, top.height)
+        }
     }
 }

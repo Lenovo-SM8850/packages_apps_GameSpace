@@ -92,6 +92,7 @@ import io.github.miner7222.gamespace.gamebar.DashboardDetailSheet
 import io.github.miner7222.gamespace.gamebar.MediaVolumeController
 import io.github.miner7222.gamespace.gamebar.RecordingPhase
 import io.github.miner7222.gamespace.gamebar.RecordingState
+import io.github.miner7222.gamespace.gamebar.PerfOverlaySheet
 import io.github.miner7222.gamespace.gamebar.TouchSensitivitySheet
 import io.github.miner7222.gamespace.gamebar.overlayBorder
 import io.github.miner7222.gamespace.gamebar.overlayInnerAlpha
@@ -276,6 +277,8 @@ fun GamePanelCard(
                 dialogTile?.let { tile ->
                     if (tile.id == "touch_sensitivity") {
                         TouchSensitivitySheet(onDismiss = { dialogTile = null })
+                    } else if (tile.id == "fps_info") {
+                        PerfOverlaySheet(onDismiss = { dialogTile = null })
                     } else {
                         DashboardOptionSheet(tile, onDismiss = { dialogTile = null })
                     }
@@ -579,7 +582,7 @@ private fun DashboardGrid(tiles: List<TileAction>, columns: Int, tablet: Boolean
                 row.forEach { tile -> key(tile.id) {
                     TileButton(tile, Modifier.weight(1f), tablet, compact, height, recording,
                         onClick = { onTile(tile) }, onDefault = onDefault,
-                        onDetail = if (tile.togglesLastChoice) ({ onDetail(tile) })
+                        onDetail = if (tile.id == "fps_info" || tile.togglesLastChoice) ({ onDetail(tile) })
                             else null)
                 } }
                 repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
@@ -623,7 +626,8 @@ fun TileButton(tile: TileAction, modifier: Modifier = Modifier, tablet: Boolean 
     val actionLabel = if (record) stringResource(R.string.dashboard_stop_recording) else null
     val context = LocalContext.current
     val defaultLabel = stringResource(R.string.dashboard_game_default)
-    val detailLabel = if (onDetail == null) null else label
+    val detailLabel = if (onDetail == null) null
+        else if (tile.id == "fps_info") stringResource(R.string.perf_overlay_items_title) else label
     Box(modifier.height(height).clip(RoundedCornerShape(radius)).background(background)
         .combinedClickable(onClick = onClick, onClickLabel = actionLabel, onLongClickLabel = defaultLabel,
             onLongClick = if (tile.isSessionTile) onDefault else null)
