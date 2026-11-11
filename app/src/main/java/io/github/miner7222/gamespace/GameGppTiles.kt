@@ -23,8 +23,49 @@ import io.chaldeaprjkt.gamespace.gamebar.tiles.TileCategory
 import io.chaldeaprjkt.gamespace.gamebar.tiles.TileKind
 import io.chaldeaprjkt.gamespace.gamebar.tiles.TileOption
 import org.json.JSONObject
+import io.github.miner7222.gamespace.library.SessionOptions
+import io.github.miner7222.gamespace.library.ModePreferences
 import javax.inject.Inject
 import javax.inject.Singleton
+
+/** All off paths use these per-user maps; remembered tile choices are separate. */
+object GameGppChoices {
+    fun read(context: Context, userId: Int, key: String): JSONObject {
+        val raw = Settings.Secure.getStringForUser(context.contentResolver, key, userId)
+        return if (raw.isNullOrEmpty()) JSONObject() else JSONObject(raw)
+    }
+    fun write(context: Context, userId: Int, pkg: String, key: String, next: Int): Boolean {
+        val map = read(context, userId, key)
+        if (next == 0) map.remove(pkg) else map.put(pkg, next)
+        return Settings.Secure.putStringForUser(context.contentResolver, key, map.toString(), userId)
+    }
+    fun userId(context: Context, packageName: String): Int {
+        try {
+            val tasks = ActivityTaskManager.getInstance().getTasks(Int.MAX_VALUE).filter {
+                it.baseActivity?.packageName == packageName ||
+                    it.topActivity?.packageName == packageName
+            }
+            val task = tasks.firstOrNull { it.userId == context.userId && it.isVisible }
+                ?: tasks.firstOrNull { it.isFocused }
+                ?: tasks.firstOrNull { it.isVisible }
+                ?: tasks.firstOrNull { it.userId == context.userId }
+            if (task != null) return task.userId
+        } catch (e: Exception) {
+            Log.w("GameGppTile", "Unable to query game task user", e)
+        }
+        return context.userId
+    }
+
+    /** Clears both choices for [forUser], or for the user running the game when it is null. */
+    fun clear(context: Context, pkg: String, forUser: Int? = null): Boolean {
+        val user = forUser ?: userId(context, pkg)
+        for (key in listOf("game_frame_interp", "game_super_resolution")) {
+            if (read(context, user, key).has(pkg) &&
+                !write(context, user, pkg, key, 0)) return false
+        }
+        return true
+    }
+}
 
 /**
  * A per-game choice for the game post-processing service. The dashboard stores it in a
@@ -76,7 +117,7 @@ abstract class GameGppTile(
 
     fun onGameStart(packageName: String) {
         gamePackage = packageName
-        gameUserId = resolveGameUserId(packageName)
+        gameUserId = GameGppChoices.userId(context, packageName)
         observe()
         refresh()
     }
@@ -130,17 +171,22 @@ abstract class GameGppTile(
         val pkg = gamePackage ?: return
         if (!available || next !in values) return
         try {
-            val map = readMap(gameUserId)
-            if (next == 0) map.remove(pkg) else map.put(pkg, next)
-            if (!Settings.Secure.putStringForUser(context.contentResolver, setting,
-                    map.toString(), gameUserId)) {
+            val currentMode = SessionOptions.mode(context) ?: SessionOptions.savedMode(context, pkg)
+                ?: ModePreferences.rawMode(context, pkg) ?: ModePreferences.defaultMode(context)
+            val targetMode = GppModeRules.modeForChoice(currentMode, next)
+            if (targetMode != currentMode && !SessionOptions.chooseMode(context, targetMode)) {
+                showFailure()
+                return
+            }
+            if (!GameGppChoices.write(context, gameUserId, pkg, setting, next)) {
                 showFailure()
                 return
             }
             mode.value = next
-            if (next != 0) {
-                PreferenceManager.getDefaultSharedPreferences(context).edit()
-                    .putInt("${setting}_last", next).apply()
+            val prefs = PreferenceManager.getDefaultSharedPreferences(context)
+            val remembered = GppModeRules.rememberedChoice(prefs.getInt("${setting}_last", 0), next)
+            if (remembered != prefs.getInt("${setting}_last", 0)) {
+                prefs.edit().putInt("${setting}_last", remembered).apply()
             }
             onChanged?.invoke()
         } catch (e: Exception) {
@@ -181,27 +227,7 @@ abstract class GameGppTile(
         }
     }
 
-    private fun readMap(userId: Int): JSONObject {
-        val raw = Settings.Secure.getStringForUser(context.contentResolver, setting, userId)
-        return if (raw.isNullOrEmpty()) JSONObject() else JSONObject(raw)
-    }
-
-    private fun resolveGameUserId(packageName: String): Int {
-        try {
-            val tasks = ActivityTaskManager.getInstance().getTasks(Int.MAX_VALUE).filter {
-                it.baseActivity?.packageName == packageName ||
-                    it.topActivity?.packageName == packageName
-            }
-            val task = tasks.firstOrNull { it.userId == context.userId && it.isVisible }
-                ?: tasks.firstOrNull { it.isFocused }
-                ?: tasks.firstOrNull { it.isVisible }
-                ?: tasks.firstOrNull { it.userId == context.userId }
-            if (task != null) return task.userId
-        } catch (e: Exception) {
-            Log.w(TAG, "Unable to query game task user", e)
-        }
-        return context.userId
-    }
+    private fun readMap(userId: Int): JSONObject = GameGppChoices.read(context, userId, setting)
 
     private fun showFailure() {
         val message = context.getString(failureRes)

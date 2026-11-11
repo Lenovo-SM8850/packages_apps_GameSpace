@@ -122,6 +122,10 @@ class GameModeUtils @Inject constructor(private val context: Context) {
 
     fun setGameModeFor(packageName: String, systemSettings: SystemSettings, mode: Int): UserGame = withModeLock {
         require(mode in 0..3)
+        if (!io.github.miner7222.gamespace.GppModeRules.keepFeatures(mode)) {
+            // A library change belongs to this user's profile, not to whichever user shows the game.
+            check(io.github.miner7222.gamespace.GameGppChoices.clear(context, packageName, context.userId))
+        }
         io.github.miner7222.gamespace.library.SessionOptions.saveMode(context, packageName, mode)
         val runtimeMode = if (io.github.miner7222.gamespace.library.SessionOptions.packageName(context) == packageName)
             io.github.miner7222.gamespace.library.SessionOptions.mode(context) ?: mode else mode
