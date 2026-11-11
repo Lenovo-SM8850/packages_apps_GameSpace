@@ -9,6 +9,7 @@ import android.graphics.PixelFormat
 import android.os.Handler
 import android.view.GestureDetector
 import android.view.Gravity
+import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
@@ -49,6 +50,7 @@ import androidx.lifecycle.repeatOnLifecycle
 import com.android.axion.compose.lifecycle.repeatWhenAttached
 import io.chaldeaprjkt.gamespace.data.AppSettings
 import io.chaldeaprjkt.gamespace.gamebar.rememberBatteryInfo
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /**
@@ -71,6 +73,7 @@ class StatsOverlay(
     private var stripWidth = 0
     private var stripHeight = 0
     private var centerX = 0
+    private var snapped = false
     private val gestures = GestureDetector(context, object : GestureDetector.SimpleOnGestureListener() {
         override fun onDown(event: MotionEvent) = true
         override fun onDoubleTap(event: MotionEvent): Boolean {
@@ -240,7 +243,7 @@ class StatsOverlay(
                     cancelGestures()
                 }
                 if (dragging) {
-                    placeCenter(startX + dx.roundToInt(), startY + dy.roundToInt())
+                    dragTo(startX + dx.roundToInt(), startY + dy.roundToInt())
                     updateLayout()
                 }
             }
@@ -263,6 +266,15 @@ class StatsOverlay(
             }
         }
         return true
+    }
+
+    /** Follows the finger, and holds the strip at the top centre while the finger is near it. */
+    private fun dragTo(x: Int, y: Int) {
+        val (anchorX, anchorY) = anchor()
+        val near = abs(x - anchorX) < px(SNAP_DP) && abs(y - anchorY) < px(SNAP_DP)
+        if (near) placeCenter(anchorX, anchorY) else placeCenter(x, y)
+        if (near && !snapped) view?.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+        snapped = near
     }
 
     private fun cancelGestures() {
