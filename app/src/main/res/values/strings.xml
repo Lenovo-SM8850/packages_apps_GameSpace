@@ -192,6 +192,8 @@
     <string name="frame_interp_3x">3x</string>
     <string name="frame_interp_description">Adds in-between frames for smoother motion. Uses more power and heat.</string>
     <string name="frame_interp_super_resolution_note">With super resolution on, the source frames are limited to 60 FPS.</string>
+    <string name="frame_interp_target">Target frame rate</string>
+    <string name="frame_interp_target_auto">Auto</string>
     <string name="tile_super_resolution">Super resolution</string>
     <string name="tile_super_resolution_short">Super res</string>
     <string name="super_resolution_description">Upscales the game\'s frames for a sharper picture. Uses more power and heat.</string>

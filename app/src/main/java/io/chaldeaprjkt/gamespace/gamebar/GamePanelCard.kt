@@ -701,10 +701,37 @@ private fun BoxScope.DashboardOptionSheet(tile: TileAction, onDismiss: () -> Uni
                 Text(option.label, Modifier.padding(start = 8.dp))
             }
         }
+        tile.detailChoiceLabel?.let { label ->
+            DetailChoiceRow(label, tile.detailChoices, tile::selectDetailChoice)
+        }
         tile.detailFooter?.let { note ->
             Text(note, Modifier.padding(top = 12.dp),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodySmall)
+        }
+    }
+}
+
+/** A labelled value that opens a menu of [choices], like the library's sort menu. */
+@Composable
+private fun DetailChoiceRow(label: String, choices: List<TileOption>, onSelect: (TileOption) -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    val current = choices.firstOrNull { it.selected }
+    Box(Modifier.padding(top = 8.dp)) {
+        Row(Modifier.fillMaxWidth().heightIn(min = 48.dp)
+            .clickable(role = Role.DropdownList) { expanded = true },
+            verticalAlignment = Alignment.CenterVertically) {
+            Text(label, Modifier.weight(1f))
+            Text(current?.label.orEmpty(), color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Icon(Icons.Rounded.ArrowDropDown, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            choices.forEach { option ->
+                DropdownMenuItem(text = { Text(option.label) },
+                    leadingIcon = { if (option.selected) Icon(Icons.Rounded.Check, null) },
+                    enabled = option.enabled,
+                    onClick = { onSelect(option); expanded = false })
+            }
         }
     }
 }

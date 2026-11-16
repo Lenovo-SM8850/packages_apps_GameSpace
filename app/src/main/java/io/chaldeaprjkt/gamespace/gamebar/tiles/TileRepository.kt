@@ -68,7 +68,7 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /** One row of a tile's picker; [id] is only meaningful to the tile that produced it. */
-data class TileOption(val id: String, val label: String, val selected: Boolean)
+data class TileOption(val id: String, val label: String, val selected: Boolean, val enabled: Boolean = true)
 
 enum class TileKind { TOGGLE, ACTION, CYCLE, DIALOG }
 
@@ -121,6 +121,10 @@ interface TileAction {
      * used last, and only its arrow opens the picker.
      */
     val togglesLastChoice: Boolean get() = false
+    /** The label of a second choice shown as a dropdown under [options], or null when there is none. */
+    val detailChoiceLabel: String? get() = null
+    val detailChoices: List<TileOption> get() = emptyList()
+    fun selectDetailChoice(option: TileOption) {}
     @Composable fun observeEnabled(): State<Boolean>
     fun toggle()
     fun selectOption(option: TileOption) {}
