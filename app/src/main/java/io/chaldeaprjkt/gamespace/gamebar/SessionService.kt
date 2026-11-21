@@ -510,6 +510,9 @@ class SessionService : Hilt_SessionService() {
         if (gameTaskIds.isEmpty()) {
             // End choices and restore owned settings even while the framework still binds us.
             stopGameSession()
+        } else if (taskId == sidebar.sessionTaskId) {
+            // The named task is gone but the game goes on in another one.
+            sidebar.setSessionTask(ActivityTaskManager.INVALID_TASK_ID)
         }
     }
 
@@ -523,6 +526,7 @@ class SessionService : Hilt_SessionService() {
             (taskId == -1 || taskId in gameTaskIds) && (tasks == null || gameTaskIds.isEmpty() ||
                 tasks.any { it in gameTaskIds })) {
             if (tasks != null) gameTaskIds = tasks
+            if (taskId != -1) sidebar.setSessionTask(taskId)
             Log.d(TAG, "Session already active for $packageName")
             return true
         }
@@ -549,7 +553,7 @@ class SessionService : Hilt_SessionService() {
         session.unregister()
         session.register(packageName, active = false)
         deferredGameStart = true
-        sidebar.onGameStart(packageName, active = false)
+        sidebar.onGameStart(packageName, active = false, taskId = taskId)
         screenOffSession.onGameStart(packageName)
         resumeGameSession()
         // A session first encountered during a call also resumes silently.

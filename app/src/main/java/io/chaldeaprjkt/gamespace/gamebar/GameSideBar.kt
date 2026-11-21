@@ -131,6 +131,9 @@ class GameSidebar(
     private var handleHidden = false
     private var gamePackage: String? = null
     private var gameTaskId = ActivityTaskManager.INVALID_TASK_ID
+    // The task the framework named for this session; other tasks of the game are not used.
+    var sessionTaskId = ActivityTaskManager.INVALID_TASK_ID
+        private set
     private var taskListenerRegistered = false
 
     private lateinit var gameBarView: ComposeView
@@ -262,9 +265,10 @@ class GameSidebar(
                         task.topActivity?.packageName == packageName)
             }
             val activityTaskManager = ActivityTaskManager.getInstance()
+            val wantedTaskId = if (sessionTaskId != ActivityTaskManager.INVALID_TASK_ID) sessionTaskId else gameTaskId
             val nearbyTasks = activityTaskManager.getTasks(TASK_QUERY_LIMIT).filter(matchesGame)
-            if (nearbyTasks.isEmpty() || (gameTaskId != ActivityTaskManager.INVALID_TASK_ID &&
-                    nearbyTasks.none { it.taskId == gameTaskId })) {
+            if (nearbyTasks.isEmpty() || (wantedTaskId != ActivityTaskManager.INVALID_TASK_ID &&
+                    nearbyTasks.none { it.taskId == wantedTaskId })) {
                 activityTaskManager.getTasks(Int.MAX_VALUE).filter(matchesGame)
             } else {
                 nearbyTasks
@@ -275,10 +279,14 @@ class GameSidebar(
             updateStatsOverlayVisibility()
             return
         }
-        val task = tasks.firstOrNull { it.taskId == gameTaskId }
-            ?: tasks.firstOrNull { it.isFocused }
-            ?: tasks.firstOrNull { it.isVisible }
-            ?: tasks.firstOrNull()
+        val task = if (sessionTaskId != ActivityTaskManager.INVALID_TASK_ID) {
+            tasks.firstOrNull { it.taskId == sessionTaskId }
+        } else {
+            tasks.firstOrNull { it.taskId == gameTaskId }
+                ?: tasks.firstOrNull { it.isFocused }
+                ?: tasks.firstOrNull { it.isVisible }
+                ?: tasks.firstOrNull()
+        }
         val previousTaskId = gameTaskId
         gameTaskId = task?.taskId ?: ActivityTaskManager.INVALID_TASK_ID
         // The frame rate follows the game's own task, which can appear after the session started.
@@ -535,7 +543,8 @@ class GameSidebar(
 
     private var sessionUserId = context.userId
 
-    fun onGameStart(packageName: String, active: Boolean = true) {
+    fun onGameStart(packageName: String, active: Boolean = true,
+            taskId: Int = ActivityTaskManager.INVALID_TASK_ID) {
         handler.removeCallbacks(attachGameBar)
         handler.removeCallbacks(firstPaint)
         sessionActive = active
@@ -553,7 +562,8 @@ class GameSidebar(
         appSettings.registerPreferenceListener(autoHideListener)
         gamePackage = packageName
         fpsTextState.value = ""
-        gameTaskId = ActivityTaskManager.INVALID_TASK_ID
+        sessionTaskId = taskId
+        gameTaskId = taskId
         if (!taskListenerRegistered) {
             try {
                 taskManager.registerTaskStackListener(taskListener)
@@ -567,6 +577,12 @@ class GameSidebar(
             if (BuildFlags.MAPPER_ENABLED) mapperController.onGameStart(packageName)
             handler.post(attachGameBar)
         }
+    }
+
+    fun setSessionTask(taskId: Int) {
+        if (gamePackage == null || sessionTaskId == taskId) return
+        sessionTaskId = taskId
+        updateGameTaskVisibility()
     }
 
     fun onGameLeave() {
