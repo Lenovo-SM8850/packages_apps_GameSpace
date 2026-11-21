@@ -323,7 +323,10 @@ class SessionService : Hilt_SessionService() {
             mapperController = mapperController,
             mediaVolume = mediaVolume,
         )
-        sidebar.onGameTaskVisibilityChanged = { publishTouchPolicy() }
+        sidebar.onGameTaskVisibilityChanged = {
+            publishTouchPolicy()
+            updateDanmakuVisibility()
+        }
         sidebar.onCreate()
         startStatus = SessionStatusOverlay(this, windowManager) { sidebar.openDashboard() }
         aspectRatioGesture = GameAspectRatioGesture(this, windowManager, mainHandler,
@@ -474,10 +477,19 @@ class SessionService : Hilt_SessionService() {
         sidebar.setGameVisible(show)
         publishTouchPolicy()
         aspectRatioGesture.setGameVisible(show)
-        danmakuService.setGameVisible(show)
+        updateDanmakuVisibility()
         callListener.setGameVisible(show)
         publishSessionStatus()
         startStatus.setGameVisible(show)
+    }
+
+    private fun updateDanmakuVisibility() {
+        // Lines cross the whole display, so they only run over a fullscreen game. In split
+        // screen or a window, heads-up notifications show instead.
+        val fullscreen = frameworkGameVisible && currentPackage != null &&
+            !suspended && sidebar.gameTaskFullscreen
+        session.setGameWindowed(!fullscreen)
+        danmakuService.setGameVisible(fullscreen)
     }
 
     private fun publishTouchPolicy() {
@@ -585,6 +597,8 @@ class SessionService : Hilt_SessionService() {
             suspensionReasons.isNotEmpty() || callListener.isCallActive ||
             !getSystemService(android.os.PowerManager::class.java).isInteractive) return
         suspended = false
+        // A game that starts in a window must not have heads-up taken over first.
+        session.setGameWindowed(!sidebar.gameTaskFullscreen)
         session.resume()
         applyGameModeConfig(packageName)
         screenSampler.start(packageName)

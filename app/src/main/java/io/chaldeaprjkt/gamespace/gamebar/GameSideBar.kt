@@ -23,6 +23,7 @@ import android.app.ActivityManager
 import android.app.ActivityTaskManager
 import android.app.TaskStackListener
 import android.app.WindowConfiguration.WINDOWING_MODE_FREEFORM
+import android.app.WindowConfiguration.WINDOWING_MODE_FULLSCREEN
 import android.content.*
 import android.content.res.Configuration
 import android.graphics.PixelFormat
@@ -104,11 +105,15 @@ class GameSidebar(
     var onGameTaskVisibilityChanged: (() -> Unit)? = null
     var gameTaskFullscreenVisible = false
         private set
+    /** The game task is visible in fullscreen windowing mode, not in split screen or a window. */
+    var gameTaskFullscreen = false
+        private set
     private val removingTaskIds = mutableSetOf<Int>()
 
-    private fun updateFullscreenVisibility(visible: Boolean) {
-        if (gameTaskFullscreenVisible == visible) return
+    private fun updateFullscreenVisibility(visible: Boolean, fullscreen: Boolean = visible) {
+        if (gameTaskFullscreenVisible == visible && gameTaskFullscreen == fullscreen) return
         gameTaskFullscreenVisible = visible
+        gameTaskFullscreen = fullscreen
         onGameTaskVisibilityChanged?.invoke()
     }
 
@@ -293,7 +298,9 @@ class GameSidebar(
         if (gameTaskId != previousTaskId) updateFpsTracking()
         val gameTaskFloating = task != null &&
             (task.isFloatingWindow || task.windowingMode == WINDOWING_MODE_FREEFORM)
-        updateFullscreenVisibility(task != null && task.isVisible && !gameTaskFloating)
+        val visible = task != null && task.isVisible && !gameTaskFloating
+        val fullscreen = visible && task?.windowingMode == WINDOWING_MODE_FULLSCREEN
+        updateFullscreenVisibility(visible, fullscreen)
         updateStatsOverlayVisibility()
         val hidden = gameTaskFloating && task?.isFocused != true
         if (gameTaskHidden == hidden) return
@@ -572,6 +579,7 @@ class GameSidebar(
                 Log.w("GameSidebar", "Unable to observe the game task", e)
             }
         }
+        updateGameTaskVisibility()
         scheduleGameTaskRefresh()
         if (active) {
             if (BuildFlags.MAPPER_ENABLED) mapperController.onGameStart(packageName)

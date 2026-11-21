@@ -41,6 +41,30 @@ class GameSession @Inject constructor(
 
     private var liveState: SessionState? = null
     private val displayManager by lazy { context.getSystemService(DisplayManager::class.java) }
+    // Danmaku only runs over a fullscreen game; in split screen or a window heads-up stays on.
+    private var gameWindowed = false
+
+    fun setGameWindowed(windowed: Boolean) {
+        if (gameWindowed == windowed) return
+        gameWindowed = windowed
+        liveState?.takeUnless { it.suspended }?.let { applyHeadsup(it) }
+    }
+
+    private fun applyHeadsup(orig: SessionState) {
+        val headsup = appSettings.inGameOptions.current(GameOption.DANMAKU) == 1 && !gameWindowed
+        if (headsup != orig.ownsHeadsup) {
+            if (headsup) {
+                orig.headsup = systemSettings.headsup
+                orig.ownsHeadsup = true
+                persistRecovery(orig)
+                systemSettings.headsup = false
+            } else {
+                orig.headsup?.let { systemSettings.headsup = it }
+                orig.ownsHeadsup = false
+                persistRecovery(orig)
+            }
+        }
+    }
 
     private fun captureBrightness(orig: SessionState) {
         if (orig.ownsBrightness) return
@@ -118,19 +142,7 @@ class GameSession @Inject constructor(
             orig.ownsBrightness = false
             persistRecovery(orig)
         }
-        val headsup = options.current(GameOption.DANMAKU) == 1
-        if (headsup != orig.ownsHeadsup) {
-            if (headsup) {
-                orig.headsup = systemSettings.headsup
-                orig.ownsHeadsup = true
-                persistRecovery(orig)
-                systemSettings.headsup = false
-            } else {
-                orig.headsup?.let { systemSettings.headsup = it }
-                orig.ownsHeadsup = false
-                persistRecovery(orig)
-            }
-        }
+        applyHeadsup(orig)
         val ringer = options.current(GameOption.RINGER)
         if (ringer != orig.appliedRingerMode) {
             if (ringer != 3) {
