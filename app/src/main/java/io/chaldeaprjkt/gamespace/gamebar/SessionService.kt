@@ -62,7 +62,6 @@ class SessionService : Hilt_SessionService() {
     private lateinit var sidebar: GameSidebar
     private lateinit var mapperController: MapperController
     private lateinit var platform: AxPlatformClient
-    private lateinit var refreshRateLock: RefreshRateLock
 
     private var dndEnabledByUs = false
     private var previousDndFilter = NotificationManager.INTERRUPTION_FILTER_ALL
@@ -82,8 +81,6 @@ class SessionService : Hilt_SessionService() {
 
         val windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
         val mainHandler = Handler(Looper.getMainLooper())
-
-        refreshRateLock = RefreshRateLock(this, windowManager)
 
         mapperController = MapperController(
             context = this,
@@ -148,8 +145,6 @@ class SessionService : Hilt_SessionService() {
         
         applyAutoDnd()
 
-        refreshRateLock.apply(appSettings.refreshRateLock)
-
         sidebar.onGameStart(packageName)
 
         callListener.init()
@@ -159,7 +154,6 @@ class SessionService : Hilt_SessionService() {
         Log.i(TAG, "Stopping game session")
 
         sidebar.onGameLeave()
-        refreshRateLock.release()
         session.unregister()
         callListener.destroy()
         restoreAutoDnd()
