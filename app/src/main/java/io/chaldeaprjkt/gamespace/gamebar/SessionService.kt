@@ -84,9 +84,6 @@ class SessionService : Hilt_SessionService() {
         val mainHandler = Handler(Looper.getMainLooper())
 
         refreshRateLock = RefreshRateLock(this, windowManager)
-        tileRepository.onRefreshRateLockChanged = { rate ->
-            if (currentPackage != null) refreshRateLock.apply(rate)
-        }
 
         mapperController = MapperController(
             context = this,
@@ -204,7 +201,6 @@ class SessionService : Hilt_SessionService() {
     override fun onDestroy() {
         Log.d(TAG, "SessionService destroyed")
         stopGameSession()
-        tileRepository.onRefreshRateLockChanged = null
         tileRepository.dispose()
         gameModeUtils.unbind()
         danmakuService.destroy()
